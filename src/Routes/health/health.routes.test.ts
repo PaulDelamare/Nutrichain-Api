@@ -29,7 +29,6 @@ describe('Health route', () => {
         expect(res.body).toHaveProperty('status', 200);
         expect(res.body).toHaveProperty('message', 'ok');
         expect(res.body).toHaveProperty('data');
-        expect(res.body.data).toHaveProperty('uptime');
         expect(res.body.data).toHaveProperty('uptimeSeconds');
         expect(res.body.data).toHaveProperty('timestamp');
         expect(res.body.data).toHaveProperty('pid');
@@ -41,13 +40,16 @@ describe('Health route', () => {
         const tmpDir = path.join(tmpDirBase, `ok-${Date.now()}`);
         process.env.LOG_DIR = tmpDir;
 
-        // reset modules and stub the real prisma client's $queryRaw
+        // reset modules and mock the prisma client module used by the health controller
         vi.resetModules();
-        const prisma = await import('../../Configs/prismaClient.config');
-        prisma.bdd.$queryRaw = vi.fn().mockResolvedValue(1);
-        prisma.bdd.$queryRawUnsafe = vi.fn().mockResolvedValue([
-            { id: '1', name: 'init', finished_at: new Date().toISOString() },
-        ]);
+        vi.doMock('../../Configs/prismaClient.config', () => ({
+            bdd: {
+                $queryRaw: vi.fn().mockResolvedValue(1),
+                $queryRawUnsafe: vi.fn().mockResolvedValue([
+                    { id: '1', finished_at: new Date().toISOString() },
+                ]),
+            },
+        }));
 
         const { default: healthRoutes } = await import('./health.routes');
         const app = express();
@@ -74,11 +76,14 @@ describe('Health route', () => {
         const tmpDir = path.join(tmpDirBase, `nok-${Date.now()}`);
         process.env.LOG_DIR = tmpDir;
 
-        // reset modules and stub the real prisma client's $queryRaw to throw
+        // reset modules and mock prisma to simulate DB down
         vi.resetModules();
-        const prisma = await import('../../Configs/prismaClient.config');
-        prisma.bdd.$queryRaw = vi.fn().mockRejectedValue(new Error('DB down'));
-        prisma.bdd.$queryRawUnsafe = vi.fn().mockRejectedValue(new Error('DB down'));
+        vi.doMock('../../Configs/prismaClient.config', () => ({
+            bdd: {
+                $queryRaw: vi.fn().mockRejectedValue(new Error('DB down')),
+                $queryRawUnsafe: vi.fn().mockRejectedValue(new Error('DB down')),
+            },
+        }));
 
         const { default: healthRoutes } = await import('./health.routes');
         const app = express();
@@ -102,10 +107,15 @@ describe('Health route', () => {
         process.env.LOG_DIR = tmpDir;
 
         vi.resetModules();
-        const prisma = await import('../../Configs/prismaClient.config');
-        prisma.bdd.$queryRaw = vi.fn().mockResolvedValue(1);
-        // Simulate the migrations query failing because of a missing column
-        prisma.bdd.$queryRawUnsafe = vi.fn().mockRejectedValue(new Error("Invalid `prisma.$queryRawUnsafe()` invocation:\n\nRaw query failed. Code: `42703`. Message: `la colonne « name » n'existe pas`"));
+        const migrationError: any = new Error('migrations column missing');
+        migrationError.code = '42703';
+
+        vi.doMock('../../Configs/prismaClient.config', () => ({
+            bdd: {
+                $queryRaw: vi.fn().mockResolvedValue(1),
+                $queryRawUnsafe: vi.fn().mockImplementation(() => Promise.reject(migrationError)),
+            },
+        }));
 
         const { default: healthRoutes } = await import('./health.routes');
         const app = express();

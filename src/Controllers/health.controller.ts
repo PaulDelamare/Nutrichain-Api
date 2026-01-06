@@ -78,16 +78,23 @@ const checkMigrations = async (): Promise<HealthCheckResult> => {
         }
 
         const cols = await withTimeout(
-            bdd.$queryRawUnsafe<any[]>(`SELECT column_name FROM information_schema.columns WHERE table_name = '${tableName}';`),
+            bdd.$queryRaw<any[]>`SELECT column_name FROM information_schema.columns WHERE table_name = ${tableName};`,
             DB_TIMEOUT_MS,
             'Migrations columns discovery'
         );
 
         const columnNames = Array.isArray(cols) ? cols.map((c) => String(c.column_name || c.COLUMN_NAME || c.name)).filter(Boolean) : [];
 
-        const preferred = columnNames.find((c: string) => /finished_at|finishedat/i.test(c)) || columnNames[0] || null;
-
+        // Validate identifier safety to avoid SQL injection via discovered column names
+        const isSafeIdentifier = (s: string) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(s);
+        const preferredRaw = columnNames.find((c: string) => /finished_at|finishedat|finishedAt/i.test(c)) || columnNames[0] || null;
+        const preferred = preferredRaw && isSafeIdentifier(preferredRaw) ? preferredRaw : null;
         const orderClause = preferred ? `ORDER BY "${preferred}" DESC` : '';
+
+        // Only use unsafe dynamic SQL after validation; tableName is a constant but we still validate
+        if (!isSafeIdentifier(tableName)) {
+            throw new Error('Unsafe migrations table name');
+        }
 
         const rows = await withTimeout(
             bdd.$queryRawUnsafe<any[]>(`SELECT * FROM "${tableName}" ${orderClause} LIMIT 1;`),
@@ -156,7 +163,6 @@ const health: RequestHandler = async (_req, res) => {
     const uptime = process.uptime();
 
     sendSuccess(res, 200, 'ok', {
-        uptime,
         uptimeSeconds: uptime,
         timestamp: new Date().toISOString(),
         pid: process.pid,
