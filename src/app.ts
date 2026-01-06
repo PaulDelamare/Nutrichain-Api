@@ -3,6 +3,7 @@ import express from 'express';
 
 // ! Routes Imports
 import helloRoutes from './Routes/hello.routes';
+import healthRoutes from './Routes/health/health.routes';
 import configureMiddleware from './Configs/apiConfigMiddleware.config';
 
 
@@ -14,6 +15,7 @@ configureMiddleware(app);
 
 // ! Routes
 app.use('/api', helloRoutes);
+app.use('/api', healthRoutes);
 
 
 // ! EXPORT
