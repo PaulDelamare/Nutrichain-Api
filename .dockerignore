@@ -1,0 +1,55 @@
+# Ignorer les dépendances locales
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Ignorer les fichiers de sortie
+dist
+build
+
+# Ignorer les fichiers TypeScript non compilés
+*.ts
+!*.d.ts
+
+# Ignorer les configurations locales
+.env
+.env.local
+.env.*.local
+
+# Ignorer les configurations de test et logs
+coverage
+*.log
+logs
+*.sqlite
+*.sqlite-journal
+
+# Ignorer les fichiers système
+.DS_Store
+Thumbs.db
+
+# Ignorer les fichiers spécifiques à Prisma
+prisma/dev.db
+prisma/dev.db-journal
+prisma/migrations/*/README.md
+
+Dockerfile
+.dockerignore
+.git
+.gitignore
+.gitattributes
+README.md
+.npmrc
+.prettierrc
+.eslintrc.cjs
+.graphqlrc
+.editorconfig
+.svelte-kit
+.vscode
+node_modules
+build
+**/.env
+*.tar
+.env.exemple
+
+uploads/public/merchandises
