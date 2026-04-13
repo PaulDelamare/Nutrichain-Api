@@ -6,11 +6,13 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "tsx watch src/server.ts",
-    "build": "tsx build src/server.ts",
+    "build": "tsc -p tsconfig.json",
     "migrate:init": "npx prisma migrate dev --name init",
     "migrate": "npx prisma migrate dev",
     "push": "npx prisma db push",
-    "unit:test": "vitest"
+    "unit:test": "vitest",
+    "docker:linux": "docker build -t api-nutrichain . --platform=linux/amd64",
+    "docker:tar": "docker save api-nutrichain > image-linux.tar"
   },
   "keywords": [],
   "author": "",

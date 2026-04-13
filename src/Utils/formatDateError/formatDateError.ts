@@ -9,12 +9,26 @@
  * @return La date formatée.
  */
 export const formatDate = (date: string | Date) => {
-    date = new Date(date);
-    const day = String(date.getDate()).padStart(2, '0');
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const year = date.getFullYear();
-    const hours = String(date.getHours()).padStart(2, '0');
-    const minutes = String(date.getMinutes()).padStart(2, '0');
+  date = new Date(date);
 
-    return `${day}/${month}/${year} - ${hours}h${minutes}`;
-}
+  const parts = new Intl.DateTimeFormat('fr-FR', {
+    timeZone: 'Europe/Paris',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(date);
+
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((p) => p.type === type)?.value ?? '';
+
+  const day = get('day');
+  const month = get('month');
+  const year = get('year');
+  const hours = get('hour');
+  const minutes = get('minute');
+
+  return `${day}/${month}/${year} - ${hours}h${minutes}`;
+};

@@ -9,7 +9,7 @@ describe('validateData multiple errors', () => {
     });
 
     it('should throw both "required" and "min" errors when both fields are invalid', async () => {
-        const invalidData = { age: 16 };
+        const invalidData = { age: 16 } as any;
 
         try {
             await validateData(schema, invalidData);
@@ -23,7 +23,7 @@ describe('validateData multiple errors', () => {
     });
 
     it('should throw "required" error when "name" is missing', async () => {
-        const invalidData = { age: 20 };
+        const invalidData = { age: 20 } as any;
 
         try {
             await validateData(schema, invalidData);
@@ -57,7 +57,7 @@ describe('validateData multiple errors', () => {
     });
 
     it('should throw "string" error when "name" is not a string', async () => {
-        const invalidData = { name: 123, age: 20 };
+        const invalidData = { name: 123, age: 20 } as any;
 
         try {
             await validateData(schema, invalidData);
@@ -70,7 +70,7 @@ describe('validateData multiple errors', () => {
     });
 
     it('should throw "number" error when "age" is not a number', async () => {
-        const invalidData = { name: 'John', age: 'twenty' };
+        const invalidData = { name: 'John', age: 'twenty' } as any;
 
         try {
             await validateData(schema, invalidData);
