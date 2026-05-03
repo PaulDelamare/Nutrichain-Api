@@ -4,6 +4,7 @@ import { auth } from "../auth.config";
 import { checkApiKey } from "../../../shared/utils/checkApiKey/checkApiKey";
 import { requireInvitationOrFirstUser } from "../middlewares/guardSignUp.middleware";
 import { validateSignInParams, validateSignUpParams } from "../middlewares/validateAuth.middleware";
+import invitationRoutes from "./invitation.routes";
 
 const router = Router();
 
@@ -121,9 +122,12 @@ router.all("/auth/*", async (req: Request, res: Response, next: NextFunction) =>
             });
         }
 
-        // Si ce n'est pas une erreur native de Better Auth (erreur Prisma, throwError(), etc)
+// Format error complet catch
         next(error);
     }
 });
+
+// Joindre les routes d'Identity Métier (Invitations)
+router.use("/", invitationRoutes);
 
 export default router;

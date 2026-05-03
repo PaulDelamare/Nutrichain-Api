@@ -9,6 +9,7 @@ import { render } from "@react-email/render";
 import { InvitationEmail } from "../../shared/utils/mailer/templates/InvitationEmail";
 import { ResetPasswordEmail } from "../../shared/utils/mailer/templates/ResetPasswordEmail";
 import React from "react";
+import crypto from "crypto";
 
 const prisma = new PrismaClient();
 
@@ -53,6 +54,72 @@ export const auth = betterAuth({
     database: prismaAdapter(prisma, {
         provider: "postgresql",
     }),
+    databaseHooks: {
+        user: {
+            create: {
+                // Intercepte silencieusement APRÈS la création d'un utilisateur
+                after: async (user) => {
+                    // Trouver si cet utilisateur avait une invitation en attente
+                    const invitation = await prisma.invitation.findFirst({
+                        where: { email: user.email, status: "pending" }
+                    });
+
+                    if (invitation) {
+                        try {
+                            // On la marque comme acceptée : le token est brulé
+                            await prisma.invitation.update({
+                                where: { id: invitation.id },
+                                data: { status: "accepted" }
+                            });
+
+                            // Association Automatique de l'utilisateur à l'Organisation de l'invitation
+                            await prisma.member.create({
+                                data: {
+                                    id: crypto.randomUUID(), // fake id, prisma might need string or uuid
+                                    organizationId: invitation.organizationId,
+                                    userId: user.id,
+                                    role: invitation.role || "member",
+                                    createdAt: new Date()
+                                }
+                            });
+                            console.log(`[BetterAuth Hook] Invitation acceptée et Membre généré pour l'utilisateur: ${user.email}`);
+                        } catch (e) {
+                            console.error("[BetterAuth Hook] Erreur lors de la consommation de l'invitation:", e);
+                        }
+                    } else {
+                        // RECOMMANDATION 1: Processus du "Premier Utilisateur"
+                        // Si aucune invitation n'existait, c'est le First Admin (vérifié par guardSignUp).
+                        // On doit initialiser sa première Zone (Organisation) pour qu'il puisse ensuite inviter des gens.
+                        try {
+                            const newOrgId = crypto.randomUUID();
+                            await prisma.organization.create({
+                                data: {
+                                    id: newOrgId,
+                                    name: "Siège Central NutriChain",
+                                    slug: "siege-central",
+                                    createdAt: new Date(),
+                                    metadata: "{}" // Champ obligatoire si requis par Prisma
+                                }
+                            });
+                            
+                            await prisma.member.create({
+                                data: {
+                                    id: crypto.randomUUID(),
+                                    organizationId: newOrgId,
+                                    userId: user.id,
+                                    role: "owner", // Le super-admin initial est 'owner'
+                                    createdAt: new Date()
+                                }
+                            });
+                            console.log(`[BetterAuth Hook] Premier utilisateur détecté : Zone 'Siège Central' créée pour ${user.email}`);
+                        } catch (e) {
+                            console.error("[BetterAuth Hook] Erreur lors de la création de la zone initiale:", e);
+                        }
+                    }
+                }
+            }
+        }
+    },
     emailAndPassword: {
         enabled: true,
         sendResetPassword: async ({ user, url }): Promise<void> => {

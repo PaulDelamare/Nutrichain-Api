@@ -2,6 +2,7 @@
 import { app } from './app';
 import { bdd } from './shared/configs/prismaClient.config';
 import { connectMongoDB, disconnectMongoDB } from './shared/configs/mongoClient.config';
+import { startCleanupJob } from './modules/identity/jobs/cleanupInvitations.job';
 
 // ! CONFIG
 const PORT = process.env.PORT || 3000;
@@ -12,6 +13,9 @@ connectMongoDB()
     .then(() => {
         const server = app.listen(PORT, () => {
             console.log(`Server running on ${API_URL}`);
+            
+            // Lancement des tÃ¢ches rÃ©currentes (Cron, Background Jobs)
+            startCleanupJob();
         });
 
         // ! FERMETURE
