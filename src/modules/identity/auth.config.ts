@@ -27,20 +27,26 @@ export const auth = betterAuth({
 
             // Si le retour est une erreur API, on peut la traduire
             if (error instanceof APIError) {
-                let message = error.message;
+                // @ts-expect-error Types internes Better-Auth incomplets
+                let message: string = error.message || "Erreur d'authentification";
 
-                if (error.body?.code === "INVALID_EMAIL_OR_PASSWORD") {
+                // @ts-expect-error Types internes Better-Auth incomplets
+                const errCode = error.body?.code;
+
+                if (errCode === "INVALID_EMAIL_OR_PASSWORD") {
                     message = "L'adresse e-mail ou le mot de passe est incorrect.";
-                } else if (error.body?.code === "USER_NOT_FOUND") {
+                } else if (errCode === "USER_NOT_FOUND" || errCode === "email_not_found") {
                     message = "Aucun utilisateur trouvé avec cette adresse e-mail.";
                 }
 
-                // Transforme l'erreur native de Better-Auth vers notre format standard ({ status, error: [{field, message}] })
-                // Même si ça reste une classe APIError, ce format sera renvoyé au client !
-                throw new APIError(error.status, {
-                    status: error.statusCode || 401,
+                // @ts-expect-error Types internes Better-Auth incomplets
+                const sendStatus = error.statusCode || 401;
+
+                // @ts-expect-error Transforme l'erreur native de Better-Auth vers notre format standard ({ status, error: [{field, message}] })
+                throw new APIError("UNAUTHORIZED", {
+                    status: sendStatus,
                     error: [{ field: "auth", message }]
-                } as any);
+                });
             }
         })
     },

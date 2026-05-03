@@ -33,6 +33,39 @@ const router = Router();
  *         description: Succès
  *       403:
  *         description: Pas d'invitation
+ *
+ * /api/auth/sign-in/email:
+ *   post:
+ *     summary: Connexion d'un utilisateur existant
+ *     tags: [Identité]
+ *     security:
+ *       - apiKeyAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               email:
+ *                 type: string
+ *               password:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Succès, retourne la session
+ *       401:
+ *         description: Identifiants incorrects
+ *
+ * /api/auth/sign-out:
+ *   post:
+ *     summary: Déconnexion de l'utilisateur actif
+ *     tags: [Identité]
+ *     security:
+ *       - apiKeyAuth: []
+ *     responses:
+ *       200:
+ *         description: Déconnexion réussie
  */
 
 // ==========================================
