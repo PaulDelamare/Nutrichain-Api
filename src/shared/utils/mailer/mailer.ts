@@ -32,6 +32,12 @@ const transporter = nodemailer.createTransport({
  */
 export const sendEmail = async (options: SendEmailOptions): Promise<void> => {
     try {
+        console.log(`[MailerService] Préparation de l'e-mail pour: ${options.to}`);
+        
+        // Vérification de la configuration avant l'envoi
+        await transporter.verify();
+        console.log("[MailerService] Connexion au serveur SMTP réussie.");
+
         const mailOptions = {
             from: process.env.SMTP_FROM || '"NutriChain APP" <no-reply@nutrichain.com>',
             to: options.to,
@@ -40,14 +46,18 @@ export const sendEmail = async (options: SendEmailOptions): Promise<void> => {
             html: options.html,
         };
 
+        console.log("[MailerService] Options configurées, tentative d'envoi...");
         const info = await transporter.sendMail(mailOptions);
+        console.log(`[MailerService] E-mail envoyé avec succès. MessageId: ${info.messageId}`);
         
         // Uniquement utile en mode de développement avec Ethereal Email :
-        if (process.env.NODE_ENV !== "production") {
+        if (process.env.NODE_ENV !== "production" || process.env.SMTP_HOST?.includes("ethereal")) {
             const previewUrl = nodemailer.getTestMessageUrl(info);
             // On le log si c'est ethereal (un FAUX smtp de test utile pendant le dev)
             if (previewUrl) {
                 console.log(`📧 [E-mail envoyé] Prévisualisation disponible: ${previewUrl}`);
+            } else {
+                console.log("⚠️ Ethereal détecté mais impossible de générer un lien de prévisualisation (previewUrl null).");
             }
         }
     } catch (error: unknown) {
