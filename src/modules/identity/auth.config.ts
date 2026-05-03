@@ -43,7 +43,7 @@ export const auth = betterAuth({
                 // @ts-expect-error Types internes Better-Auth incomplets
                 const sendStatus = error.statusCode || 401;
 
-                // @ts-expect-error Transforme l'erreur native de Better-Auth vers notre format standard ({ status, error: [{field, message}] })
+                // Transforme l'erreur native de Better-Auth vers notre format standard ({ status, error: [{field, message}] })
                 throw new APIError("UNAUTHORIZED", {
                     status: sendStatus,
                     error: [{ field: "auth", message }]
