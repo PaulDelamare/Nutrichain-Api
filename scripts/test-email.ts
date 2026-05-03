@@ -1,10 +1,10 @@
-import { sendEmail } from "../src/shared/utils/mailer/mailer";
 import { config } from "dotenv";
-
-// Charge les variables d'environnement depuis le fichier .env
+// Charge les variables d'environnement depuis le fichier .env EN PREMIER
 config();
 
 async function testerEnvoiEmail() {
+    const { sendEmail } = await import("../src/shared/utils/mailer/mailer");
+
     console.log("Envoi d'un e-mail de test via Ethereal en cours...");
     
     try {
