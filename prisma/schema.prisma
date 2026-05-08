@@ -1,4 +1,3 @@
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -9,10 +8,426 @@ datasource db {
 }
 
 model User {
-    id       String   @id @unique @default(uuid())
-    email    String   @unique
-    username String   @unique
-    password String
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+  id               String            @id @unique @default(uuid())
+  email            String            @unique
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  name             String
+  emailVerified    Boolean           @default(false)
+  image            String?
+  twoFactorEnabled Boolean?          @default(false)
+  sessions         Session[]
+  accounts         Account[]
+  members          Member[]
+  invitations      Invitation[]
+  twofactors       TwoFactor[]
+  lots             Batch[]
+  transformations  Transformation[]
+  rebuts           ScrapRecord[]
+  tests_qualite    QualityControl[]
+  maintenances     Maintenance[]
+  receptions       Receipt[]
+  expeditions      Shipment[]
+  mouvements       Batch_Mouvement[]
+
+  @@map("user")
+}
+
+model Session {
+  id                   String   @id
+  expiresAt            DateTime
+  token                String
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  ipAddress            String?
+  userAgent            String?
+  userId               String
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activeOrganizationId String?
+
+  @@unique([token])
+  @@index([userId])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verification")
+}
+
+model Organization {
+  id                 String       @id
+  name               String
+  slug               String
+  logo               String?
+  createdAt          DateTime
+  metadata           String?
+  gs1_company_prefix String?
+  members            Member[]
+  invitations        Invitation[]
+
+  @@unique([slug])
+  @@map("organization")
+}
+
+model Member {
+  id             String       @id
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role           String       @default("member")
+  createdAt      DateTime
+
+  @@index([organizationId])
+  @@index([userId])
+  @@map("member")
+}
+
+model Invitation {
+  id             String       @id
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  email          String
+  role           String?
+  status         String       @default("pending")
+  expiresAt      DateTime
+  createdAt      DateTime     @default(now())
+  inviterId      String
+  user           User         @relation(fields: [inviterId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([email])
+  @@map("invitation")
+}
+
+model TwoFactor {
+  id          String   @id
+  secret      String
+  backupCodes String
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  verified    Boolean? @default(true)
+
+  @@index([secret])
+  @@index([userId])
+  @@map("twoFactor")
+}
+
+// --- UTILITAIRES ---
+model Unit {
+  code           String  @id
+  nom            String
+  factor_to_base Decimal
+  lot            Batch[]
+}
+
+model EPCIS_Event {
+  id             String   @id @default(uuid())
+  event_time     DateTime
+  event_type     String
+  related_entity String
+  related_id     String
+  payload        Json
+}
+
+model EPCIS_Aggregation_Event {
+  id            String   @id @default(uuid())
+  sscc          String   @unique
+  id_lot_enfant String
+  id_lot_parent String
+  event_time    DateTime @default(now())
+
+  @@index([id_lot_enfant])
+  @@index([id_lot_parent])
+}
+
+// --- LIEUX ET MATERIEL ---
+model Location {
+  id          String      @id @default(uuid())
+  nom         String
+  type        String
+  description String?
+  materiel    Equipment[]
+}
+
+model Equipment {
+  id              String           @id @default(uuid())
+  nom             String
+  type            String
+  id_lieu         String
+  lieu            Location         @relation(fields: [id_lieu], references: [id])
+  statut          String           @default("PRET")
+  temp_actuelle   Decimal?
+  temp_seuil_max  Decimal?
+  qr_code_id      String?
+  last_cleaned_at DateTime?
+  lots            Batch[]
+  transformations Transformation[]
+  Maintenance     Maintenance[]
+}
+
+// --- REFERENTIEL CATALOGUE ---
+model Product {
+  id                        String              @id @default(uuid())
+  nom                       String
+  code_gtin                 String?
+  categorie                 String
+  duree_conservation_defaut Int
+  seuil_alerte_stock        Decimal
+  unite_reference           String
+  lots                      Batch[]
+  transformations           Transformation[]
+  RecipeComposition         RecipeComposition[]
+}
+
+// --- TRACKING LOTS & TRANSFORMATION ---
+model Batch {
+  id                 String     @id @default(uuid())
+  id_produit         String
+  produit            Product    @relation(fields: [id_produit], references: [id])
+  quantite_actuelle  Decimal
+  unite_code         String
+  unite              Unit       @relation(fields: [unite_code], references: [code])
+  quantite_base      Decimal
+  date_peremption    DateTime?
+  statut             String     @default("EN_STOCK")
+  id_materiel_actuel String?
+  materiel           Equipment? @relation(fields: [id_materiel_actuel], references: [id])
+  date_creation      DateTime   @default(now())
+  created_by         String
+  user               User       @relation(fields: [created_by], references: [id])
+  version            Int        @default(1)
+
+  transformations_enfants Transformation[]            @relation("TransformationEnfant")
+  transformations_parents TransformationComposition[]
+  rebuts                  ScrapRecord[]
+  tests_qualite           QualityControl[]
+  liaisons                Liaison_Shipment[]
+  mouvements              Batch_Mouvement[]
+}
+
+model Transformation {
+  id               String    @id @default(uuid())
+  id_lot_enfant    String
+  lot_enfant       Batch     @relation("TransformationEnfant", fields: [id_lot_enfant], references: [id])
+  id_produit_fini  String
+  produit          Product   @relation(fields: [id_produit_fini], references: [id])
+  id_user          String
+  user             User      @relation(fields: [id_user], references: [id])
+  id_materiel      String
+  materiel         Equipment @relation(fields: [id_materiel], references: [id])
+  statut           String    @default("EN_COURS")
+  note_technique   Json?
+  horodatage_debut DateTime  @default(now())
+  horodatage_fin   DateTime?
+  duration_seconds Int?
+
+  compositions TransformationComposition[]
+  mouvements   Batch_Mouvement[]
+}
+
+model TransformationComposition {
+  id_transformation String
+  transformation    Transformation @relation(fields: [id_transformation], references: [id])
+  id_lot_parent     String
+  lot_parent        Batch          @relation(fields: [id_lot_parent], references: [id])
+  quantite_prelevee Decimal
+  unite             String
+  lot_parent_epuise Boolean
+  note              String?
+
+  @@id([id_transformation, id_lot_parent])
+}
+
+// --- ALERTE & AUDIT WORM ---
+model Alert {
+  id             String    @id @default(uuid())
+  type           String
+  niveau_gravite String
+  message        String
+  id_materiel    String?
+  related_entity String?
+  related_id     String?
+  statut         String    @default("ACTIVE")
+  created_at     DateTime  @default(now())
+  resolved_by    String?
+  resolved_at    DateTime?
+}
+
+model Audit_Log {
+  id              Int      @id @default(autoincrement())
+  id_user         String?
+  action          String
+  entity          String
+  entity_id       String
+  ancienne_valeur Json?
+  nouvelle_valeur Json?
+  prev_hash       String
+  signature_hash  String
+  horodatage      DateTime @default(now())
+}
+
+// --- GESTION DES REJETS/QUALITE ---
+model ScrapRecord {
+  id                 String   @id @default(uuid())
+  id_lot             String
+  lot                Batch    @relation(fields: [id_lot], references: [id])
+  quantite_jetee     Decimal
+  unite              String
+  motif              String
+  date_mise_au_rebut DateTime
+  created_by         String
+  user               User     @relation(fields: [created_by], references: [id])
+}
+
+model QualityControl {
+  id             String   @id @default(uuid())
+  id_lot         String
+  lot            Batch    @relation(fields: [id_lot], references: [id])
+  type_test      String
+  resultat       String
+  id_user_labo   String
+  user           User     @relation(fields: [id_user_labo], references: [id])
+  certificat_pdf String?
+  date_test      DateTime
+  notes          String?
+}
+
+// --- HYGIENE ET MAINTENANCE ---
+model Maintenance {
+  id              String    @id @default(uuid())
+  id_materiel     String
+  materiel        Equipment @relation(fields: [id_materiel], references: [id])
+  id_user         String
+  user            User      @relation(fields: [id_user], references: [id])
+  type_action     String
+  produit_utilise String?
+  date_debut      DateTime
+  date_fin        DateTime?
+  valid_until     DateTime?
+}
+
+// --- RECETTES ---
+model RecipeComposition {
+  id                 String  @id @default(uuid())
+  id_produit_fini    String
+  produit            Product @relation(fields: [id_produit_fini], references: [id])
+  id_type_ingredient String
+  quantite_theorique Decimal
+  unite              String
+  tolerance_percent  Decimal
+}
+
+// --- RECEPTION & FOURNISSEUR ---
+model Supplier {
+  id              String    @id @default(uuid())
+  nom_ferme       String
+  type_produit    String?
+  contact_qualite String?
+  adresse_siege   String
+  receptions      Receipt[]
+}
+
+model Receipt {
+  id                         String   @id @default(uuid())
+  id_fournisseur             String
+  fournisseur                Supplier @relation(fields: [id_fournisseur], references: [id])
+  shipment_id                String   @unique
+  date_reception             DateTime
+  temperature_camion_summary Json?
+  temperature_camion_raw     Json?
+  statut_controle            String
+  received_by                String
+  user                       User     @relation(fields: [received_by], references: [id])
+}
+
+// --- EXPEDITION & CLIENT ---
+model Customer {
+  id                String     @id @default(uuid())
+  nom_enseigne      String
+  contact_urgence   String?
+  adresse_livraison String
+  notes             String?
+  expeditions       Shipment[]
+}
+
+model Shipment {
+  id               String   @id @default(uuid())
+  id_client        String
+  client           Customer @relation(fields: [id_client], references: [id])
+  shipment_id      String   @unique
+  date_envoi       DateTime
+  transporteur     String
+  statut_livraison String
+  created_by       String
+  user             User     @relation(fields: [created_by], references: [id])
+
+  liaisons   Liaison_Shipment[]
+  mouvements Batch_Mouvement[]
+}
+
+model Liaison_Shipment {
+  id                String   @id @default(uuid())
+  id_expedition     String
+  expedition        Shipment @relation(fields: [id_expedition], references: [id])
+  id_lot            String
+  lot               Batch    @relation(fields: [id_lot], references: [id])
+  quantite_expediee Decimal
+  unite             String
+  pallet_id         String?
+}
+
+// --- MOUVEMENTS (APPEND ONLY) ---
+model Batch_Mouvement {
+  id                Int             @id @default(autoincrement())
+  id_lot            String
+  lot               Batch           @relation(fields: [id_lot], references: [id])
+  type_action       String
+  quantite          Decimal
+  unite             String
+  id_transformation String?
+  transformation    Transformation? @relation(fields: [id_transformation], references: [id])
+  id_expedition     String?
+  expedition        Shipment?       @relation(fields: [id_expedition], references: [id])
+  id_user           String?
+  user              User?           @relation(fields: [id_user], references: [id])
+  created_at        DateTime        @default(now())
+  metadata          Json?
+}
+
+// --- METRIQUES ---
+model PerformanceStat {
+  id            Int      @id @default(autoincrement())
+  type_metrique String
+  valeur        Decimal
+  id_reference  String?
+  horodatage    DateTime @default(now())
 }
