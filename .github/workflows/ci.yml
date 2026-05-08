@@ -36,4 +36,7 @@ jobs:
 
       - name: 🧪 Run Unit Tests (Vitest)
         # L'argument --run permet de dire à vitest de se lancer une seule fois sans attendre (sans le mode watch)
+        env:
+          API_KEY: 'secret-key-pour-les-tests'
+          NODE_ENV: 'test'
         run: npm run unit:test -- --run

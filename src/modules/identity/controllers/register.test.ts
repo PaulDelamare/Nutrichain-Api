@@ -39,7 +39,7 @@ describe('Authentication Routes Integrations (Better-Auth)', () => {
     // Envoyer une requête POST sign-up normalisée
     const res = await request(app)
       .post('/api/auth/sign-up/email')
-      .set('x-api-key', process.env.API_KEY || 'default-api-key')
+      .set('x-api-key', 'secret-key-pour-les-tests')
       .send({
         email: 'test@nutrichain.com',
         password: 'StrongPassw0rd!123',
