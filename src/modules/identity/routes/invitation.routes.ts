@@ -1,8 +1,9 @@
-import { Router } from "express";
-import { checkApiKey } from "../../../shared/utils/checkApiKey/checkApiKey";
-import { requireAuth } from "../middlewares/requireAuth.middleware";
-import { validateInvitationParams } from "../middlewares/validateInvitation.middleware";
-import { generateInvitation } from "../controllers/invitation.controller";
+import { Router } from 'express';
+import { checkApiKey } from '../../../shared/utils/checkApiKey/checkApiKey';
+import { requireAuth } from '../middlewares/requireAuth.middleware';
+import { requireOrgRole } from '../middlewares/requireOrgRole.middleware';
+import { validateInvitationParams } from '../middlewares/validateInvitation.middleware';
+import { generateInvitation } from '../controllers/invitation.controller';
 
 const router = Router();
 
@@ -41,11 +42,12 @@ const router = Router();
  *         description: Non authentifié.
  */
 router.post(
-    "/identity/invitations",
-    checkApiKey(),                // 1. Clé d'API requise
-    requireAuth,                  // 2. Doit être identifié en tant qu'utilisateur (Token ou Cookie)
-    validateInvitationParams,     // 3. Email propre ? Rôle dans la liste ? UUID correct pour Zone ?
-    generateInvitation            // 4. Exécution du contrôleur (Créer DB + Envoyer l'email)
+  '/identity/invitations',
+  checkApiKey(), // 1. Clé d'API requise
+  requireAuth, // 2. Doit être identifié en tant qu'utilisateur (Token ou Cookie)
+  requireOrgRole(['owner', 'admin']), // 3. ABAC : Doit Ãªtre un admin/owner de l'organisation active
+  validateInvitationParams, // 4. Email propre ? RÃ´le dans la liste ? UUID correct pour Zone ?
+  generateInvitation // 5. ExÃ©cution du contrÃ´leur (CrÃ©er DB + Envoyer l'email)
 );
 
 export default router;
