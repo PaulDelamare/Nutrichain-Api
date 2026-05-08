@@ -1,0 +1,42 @@
+name: CI/CD Pipeline Nutrichain
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+
+jobs:
+  quality-gates:
+    name: Code Quality & Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: 📦 Install dependencies
+        run: npm install
+
+      - name: 🗄️ Generate Prisma Client
+        run: npx prisma generate
+
+      - name: 🧹 Run Linter (ESLint)
+        run: npm run lint
+
+      - name: 🧪 Run Unit Tests (Vitest)
+        # L'argument --run permet de dire à vitest de se lancer une seule fois sans attendre (sans le mode watch)
+        env:
+          API_KEY: 'secret-key-pour-les-tests'
+          NODE_ENV: 'test'
+        run: npm run unit:test -- --run
