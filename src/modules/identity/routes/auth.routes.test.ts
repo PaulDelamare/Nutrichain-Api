@@ -6,15 +6,17 @@ import authRoutes from './auth.routes';
 // Hooks setup to mock the native behavior of Better-Auth
 vi.mock('better-auth/node', () => ({
   toNodeHandler: vi.fn(() => {
-    return (req: unknown, res: unknown) => {
+    return (req: express.Request, res: express.Response) => {
       if (req.url === '/auth/sign-out' && req.method === 'POST') {
         res.status(200).json({ success: true });
         return;
       }
 
       if (req.url === '/auth/sign-in/email' && req.body?.password === 'wrong') {
-        const APIErrorMock = Error as unknown;
-        const err = new APIErrorMock('UNAUTHORIZED');
+        const err = new Error('UNAUTHORIZED') as Error & {
+          status?: number;
+          body?: { code?: string };
+        };
         err.status = 401;
         err.body = { code: 'INVALID_EMAIL_OR_PASSWORD' };
         throw err;
@@ -26,18 +28,24 @@ vi.mock('better-auth/node', () => ({
 }));
 
 vi.mock('../../../shared/utils/checkApiKey/checkApiKey', () => ({
-  checkApiKey: vi.fn(() => (req: unknown, res: unknown, next: unknown) => next()),
+  checkApiKey: vi.fn(
+    () => (req: express.Request, res: express.Response, next: express.NextFunction) => next()
+  ),
 }));
 
 vi.mock('../middlewares/guardSignUp.middleware', () => ({
-  requireInvitationOrFirstUser: vi.fn((req: unknown, res: unknown, next: unknown) => next()),
+  requireInvitationOrFirstUser: vi.fn(
+    (req: express.Request, res: express.Response, next: express.NextFunction) => next()
+  ),
 }));
 
 // Global error handler mock
 vi.mock('../../../shared/utils/errorHandler/errorHandler', () => ({
-  handleError: vi.fn((error, req, res) => {
-    res.status(error.status || 500).json(error);
-  }),
+  handleError: vi.fn(
+    (error: Error & { status?: number }, req: express.Request, res: express.Response) => {
+      res.status(error.status || 500).json(error);
+    }
+  ),
 }));
 
 describe('Auth Routes Integration', () => {
@@ -49,9 +57,16 @@ describe('Auth Routes Integration', () => {
 
     app.use('/api', authRoutes);
 
-    app.use((err: unknown, req: unknown, res: unknown, next: unknown) => {
-      res.status(err.status || 500).json(err);
-    });
+    app.use(
+      (
+        err: Error & { status?: number },
+        req: express.Request,
+        res: express.Response,
+        next: express.NextFunction
+      ) => {
+        res.status(err.status || 500).json(err);
+      }
+    );
   });
 
   afterEach(() => {

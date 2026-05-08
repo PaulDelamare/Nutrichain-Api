@@ -62,10 +62,11 @@ describe('Health route', () => {
     expect(res.body).toHaveProperty('message', 'ready');
     expect(res.body.data.summary.ready).toBe(true);
 
-    const checks = res.body.data.checks;
-    const dbCheck = checks.find((check: unknown) => check.name === 'database');
-    const logsCheck = checks.find((check: unknown) => check.name === 'logs');
-    const migrationsCheck = checks.find((check: unknown) => check.name === 'migrations');
+    type HealthCheck = { name: string; ok: boolean; optional?: boolean; error?: unknown };
+    const checks: HealthCheck[] = res.body.data.checks;
+    const dbCheck = checks.find((check) => check.name === 'database')!;
+    const logsCheck = checks.find((check) => check.name === 'logs')!;
+    const migrationsCheck = checks.find((check) => check.name === 'migrations')!;
 
     expect(dbCheck.ok).toBe(true);
     expect(logsCheck.ok).toBe(true);
@@ -96,8 +97,9 @@ describe('Health route', () => {
     expect(res.body).toHaveProperty('message', 'not ready');
     expect(res.body.data.summary.ready).toBe(false);
 
-    const checks = res.body.data.checks;
-    const dbCheck = checks.find((check: unknown) => check.name === 'database');
+    type HealthCheck = { name: string; ok: boolean; optional?: boolean; error?: unknown };
+    const checks: HealthCheck[] = res.body.data.checks;
+    const dbCheck = checks.find((check) => check.name === 'database')!;
     expect(dbCheck.ok).toBe(false);
     expect(dbCheck.error).toBeDefined();
   });
@@ -107,7 +109,7 @@ describe('Health route', () => {
     process.env.LOG_DIR = tmpDir;
 
     vi.resetModules();
-    const migrationError: unknown = new Error('migrations column missing');
+    const migrationError = new Error('migrations column missing') as Error & { code?: string };
     migrationError.code = '42703';
 
     vi.doMock('../../../shared/configs/prismaClient.config', () => ({
@@ -128,8 +130,9 @@ describe('Health route', () => {
     expect(res.body).toHaveProperty('message', 'ready');
     expect(res.body.data.summary.ready).toBe(true);
 
-    const checks = res.body.data.checks;
-    const migrationsCheck = checks.find((check: unknown) => check.name === 'migrations');
+    type HealthCheck = { name: string; ok: boolean; optional?: boolean; error?: unknown };
+    const checks: HealthCheck[] = res.body.data.checks;
+    const migrationsCheck = checks.find((check) => check.name === 'migrations')!;
     expect(migrationsCheck.ok).toBe(false);
     expect(migrationsCheck.optional).toBe(true);
     expect(migrationsCheck.error).toBeDefined();

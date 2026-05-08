@@ -3,6 +3,7 @@ import express, { Request } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
+import * as dotenv from 'dotenv';
 import { requestLog, rotateLog } from '../utils/logFunction/logFunction';
 import { logger } from '../utils/logger/logger';
 import createRateLimiter from '../middlewares/rateLimiter/rateLimiter.middleware';
@@ -27,8 +28,7 @@ import { sanitizeRequestData } from '../middlewares/sanitizeData/sanitizeData.mi
  */
 
 const configureMiddleware = (app: express.Application) => {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  require('dotenv').config({ quiet: true });
+  dotenv.config();
 
   app.use(express.json());
 

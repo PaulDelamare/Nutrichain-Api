@@ -93,9 +93,10 @@ router.all('/auth/*', async (req: Request, res: Response, next: NextFunction) =>
   try {
     await toNodeHandler(auth)(req, res);
   } catch (error: unknown) {
+    const err = error as { status?: number; body?: { code?: string; message?: string } };
     // 1) Si l'erreur provient de `onAPIError: { throw: true }` dans BetterAuth
-    if (error && error.status && error.body) {
-      const errCode = error.body.code;
+    if (err && err.status && err.body) {
+      const errCode = err.body.code;
 
       // Traduction personnalisée pour les mots de passe incorrects
       if (errCode === 'INVALID_EMAIL_OR_PASSWORD') {
@@ -123,8 +124,8 @@ router.all('/auth/*', async (req: Request, res: Response, next: NextFunction) =>
 
       // Formulaire global BetterAuth pour les autres erreurs (ex: invalid_code)
       return next({
-        status: error.status,
-        error: [{ field: 'auth', message: error.body?.message || "Erreur d'authentification." }],
+        status: err.status,
+        error: [{ field: 'auth', message: err.body?.message || "Erreur d'authentification." }],
       });
     }
 

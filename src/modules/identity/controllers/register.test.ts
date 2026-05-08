@@ -19,13 +19,17 @@ describe('Authentication Routes Integrations (Better-Auth)', () => {
     // Simuler toNodeHandler pour vérifier que les routes express sont liées à Better Auth
     vi.doMock('better-auth/node', () => ({
       toNodeHandler: vi.fn().mockImplementation((authInstance) => {
-        return (req: unknown, res: unknown) =>
+        return (req: express.Request, res: express.Response) =>
           res.status(200).json({ ok: true, module: 'better-auth-mock' });
       }),
     }));
 
     vi.doMock('../middlewares/guardSignUp.middleware', () => ({
-      requireInvitationOrFirstUser: (req: unknown, res: unknown, next: unknown) => next(),
+      requireInvitationOrFirstUser: (
+        req: express.Request,
+        res: express.Response,
+        next: express.NextFunction
+      ) => next(),
     }));
 
     const { default: authRoutes } = await import('../routes/auth.routes');
