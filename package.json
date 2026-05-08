@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
+  "type": "module",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "tsx watch src/server.ts",
@@ -12,12 +13,23 @@
     "push": "npx prisma db push",
     "unit:test": "vitest",
     "docker:linux": "docker build -t api-nutrichain . --platform=linux/amd64",
-    "docker:tar": "docker save api-nutrichain > image-linux.tar"
+    "docker:tar": "docker save api-nutrichain > image-linux.tar",
+    "prepare": "husky",
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix",
+    "format": "prettier --write \"src/**/*.ts\""
+  },
+  "lint-staged": {
+    "src/**/*.{ts,js}": [
+      "eslint --fix",
+      "prettier --write"
+    ]
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/compression": "^1.7.5",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
@@ -31,10 +43,17 @@
     "@types/swagger-jsdoc": "^6.0.4",
     "@types/swagger-ui-express": "^4.1.8",
     "dotenv": "^17.4.2",
+    "eslint": "^10.3.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.5",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0",
+    "prettier": "^3.8.3",
     "prisma": "^6.2.1",
     "supertest": "^7.0.0",
     "tsx": "^4.21.0",
     "typescript": "^5.7.3",
+    "typescript-eslint": "^8.59.2",
     "vitest": "^3.0.4"
   },
   "dependencies": {
