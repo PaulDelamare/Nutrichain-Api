@@ -34,9 +34,11 @@ describe('Security & Validation E2E Scenarios (Invitations)', () => {
     app.use('/api', invitationRoutes);
 
     // Error Handler minimum pour propager les erreurs catchAsync ou custom
-    app.use((err: unknown, req: express.Request, res: express.Response, next: express.NextFunction) => {
-      res.status(err.status || 500).json(err);
-    });
+    app.use(
+      (err: unknown, req: express.Request, res: express.Response, next: express.NextFunction) => {
+        res.status(err.status || 500).json(err);
+      }
+    );
   });
 
   afterEach(() => {
@@ -73,7 +75,7 @@ describe('Security & Validation E2E Scenarios (Invitations)', () => {
         .send({ email: 'test@nutrichain.local', role: 'operator', organizationId: '123' });
 
       expect(res.status).toBe(401);
-      expect(res.body.message).toBe('AccÃ¨s refusÃ©. Veuillez vous authentifier.');
+      expect(res.body.message).toBe('Accès refusé. Veuillez vous authentifier.');
     });
 
     it("doit refuser (400) si l'utilisateur est connectÃ© MAIS n'a pas activÃ© d'Usine / Organisation", async () => {
@@ -109,7 +111,7 @@ describe('Security & Validation E2E Scenarios (Invitations)', () => {
         .send({ email: 'test@nutrichain.local', role: 'operator', organizationId: '123' });
 
       expect(res.status).toBe(403);
-      expect(res.body.message).toContain('Action refusÃ©e');
+      expect(res.body.message).toContain('Action refusée');
       expect(res.body.message).toContain('Requis: owner ou admin');
     });
   });
