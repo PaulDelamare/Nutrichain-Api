@@ -1,10 +1,10 @@
 // ! IMPORTS
-import { RequestHandler } from 'express';
-import { handleError } from '../../shared/utils/errorHandler/errorHandler';
+import { RequestHandler, Request, Response, NextFunction } from 'express';
 import { validateData } from '../../shared/utils/validateData/validateData';
 import vine from '@vinejs/vine';
 import { sendSuccess } from '../../shared/utils/returnSuccess/returnSuccess';
 import { helloService } from './hello.services';
+import { catchAsync } from '../../shared/utils/errorHandler/catchAsync';
 
 // ! METHODS
 
@@ -14,9 +14,9 @@ import { helloService } from './hello.services';
  * @param req - The Express request object.
  * @param res - The Express response object.
  */
-const helloWorld: RequestHandler = async (req, res) => {
+const helloWorld = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
   sendSuccess(res, 200, 'Hello World!');
-};
+});
 
 /**
  * Handles a request to validate and process data.
@@ -28,19 +28,14 @@ const helloWorld: RequestHandler = async (req, res) => {
  * @param res - The Express response object used to send the response.
  */
 
-const errorRequest: RequestHandler = async (req, res) => {
+const errorRequest = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
   const schemaData = vine.object({
     name: vine.string(),
   });
 
-  try {
-    await validateData(schemaData, req.body);
-
-    sendSuccess(res, 200, 'Hello', req.body.name);
-  } catch (error) {
-    handleError(error, req, res, 'HelloController.errorRequest');
-  }
-};
+  await validateData(schemaData, req.body);
+  sendSuccess(res, 200, 'Hello', req.body.name);
+});
 
 /**
  * Handles a request to the service example endpoint.
@@ -53,18 +48,10 @@ const errorRequest: RequestHandler = async (req, res) => {
  * @param res - The Express response object.
  */
 
-const serviceExemple: RequestHandler = async (req, res) => {
-  try {
-    const serviceResponse = await helloService.exempleService({ name: 'exemple' });
-
-    // You can cobine the validateData and the service call like this
-    // const serviceResponse = await helloService.exempleService(await validateData(schemaData, req.body));
-
-    sendSuccess(res, 200, 'Hello', serviceResponse);
-  } catch (error) {
-    handleError(error, req, res, 'HelloController.serviceExemple');
-  }
-};
+const serviceExemple = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+  const serviceResponse = await helloService.exempleService({ name: 'exemple' });
+  sendSuccess(res, 200, 'Hello', serviceResponse);
+});
 
 export const HelloController = {
   helloWorld,

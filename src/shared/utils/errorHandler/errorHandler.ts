@@ -1,4 +1,4 @@
-// ! IMPORTS
+﻿// ! IMPORTS
 import { Prisma } from '@prisma/client';
 import { Request, Response } from 'express';
 import { formatDate } from '../formatDateError/formatDateError';
@@ -32,7 +32,7 @@ const getPrismaErrorMessage = (
       return {
         status: 404,
         message:
-          "Erreur : Une opération a échoué car elle dépend d'un ou plusieurs enregistrements requis mais introuvables.",
+          "Erreur : Une opération a échoué car elle dÃ©pend d'un ou plusieurs enregistrements requis mais introuvables.",
       };
 
     default:
@@ -145,4 +145,14 @@ export const handleError = (
 
     sendErrorResponse(res, 500, 'Erreur serveur inconnue');
   }
+};
+
+import { NextFunction } from 'express';
+export const globalErrorHandler = (
+  err: unknown,
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void => {
+  handleError(err, req, res);
 };

@@ -79,7 +79,7 @@ router.use('/auth/*', checkApiKey());
 // ==========================================
 // VALIDATION & GUARD SIGNUP / SIGNIN
 // ==========================================
-// Validation des champs & rÃ¨gles strictes de MDP pour Inscription
+// Validation des champs & règles strictes de MDP pour Inscription
 // + Seules les adresses e-mails invitees ou le 1er de l'usine peuvent s'inscrire !
 router.post('/auth/sign-up/email', validateSignUpParams, requireInvitationOrFirstUser);
 
@@ -94,11 +94,11 @@ router.all('/auth/*', async (req: Request, res: Response, next: NextFunction) =>
     await toNodeHandler(auth)(req, res);
   } catch (error: unknown) {
     const err = error as { status?: number; body?: { code?: string; message?: string } };
-    // 1) Si l'erreur provient de `onAPIError: { throw: true }` dans BetterAuth
+
+    // Si l'erreur provient nativement de BetterAuth, on la formate pour le globalErrorHandler
     if (err && err.status && err.body) {
       const errCode = err.body.code;
 
-      // Traduction personnalisée pour les mots de passe incorrects
       if (errCode === 'INVALID_EMAIL_OR_PASSWORD') {
         return next({
           status: 401,
@@ -112,7 +112,6 @@ router.all('/auth/*', async (req: Request, res: Response, next: NextFunction) =>
         });
       }
 
-      // Traduction personnalisée pour les e-mails inconnus
       if (errCode === 'USER_NOT_FOUND' || errCode === 'email_not_found') {
         return next({
           status: 404,
@@ -122,14 +121,12 @@ router.all('/auth/*', async (req: Request, res: Response, next: NextFunction) =>
         });
       }
 
-      // Formulaire global BetterAuth pour les autres erreurs (ex: invalid_code)
       return next({
         status: err.status,
         error: [{ field: 'auth', message: err.body?.message || "Erreur d'authentification." }],
       });
     }
 
-    // Format error complet catch
     next(error);
   }
 });

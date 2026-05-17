@@ -70,7 +70,7 @@ export const sendEmail = async (options: SendEmailOptions): Promise<void> => {
     }
 
     // On relance l'erreur pour que l'appelant (le middleware ou BetterAuth) puisse la gérer
-    // eslint-disable-next-line preserve-caught-error
+
     throw new Error("L'envoi de l'e-mail a échoué.");
   }
 };

@@ -35,6 +35,8 @@ describe('Authentication Routes Integrations (Better-Auth)', () => {
     const { default: authRoutes } = await import('../routes/auth.routes');
     const app = express();
 
+    process.env.API_KEY = 'secret-key-pour-les-tests';
+
     app.use(express.json()); // Simulate global body parser
 
     // Comme dans src/app.ts

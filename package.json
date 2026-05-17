@@ -28,6 +28,9 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/compression": "^1.7.5",
