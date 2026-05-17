@@ -49,7 +49,7 @@ describe('Catalog Routes Integration', () => {
         { id: '2', nom: 'Produit B' },
       ];
 
-      vi.mocked(catalogService.getAllProducts).mockResolvedValue(mockProducts as unknown as any[]);
+      vi.mocked(catalogService.getAllProducts).mockResolvedValue(mockProducts as unknown[]);
 
       const res = await request(app).get('/api/traceability/products');
 
@@ -64,7 +64,7 @@ describe('Catalog Routes Integration', () => {
     it('doit retourner une liste de lots avec un statut 200', async () => {
       const mockBatches = [{ id: '1', id_produit: 'p1', quantite_actuelle: 100 }];
 
-      vi.mocked(catalogService.getAllBatches).mockResolvedValue(mockBatches as unknown as any[]);
+      vi.mocked(catalogService.getAllBatches).mockResolvedValue(mockBatches as unknown[]);
 
       const res = await request(app).get('/api/traceability/batches');
 
