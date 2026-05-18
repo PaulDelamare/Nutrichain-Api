@@ -152,7 +152,7 @@ export const globalErrorHandler = (
   err: unknown,
   req: Request,
   res: Response,
-  next: NextFunction
+  _next: NextFunction
 ): void => {
   handleError(err, req, res);
 };

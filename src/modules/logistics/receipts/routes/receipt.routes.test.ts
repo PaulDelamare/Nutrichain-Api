@@ -7,7 +7,7 @@ import { receiptService } from '../services/receipt.service';
 // Mock the API Key middleware AND Auth middleware to inject activeOrgId
 vi.mock('../../../../shared/utils/checkApiKey/checkApiKey', () => ({
   checkApiKey: vi.fn(() => (req: Request, _res: Response, next: NextFunction) => {
-    (req as any).activeOrgId = 'org_test_123'; // Injection propre dans req.activeOrgId
+    Object.assign(req, { activeOrgId: 'org_test_123' }); // Injection propre dans req.activeOrgId
     next();
   }),
 }));
@@ -15,10 +15,12 @@ vi.mock('../../../../shared/utils/checkApiKey/checkApiKey', () => ({
 // Mock requireLogisticsRole
 vi.mock('../../middlewares/requireLogisticsRole.middleware', () => ({
   requireLogisticsRole: vi.fn(() => (req: Request, _res: Response, next: NextFunction) => {
-    (req as any).user = { id: 'u-123' };
-    (req as any).session = { id: 's-123', activeOrganizationId: 'org_test_123' };
-    (req as any).activeOrgId = 'org_test_123';
-    (req as any).memberRole = 'owner';
+    Object.assign(req, {
+      user: { id: 'u-123' },
+      session: { id: 's-123', activeOrganizationId: 'org_test_123' },
+      activeOrgId: 'org_test_123',
+      memberRole: 'owner',
+    });
     next();
   }),
 }));
@@ -26,7 +28,7 @@ vi.mock('../../middlewares/requireLogisticsRole.middleware', () => ({
 // Mock requireAuth as well (legacy)
 vi.mock('../../../identity/middlewares/requireAuth.middleware', () => ({
   requireAuth: vi.fn((req: Request, _res: Response, next: NextFunction) => {
-    (req as any).activeOrgId = 'org_test_123';
+    Object.assign(req, { activeOrgId: 'org_test_123' });
     next();
   }),
 }));
@@ -114,8 +116,8 @@ describe('Logistics - Receipts Routes', () => {
     it('doit retourner les statistiques de réception (200)', async () => {
       vi.mocked(receiptService.getReceiptStats).mockResolvedValue({
         total_receipts_today: 12,
-        total_quantity_kg: 5000
-      } as any);
+        total_quantity_kg: 5000,
+      } as unknown as { total_receipts_today: number; total_quantity_kg: number });
 
       const res = await request(app).get('/api/logistics/receipts/stats');
 
@@ -143,14 +145,14 @@ describe('Logistics - Receipts Routes', () => {
       const { prisma } = await import('../../../../shared/configs/prismaClient.config');
       vi.mocked(prisma.receipt.findFirst).mockResolvedValue({
         id: 'rcpt-1',
-        organization_id: 'org_test_123'
-      } as any);
+        organization_id: 'org_test_123',
+      } as unknown as { id: string; organization_id: string });
 
       vi.mocked(receiptService.getReceiptById).mockResolvedValue({
         id: 'rcpt-1',
         organization_id: 'org_test_123',
-        id_fournisseur: 'f-1'
-      } as any);
+        id_fournisseur: 'f-1',
+      } as unknown as { id: string; organization_id: string; id_fournisseur: string });
 
       const res = await request(app).get('/api/logistics/receipts/rcpt-1');
 

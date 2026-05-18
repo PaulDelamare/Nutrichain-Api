@@ -48,7 +48,7 @@ export const requireOrgRole = (allowedRoles: ('owner' | 'admin' | 'member')[]) =
       // Trouver le rôle de l'user courant dans cette orga
       const memberDetails = orgDetails.members.find((m) => m.userId === session.user.id);
 
-      if (!memberDetails || !allowedRoles.includes(memberDetails.role as any)) {
+      if (!memberDetails || !allowedRoles.includes(memberDetails.role as 'owner' | 'admin' | 'member')) {
         res.status(403).json({
           status: 403,
           message: `Action refusée. Votre rôle (${memberDetails?.role}) n'est pas autorisé. Requis: ${allowedRoles.join(' ou ')}.`,
@@ -57,12 +57,14 @@ export const requireOrgRole = (allowedRoles: ('owner' | 'admin' | 'member')[]) =
       }
 
       // Injecter les données d'authentification et d'organisation pour les contrôleurs
-      (req as any).auth = {
-        activeOrgId,
-        user: session.user,
-        role: memberDetails.role,
-        session: session.session
-      };
+      Object.assign(req, {
+        auth: {
+          activeOrgId,
+          user: session.user,
+          role: memberDetails.role,
+          session: session.session,
+        },
+      });
 
       // Si le rôle est validé, on passe à la route (le contrôleur) !
       next();

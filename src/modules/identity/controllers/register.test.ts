@@ -18,7 +18,7 @@ describe('Authentication Routes Integrations (Better-Auth)', () => {
 
     // Simuler toNodeHandler pour vérifier que les routes express sont liées à Better Auth
     vi.doMock('better-auth/node', () => ({
-      toNodeHandler: vi.fn().mockImplementation((authInstance) => {
+      toNodeHandler: vi.fn().mockImplementation((_authInstance) => {
         return (req: express.Request, res: express.Response) =>
           res.status(200).json({ ok: true, module: 'better-auth-mock' });
       }),

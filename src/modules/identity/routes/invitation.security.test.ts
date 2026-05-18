@@ -35,8 +35,8 @@ describe('Security & Validation E2E Scenarios (Invitations)', () => {
 
     // Error Handler minimum pour propager les erreurs catchAsync ou custom
     app.use(
-      (err: unknown, req: express.Request, res: express.Response, next: express.NextFunction) => {
-        res.status(err.status || 500).json(err);
+      (err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+        res.status((err as { status?: number }).status || 500).json(err);
       }
     );
   });

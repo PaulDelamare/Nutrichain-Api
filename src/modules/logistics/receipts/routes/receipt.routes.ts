@@ -29,7 +29,8 @@ const router = Router();
  */
 
 // Helper pour mutualiser la protection Web héritée (temporaire avant migration complète vers requireLogisticsRole)
-const requireWebLogistics = (roles: string[]): RequestHandler => requireLogisticsRole(roles as any);
+const requireWebLogistics = (roles: string[]): RequestHandler =>
+  requireLogisticsRole(roles as ('owner' | 'admin' | 'member')[]);
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // FLUX B2B/M2M (Clé API) — Systèmes externes

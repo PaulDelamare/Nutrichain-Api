@@ -1,5 +1,5 @@
 // ! IMPORTS
-import { RequestHandler, Request, Response, NextFunction } from 'express';
+import { Request, Response } from 'express';
 import { validateData } from '../../shared/utils/validateData/validateData';
 import vine from '@vinejs/vine';
 import { sendSuccess } from '../../shared/utils/returnSuccess/returnSuccess';
@@ -14,7 +14,7 @@ import { catchAsync } from '../../shared/utils/errorHandler/catchAsync';
  * @param req - The Express request object.
  * @param res - The Express response object.
  */
-const helloWorld = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+const helloWorld = catchAsync(async (_req: Request, res: Response) => {
   sendSuccess(res, 200, 'Hello World!');
 });
 
@@ -28,7 +28,7 @@ const helloWorld = catchAsync(async (req: Request, res: Response, next: NextFunc
  * @param res - The Express response object used to send the response.
  */
 
-const errorRequest = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+const errorRequest = catchAsync(async (req: Request, res: Response) => {
   const schemaData = vine.object({
     name: vine.string(),
   });
@@ -48,7 +48,7 @@ const errorRequest = catchAsync(async (req: Request, res: Response, next: NextFu
  * @param res - The Express response object.
  */
 
-const serviceExemple = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+const serviceExemple = catchAsync(async (_req: Request, res: Response) => {
   const serviceResponse = await helloService.exempleService({ name: 'exemple' });
   sendSuccess(res, 200, 'Hello', serviceResponse);
 });
