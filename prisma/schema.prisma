@@ -92,6 +92,8 @@ model Organization {
   gs1_company_prefix String?
   members            Member[]
   invitations        Invitation[]
+  Batch              Batch[]
+  Receipt            Receipt[]
 
   @@unique([slug])
   @@map("organization")
@@ -210,21 +212,23 @@ model Product {
 
 // --- TRACKING LOTS & TRANSFORMATION ---
 model Batch {
-  id                 String     @id @default(uuid())
+  id                 String       @id @default(uuid())
+  organization_id    String
+  organization       Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
   id_produit         String
-  produit            Product    @relation(fields: [id_produit], references: [id])
+  produit            Product      @relation(fields: [id_produit], references: [id])
   quantite_actuelle  Decimal
   unite_code         String
-  unite              Unit       @relation(fields: [unite_code], references: [code])
+  unite              Unit         @relation(fields: [unite_code], references: [code])
   quantite_base      Decimal
   date_peremption    DateTime?
-  statut             String     @default("EN_STOCK")
+  statut             String       @default("EN_STOCK")
   id_materiel_actuel String?
-  materiel           Equipment? @relation(fields: [id_materiel_actuel], references: [id])
-  date_creation      DateTime   @default(now())
+  materiel           Equipment?   @relation(fields: [id_materiel_actuel], references: [id])
+  date_creation      DateTime     @default(now())
   created_by         String
-  user               User       @relation(fields: [created_by], references: [id])
-  version            Int        @default(1)
+  user               User         @relation(fields: [created_by], references: [id])
+  version            Int          @default(1)
 
   transformations_enfants Transformation[]            @relation("TransformationEnfant")
   transformations_parents TransformationComposition[]
@@ -232,6 +236,8 @@ model Batch {
   tests_qualite           QualityControl[]
   liaisons                Liaison_Shipment[]
   mouvements              Batch_Mouvement[]
+
+  @@index([organization_id])
 }
 
 model Transformation {
@@ -357,16 +363,20 @@ model Supplier {
 }
 
 model Receipt {
-  id                         String   @id @default(uuid())
+  id                         String       @id @default(uuid())
+  organization_id            String
+  organization               Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
   id_fournisseur             String
-  fournisseur                Supplier @relation(fields: [id_fournisseur], references: [id])
-  shipment_id                String   @unique
+  fournisseur                Supplier     @relation(fields: [id_fournisseur], references: [id])
+  shipment_id                String       @unique
   date_reception             DateTime
   temperature_camion_summary Json?
   temperature_camion_raw     Json?
   statut_controle            String
   received_by                String
-  user                       User     @relation(fields: [received_by], references: [id])
+  user                       User         @relation(fields: [received_by], references: [id])
+
+  @@index([organization_id])
 }
 
 // --- EXPEDITION & CLIENT ---
