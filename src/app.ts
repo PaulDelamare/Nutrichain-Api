@@ -7,6 +7,7 @@ import healthRoutes from './modules/core/health/health.routes';
 import telemetryRoutes from './modules/iot/routes/telemetry.routes';
 import authRoutes from './modules/identity/routes/auth.routes';
 import catalogRoutes from './modules/traceability/catalog/routes/catalog.routes';
+import receiptRoutes from './modules/logistics/receipts/routes/receipt.routes';
 import configureMiddleware from './shared/configs/apiConfigMiddleware.config';
 import { globalErrorHandler } from './shared/utils/errorHandler/errorHandler';
 
@@ -25,6 +26,7 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 // ! Routes
 app.use('/api', authRoutes);
 app.use('/api', catalogRoutes);
+app.use('/api', receiptRoutes);
 app.use('/api', helloRoutes);
 app.use('/api', healthRoutes);
 app.use('/api', telemetryRoutes);
