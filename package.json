@@ -66,6 +66,7 @@
     "@react-email/render": "^2.0.7",
     "@vinejs/vine": "^3.0.0",
     "better-auth": "^1.6.5",
+    "bwip-js": "^4.10.1",
     "compression": "^1.7.5",
     "cors": "^2.8.5",
     "express": "^4.21.2",

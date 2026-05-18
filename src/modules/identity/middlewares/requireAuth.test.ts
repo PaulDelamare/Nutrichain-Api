@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import request from 'supertest';
 import express from 'express';
-import { requireAuth } from './requireAuth.middleware';
 
 describe('Auth Middleware - requireAuth', () => {
   afterEach(() => {

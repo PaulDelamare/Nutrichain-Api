@@ -60,9 +60,9 @@ describe('Auth Routes Integration', () => {
     app.use(
       (
         err: Error & { status?: number },
-        req: express.Request,
+        _req: express.Request,
         res: express.Response,
-        next: express.NextFunction
+        _next: express.NextFunction
       ) => {
         res.status(err.status || 500).json(err);
       }
