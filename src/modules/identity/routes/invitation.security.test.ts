@@ -3,6 +3,7 @@ import request from 'supertest';
 import express from 'express';
 import invitationRoutes from './invitation.routes';
 import { auth } from '../auth.config';
+import { globalErrorHandler } from '../../../shared/utils/errorHandler/errorHandler';
 
 // 1. Mock de la configuration et des variables d'environnement
 vi.mock('../auth.config', () => ({
@@ -33,12 +34,8 @@ describe('Security & Validation E2E Scenarios (Invitations)', () => {
     // Monter les routes sur /api comme dans l'app principale
     app.use('/api', invitationRoutes);
 
-    // Error Handler minimum pour propager les erreurs catchAsync ou custom
-    app.use(
-      (err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-        res.status((err as { status?: number }).status || 500).json(err);
-      }
-    );
+    // Utiliser le vrai Error Handler de l'API
+    app.use(globalErrorHandler);
   });
 
   afterEach(() => {
@@ -52,7 +49,7 @@ describe('Security & Validation E2E Scenarios (Invitations)', () => {
         .send({ email: 'test@nutrichain.local', role: 'operator', organizationId: '123' });
 
       expect(res.status).toBe(401);
-      expect(res.body.error).toContain('clef API');
+      expect(res.body.error[0].message).toContain('Clé API');
     });
 
     it('doit refuser (401) si une mauvaise clÃ© API est fournie', async () => {
@@ -62,6 +59,7 @@ describe('Security & Validation E2E Scenarios (Invitations)', () => {
         .send({ email: 'test@nutrichain.local', role: 'operator', organizationId: '123' });
 
       expect(res.status).toBe(401);
+      expect(res.body.error[0].message).toContain('Clé API');
     });
   });
 
@@ -75,7 +73,8 @@ describe('Security & Validation E2E Scenarios (Invitations)', () => {
         .send({ email: 'test@nutrichain.local', role: 'operator', organizationId: '123' });
 
       expect(res.status).toBe(401);
-      expect(res.body.message).toBe('Accès refusé. Veuillez vous authentifier.');
+      expect(res.body.error).toBeDefined();
+      expect(res.body.error[0].message).toBe('Accès refusé. Veuillez vous authentifier.');
     });
 
     it("doit refuser (400) si l'utilisateur est connectÃ© MAIS n'a pas activÃ© d'Usine / Organisation", async () => {
@@ -90,7 +89,7 @@ describe('Security & Validation E2E Scenarios (Invitations)', () => {
         .send({ email: 'test@nutrichain.local', role: 'operator', organizationId: '123' });
 
       expect(res.status).toBe(400);
-      expect(res.body.message).toContain('Organisation (Lieu) active');
+      expect(res.body.error[0].message).toContain("sélectionné d'Organisation active");
     });
 
     it("doit refuser (403) si l'utilisateur est connectÃ© dans l'usine, mais a un grade trop faible (ex: member)", async () => {
@@ -108,11 +107,11 @@ describe('Security & Validation E2E Scenarios (Invitations)', () => {
       const res = await request(app)
         .post('/api/identity/invitations')
         .set('x-api-key', VALID_API_KEY)
-        .send({ email: 'test@nutrichain.local', role: 'operator', organizationId: '123' });
+        .send({ email: 'test@nutrichain.local', role: 'operator', organizationId: 'org_123' });
 
       expect(res.status).toBe(403);
-      expect(res.body.message).toContain('Action refusée');
-      expect(res.body.message).toContain('Requis: owner ou admin');
+      expect(res.body.error[0].message).toContain('Action refusée');
+      expect(res.body.error[0].message).toContain('Rôle member insuffisant');
     });
   });
 

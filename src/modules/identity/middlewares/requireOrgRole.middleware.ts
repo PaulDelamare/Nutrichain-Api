@@ -1,78 +1,67 @@
-import { Request, Response, NextFunction } from 'express';
+import { Response, NextFunction } from 'express';
 import { auth } from '../auth.config';
+import { APIError } from '../../../shared/utils/errorHandler/APIError';
+import { AuthenticatedRequest, AuthUser, AuthSession } from '../types/auth.types';
+import { catchAsync } from '../../../shared/utils/errorHandler/catchAsync';
 
 /**
  * Middleware pour Exiger un Rôle Spécifique au sein de l'Organisation active.
- * Utile pour empêcher un simple "member" (ex: capteur IoT) de modifier un Produit ou inviter.
  *
- * @param allowedRoles Liste des rôles autorisés (ex: ['owner', 'admin'])
+ * @param allowedRoles Liste des rôles autorisés (ex: 'owner', 'admin', 'operator', etc.)
  */
-export const requireOrgRole = (allowedRoles: ('owner' | 'admin' | 'member')[]) => {
-  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    try {
-      // Demande à Better-Auth la session actuelle via les entêtes de requête (Token)
-      const session = await auth.api.getSession({
+export const requireOrgRole = (allowedRoles: string[]) => {
+  return catchAsync(
+    async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+      const sessionPayload = await auth.api.getSession({
         headers: new Headers(req.headers as Record<string, string>),
       });
 
-      if (!session || !session.session || !session.user) {
-        res.status(401).json({ status: 401, message: 'Non authentifié' });
-        return;
+      if (!sessionPayload || !sessionPayload.session || !sessionPayload.user) {
+        throw new APIError(401, {
+          error: [{ field: 'auth', message: 'Non authentifié' }],
+        });
       }
 
-      const activeOrgId = session.session.activeOrganizationId;
+      const activeOrgId = sessionPayload.session.activeOrganizationId;
 
       if (!activeOrgId) {
-        res.status(400).json({
-          status: 400,
-          message: "Vous n'avez pas sélectionné d'Organisation (Lieu) active.",
+        throw new APIError(400, {
+          error: [{ field: 'auth', message: "Vous n'avez pas sélectionné d'Organisation active." }],
         });
-        return;
       }
 
-      // Récupère les infos de l'utilisateur sur cette organisation précise
       const orgDetails = await auth.api.getFullOrganization({
         headers: new Headers(req.headers as Record<string, string>),
-        query: {
-          organizationId: activeOrgId,
-        },
+        query: { organizationId: activeOrgId },
       });
 
       if (!orgDetails) {
-        res
-          .status(403)
-          .json({ status: 403, message: 'Vous ne faites plus partie de cette usine/ferme.' });
-        return;
-      }
-
-      // Trouver le rôle de l'user courant dans cette orga
-      const memberDetails = orgDetails.members.find((m) => m.userId === session.user.id);
-
-      if (!memberDetails || !allowedRoles.includes(memberDetails.role as 'owner' | 'admin' | 'member')) {
-        res.status(403).json({
-          status: 403,
-          message: `Action refusée. Votre rôle (${memberDetails?.role}) n'est pas autorisé. Requis: ${allowedRoles.join(' ou ')}.`,
+        throw new APIError(403, {
+          error: [{ field: 'auth', message: 'Organisation introuvable ou accès révoqué.' }],
         });
-        return;
       }
 
-      // Injecter les données d'authentification et d'organisation pour les contrôleurs
-      Object.assign(req, {
-        auth: {
-          activeOrgId,
-          user: session.user,
-          role: memberDetails.role,
-          session: session.session,
-        },
-      });
+      const memberDetails = orgDetails.members.find((m) => m.userId === sessionPayload.user.id);
 
-      // Si le rôle est validé, on passe à la route (le contrôleur) !
+      if (!memberDetails || !allowedRoles.includes(memberDetails.role)) {
+        throw new APIError(403, {
+          error: [
+            { field: 'auth', message: `Action refusée. Rôle ${memberDetails?.role} insuffisant.` },
+          ],
+        });
+      }
+
+      // Injection typée
+      req.auth = {
+        activeOrgId,
+        user: sessionPayload.user as AuthUser,
+        role: memberDetails.role,
+        session: sessionPayload.session as AuthSession,
+      };
+
+      req.activeOrgId = activeOrgId;
+
       next();
-    } catch (error) {
-      console.error('[RequireRole Guard]', error);
-      res
-        .status(500)
-        .json({ status: 500, message: 'Erreur serveur lors de la vérification du rôle.' });
     }
-  };
+  );
 };
