@@ -1,4 +1,5 @@
 import { Request } from 'express';
+import { Batch, Receipt } from '@prisma/client';
 
 /**
  * Interface standard pour un utilisateur Better-Auth
@@ -11,28 +12,6 @@ export interface AuthUser {
   emailVerified: boolean;
   createdAt: Date;
   updatedAt: Date;
-}
-
-/**
- * Interface pour les données de requête authentifiée (Web ou M2M)
- */
-export interface AuthenticatedRequest extends Request {
-  auth?: {
-    user: AuthUser;
-    session: AuthSession;
-    activeOrgId?: string;
-  };
-  user?: AuthUser;
-  session?: AuthSession;
-  activeOrgId?: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  validatedReceipt?: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  validatedBatch?: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  receipt?: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  batch?: any;
 }
 
 /**
@@ -70,8 +49,10 @@ export interface AuthenticatedRequest extends Request {
   user?: AuthUser;
   session?: AuthSession;
   // Champs optionnels injectés par les middlewares métiers (Logistique, etc.)
+  batch?: Batch;
+  receipt?: Receipt;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  batch?: any; 
+  validatedReceipt?: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  receipt?: any;
+  validatedBatch?: any;
 }

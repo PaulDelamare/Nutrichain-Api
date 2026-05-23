@@ -5,7 +5,7 @@ import { AuthenticatedRequest } from '../../../modules/identity/types/auth.types
 /**
  * Générateur de middleware pour vérifier une clé API spécifique.
  * Dans une architecture multi-tenant, une clé API devrait idéalement être liée à une organisation.
- * 
+ *
  * @param expectedApiKey - La clé API attendue (par exemple, provenant de process.env)
  * @param defaultOrgId - Optionnel: ID de l'organisation à injecter si la clé est valide
  * @return - Un middleware Express qui valide la clé API
@@ -20,18 +20,21 @@ export const checkApiKey = (expectedApiKey?: string, defaultOrgId?: string) => {
       // Si on utilise une clé API, on injecte l'organisation active
       // Cela permet aux services (IoT, automatisés) d'être isolés.
       if (orgIdHeader) {
-        (req as AuthenticatedRequest).activeOrgId = orgIdHeader;
-        (req as AuthenticatedRequest).auth = {
-          ...((req as any).auth || {}),
+        const authReq = req as AuthenticatedRequest;
+        authReq.activeOrgId = orgIdHeader;
+        authReq.auth = {
+          ...(authReq.auth || {}),
           activeOrgId: orgIdHeader,
-        } as any;
+        } as AuthContext;
       }
-      
+
       next();
     } else {
-      next(new APIError(401, {
-        error: [{ field: 'api_key', message: 'Non authentifié. Clé API invalide ou manquante.' }]
-      }));
+      next(
+        new APIError(401, {
+          error: [{ field: 'api_key', message: 'Non authentifié. Clé API invalide ou manquante.' }],
+        })
+      );
     }
   };
 };
