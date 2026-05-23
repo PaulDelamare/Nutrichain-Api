@@ -1,4 +1,5 @@
 import bwipjs from 'bwip-js';
+import { APIError } from '../../../../shared/utils/errorHandler/APIError';
 
 /**
  * Service dédié à la génération d'étiquettes GS1 Digital Link
@@ -32,8 +33,15 @@ export const labelService = {
           textxalign: 'center',
         },
         (err, png) => {
-          if (err) reject(err);
-          else resolve(png);
+          if (err) {
+            reject(
+              new APIError(500, {
+                error: [{ field: 'qrcode', message: 'Erreur lors de la génération du QR Code' }],
+              })
+            );
+          } else {
+            resolve(png);
+          }
         }
       );
     });
@@ -53,8 +61,15 @@ export const labelService = {
           alttext: text.length > 20 ? text.substring(0, 20) + '...' : text,
         },
         (err, png) => {
-          if (err) reject(err);
-          else resolve(png);
+          if (err) {
+            reject(
+              new APIError(500, {
+                error: [{ field: 'datamatrix', message: 'Erreur lors de la génération du DataMatrix' }],
+              })
+            );
+          } else {
+            resolve(png);
+          }
         }
       );
     });

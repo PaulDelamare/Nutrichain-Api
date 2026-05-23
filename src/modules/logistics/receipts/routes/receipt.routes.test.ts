@@ -8,22 +8,35 @@ import { Receipt, Supplier } from '@prisma/client';
 // On définit un type pour la réponse de getReceiptById qui inclut la relation fournisseur
 type ReceiptWithSupplier = Receipt & { fournisseur: Supplier };
 
-// Mock the API Key middleware AND Auth middleware to inject activeOrgId
-vi.mock('../../../../shared/utils/checkApiKey/checkApiKey', () => ({
-  checkApiKey: vi.fn(() => (req: Request, _res: Response, next: NextFunction) => {
-    Object.assign(req, { activeOrgId: 'org_test_123' }); // Injection propre dans req.activeOrgId
+// Mock the mixedAuth middleware to inject activeOrgId
+vi.mock('../../../../shared/middlewares/mixedAuth', () => ({
+  mixedAuth: vi.fn(() => (req: Request, _res: Response, next: NextFunction) => {
+    Object.assign(req, {
+      activeOrgId: 'org_test_123',
+      auth: {
+        user: { id: 'u-123', email: 'test@nutrichain.local' },
+        activeOrgId: 'org_test_123',
+        session: { activeOrganizationId: 'org_test_123' },
+      },
+    });
     next();
   }),
 }));
 
-// Mock requireLogisticsRole
+// Mock the legacy middlewares for safety if still imported somewhere
+vi.mock('../../../../shared/utils/checkApiKey/checkApiKey', () => ({
+  checkApiKey: vi.fn(() => (req: Request, _res: Response, next: NextFunction) => {
+    Object.assign(req, { activeOrgId: 'org_test_123' });
+    next();
+  }),
+}));
+
 vi.mock('../../middlewares/requireLogisticsRole.middleware', () => ({
   requireLogisticsRole: vi.fn(() => (req: Request, _res: Response, next: NextFunction) => {
     Object.assign(req, {
       user: { id: 'u-123' },
       session: { id: 's-123', activeOrganizationId: 'org_test_123' },
       activeOrgId: 'org_test_123',
-      memberRole: 'owner',
     });
     next();
   }),
@@ -105,14 +118,30 @@ describe('Logistics - Receipts Routes', () => {
 
       expect(res.status).toBe(201);
       expect(res.body.data.receiptId).toBe('receipt_uuid');
-      expect(receiptService.createReceipt).toHaveBeenCalledWith({
-        ...payloadParfait,
+      expect(receiptService.createReceipt).toHaveBeenCalledWith(expect.objectContaining({
+        id_fournisseur: payloadParfait.id_fournisseur,
         organization_id: 'org_test_123',
+      }));
+    });
+  });
+
+  describe('GET /api/logistics/receipts/:id', () => {
+    it('doit retourner 404 si la réception appartient à une autre organisation', async () => {
+      vi.mocked(receiptService.getReceiptById).mockRejectedValue({
+        status: 404,
+        error: [{ field: 'receipt', message: 'Réception introuvable' }]
       });
+
+      const res = await request(app)
+        .get('/api/logistics/receipts/autre-org-id')
+        .set('Authorization', 'Bearer token_valide');
+
+      expect(res.status).toBe(404);
     });
   });
 
   describe('GET /api/logistics/receipts/stats', () => {
+
     it('doit retourner les statistiques de réception (200)', async () => {
       vi.mocked(receiptService.getReceiptStats).mockResolvedValue({
         total_receipts_today: 12,
@@ -121,7 +150,6 @@ describe('Logistics - Receipts Routes', () => {
 
       const res = await request(app).get('/api/logistics/receipts/stats');
 
-      console.log('STATS BODY:', JSON.stringify(res.body));
       expect(res.status).toBe(200);
       expect(res.body.data.total_receipts_today).toBe(12);
       expect(receiptService.getReceiptStats).toHaveBeenCalledWith('org_test_123');

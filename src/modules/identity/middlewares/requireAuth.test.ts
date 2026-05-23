@@ -19,14 +19,16 @@ describe('Auth Middleware - requireAuth', () => {
     }));
 
     const { requireAuth } = await import('./requireAuth.middleware');
+    const { globalErrorHandler } = await import('../../../shared/utils/errorHandler/errorHandler');
 
     const app = express();
     app.get('/protected', requireAuth, (req, res) => res.status(200).json({ secret: 'data' }));
+    app.use(globalErrorHandler);
 
     const res = await request(app).get('/protected');
 
     expect(res.status).toBe(401);
-    expect(res.body.message).toMatch(/Accès refusé/);
+    expect(res.body.error[0].message).toMatch(/Accès refusé/);
   });
 
   it("doit autoriser l'accès et injecter req.user si la session est valide", async () => {

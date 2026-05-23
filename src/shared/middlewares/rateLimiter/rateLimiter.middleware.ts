@@ -25,8 +25,13 @@ function createRateLimiter(minutes: number, maxRequests: number) {
      */
     handler: (req, res) => {
       res.status(429).json({
-        status: 'error',
-        error: 'Too many requests, please try again later.',
+        status: 429,
+        error: [
+          {
+            field: 'rate-limit',
+            message: 'Trop de requêtes, veuillez réessayer plus tard.',
+          },
+        ],
       });
     },
   });

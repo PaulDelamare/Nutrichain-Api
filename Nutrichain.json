@@ -1,0 +1,100 @@
+﻿{
+  "name": "Nutrichain",
+  "version": "1",
+  "items": [
+    {
+      "name": "Logistics",
+      "items": [
+        {
+          "name": "Receipts",
+          "items": [
+            {
+              "name": "Créer une Réception",
+              "request": {
+                "method": "POST",
+                "url": "{{API_URL}}/api/logistics/receipts",
+                "headers": [
+                  { "name": "Content-Type", "value": "application/json" },
+                  { "name": "x-api-key", "value": "{{M2M_API_KEY}}" }
+                ],
+                "body": {
+                  "mode": "json",
+                  "json": "{\n  \"id_fournisseur\": \"uuid-du-fournisseur\",\n  \"shipment_id\": \"EXP-TRUCK-001\",\n  \"id_produit\": \"uuid-du-produit\",\n  \"quantite_actuelle\": 500,\n  \"unite_code\": \"KG\",\n  \"statut_controle\": \"OK\"\n}"
+                }
+              }
+            },
+            {
+              "name": "Lister les Réceptions",
+              "request": {
+                "method": "GET",
+                "url": "{{API_URL}}/api/logistics/receipts",
+                "headers": [
+                  { "name": "x-api-key", "value": "{{M2M_API_KEY}}" }
+                ]
+              }
+            },
+            {
+              "name": "Détails Réception",
+              "request": {
+                "method": "GET",
+                "url": "{{API_URL}}/api/logistics/receipts/:id",
+                "params": [
+                  { "name": "id", "value": "" }
+                ],
+                "headers": [
+                  { "name": "x-api-key", "value": "{{M2M_API_KEY}}" }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Batches",
+          "items": [
+            {
+              "name": "Détails Lot (Batch)",
+              "request": {
+                "method": "GET",
+                "url": "{{API_URL}}/api/logistics/batches/:id",
+                "params": [
+                  { "name": "id", "value": "" }
+                ],
+                "headers": [
+                  { "name": "x-api-key", "value": "{{M2M_API_KEY}}" }
+                ]
+              }
+            },
+            {
+              "name": "Générer Label QR (Digital Link)",
+              "request": {
+                "method": "GET",
+                "url": "{{API_URL}}/api/logistics/batches/:id/label",
+                "params": [
+                  { "name": "id", "value": "" }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "environments": [
+    {
+      "name": "Local",
+      "variables": [
+        { "name": "API_URL", "value": "http://localhost:3000" },
+        { "name": "M2M_API_KEY", "value": "votre-api-key-ici" }
+      ]
+    }
+  ],
+  "brunoConfig": {
+    "version": "1",
+    "name": "Nutrichain",
+    "type": "collection",
+    "ignore": [
+      "node_modules",
+      ".git"
+    ]
+  }
+}

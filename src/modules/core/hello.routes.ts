@@ -1,11 +1,12 @@
-// ! IMPORTS
 import { router } from '../../shared/configs/router.config';
 import { HelloController } from './hello.controller';
 import { checkApiKey } from '../../shared/utils/checkApiKey/checkApiKey';
 import { requireAuth } from '../identity/middlewares/requireAuth.middleware';
-import { Request, Response } from 'express';
+import { Response } from 'express';
+import { sendSuccess } from '../../shared/utils/returnSuccess/returnSuccess';
+import { AuthenticatedRequest } from '../identity/types/auth.types';
 
-// ! RequÃªtes
+// ! Requêtes
 
 /**
  * @swagger
@@ -34,11 +35,11 @@ router.get('/hello', HelloController.helloWorld);
  *         description: Non authentifié
  */
 // Route de test protégée par Better-Auth !
-router.get('/me', requireAuth, (req: Request, res: Response) => {
-  res.json({
-    message: 'Authentification réussie !',
-    user: (req as unknown as { user: unknown }).user,
-    session: (req as unknown as { session: unknown }).session,
+router.get('/me', requireAuth, (req: AuthenticatedRequest, res: Response) => {
+  sendSuccess(res, 200, 'Authentification réussie !', {
+    user: req.auth?.user,
+    session: req.auth?.session,
+    activeOrgId: req.activeOrgId
   });
 });
 

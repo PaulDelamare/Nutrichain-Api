@@ -45,6 +45,7 @@ async function main() {
   // 2. Création de produits (Catalogue)
   const milk = await prisma.product.create({
     data: {
+      organization_id: usine.id,
       nom: 'Bouteille de Lait 1L (Entier)',
       code_gtin: '3042040209123',
       categorie: 'Produit Laitier',
@@ -56,6 +57,7 @@ async function main() {
 
   const butter = await prisma.product.create({
     data: {
+      organization_id: usine.id,
       nom: 'Plaquette de Beurre Doux 250g',
       code_gtin: '3042040209456',
       categorie: 'Produit Laitier',
@@ -78,6 +80,7 @@ async function main() {
   // 4. Création de lots (Batches) rattachés aux produits
   await prisma.batch.create({
     data: {
+      organization_id: usine.id,
       id_produit: milk.id,
       quantite_actuelle: 1000,
       unite_code: 'L',
@@ -90,6 +93,7 @@ async function main() {
 
   await prisma.batch.create({
     data: {
+      organization_id: usine.id,
       id_produit: butter.id,
       quantite_actuelle: 400, // represente 100kg (400*250g)
       unite_code: 'kg',
@@ -105,6 +109,7 @@ async function main() {
 
 main()
   .catch((e) => {
+    console.error(e);
     logger.error('❌ Seeding failed:', e);
     process.exit(1);
   })

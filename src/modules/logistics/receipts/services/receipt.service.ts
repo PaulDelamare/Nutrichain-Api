@@ -1,4 +1,8 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '../../../../shared/configs/prismaClient.config';
+import { batchService } from '../../shared/services/batch.service';
+import { auditService } from '../../../../shared/utils/audit/audit.service';
+import { APIError } from '../../../../shared/utils/errorHandler/APIError';
 
 /**
  * Interface pour les données de création d'une réception.
@@ -20,44 +24,43 @@ export const receiptService = {
    */
   async createReceipt(data: CreateReceiptData) {
     return prisma.$transaction(async (tx) => {
-      // Vérifier l'existence des références pour éviter les erreurs P2003
-      // 🔒 SÉCURITÉ : On filtre par organization_id pour éviter de confirmer l'existence de ressources concurrentes
+      // 1. Vérifications d'existence et de sécurité (Multi-tenant)
       const supplier = await tx.supplier.findFirst({
         where: { id: data.id_fournisseur, organization_id: data.organization_id },
       });
-      if (!supplier)
-        throw {
-          status: 404,
-          error: [
-            { field: 'id_fournisseur', message: 'Fournisseur introuvable dans cette organisation' },
-          ],
-        };
+      if (!supplier) {
+        throw new APIError(404, {
+          error: [{ field: 'id_fournisseur', message: 'Fournisseur introuvable ou accès refusé' }],
+        });
+      }
 
       const product = await tx.product.findFirst({
         where: { id: data.id_produit, organization_id: data.organization_id },
       });
-      if (!product)
-        throw {
-          status: 404,
-          error: [{ field: 'id_produit', message: 'Produit introuvable dans cette organisation' }],
-        };
-
-      // L'utilisateur doit exister globalement mais être membre de l'org (Optionnel selon business rule, ici on garde findUnique pour l'user)
-      const user = await tx.user.findUnique({ where: { id: data.received_by } });
-      if (!user)
-        throw {
-          status: 404,
-          error: [{ field: 'received_by', message: 'Utilisateur introuvable' }],
-        };
-
-      // Vérifier l'unité (Globalement partagée dans le système GS1/ISO)
-      if (data.unite_code) {
-        const unit = await tx.unit.findUnique({ where: { code: data.unite_code } });
-        if (!unit)
-          throw { status: 400, error: [{ field: 'unite_code', message: 'Unité inconnue' }] };
+      if (!product) {
+        throw new APIError(404, {
+          error: [{ field: 'id_produit', message: 'Produit introuvable ou accès refusé' }],
+        });
       }
 
-      // 1. Trace logistique physique (Le bon de réception)
+      const user = await tx.user.findUnique({ where: { id: data.received_by } });
+      if (!user) {
+        throw new APIError(404, {
+          error: [{ field: 'received_by', message: 'Utilisateur introuvable' }],
+        });
+      }
+
+      // Vérifier l'unité
+      if (data.unite_code) {
+        const unit = await tx.unit.findUnique({ where: { code: data.unite_code } });
+        if (!unit) {
+          throw new APIError(400, {
+            error: [{ field: 'unite_code', message: 'Unité inconnue' }],
+          });
+        }
+      }
+
+      // 2. Création de la Réception (Trace logistique)
       const receipt = await tx.receipt.create({
         data: {
           organization_id: data.organization_id,
@@ -69,24 +72,33 @@ export const receiptService = {
         },
       });
 
-      // 2. Création du contenant numérique traçable (Le Batch/Lot interne)
-      const batch = await tx.batch.create({
-        data: {
-          organization_id: data.organization_id,
-          id_produit: data.id_produit,
-          quantite_actuelle: data.quantite_actuelle,
-          unite_code: data.unite_code,
-          quantite_base: data.quantite_actuelle,
-          statut: 'EN_STOCK',
-          created_by: data.received_by,
-        },
+      // 3. Délégation de la création du Lot au BatchSharedService (SRP)
+      const batch = await batchService.createBatch(tx, {
+        organization_id: data.organization_id,
+        id_produit: data.id_produit,
+        quantite_actuelle: data.quantite_actuelle,
+        unite_code: data.unite_code,
+        created_by: data.received_by,
       });
+
+      // 4. Audit Log (Objectif 7 - WORM)
+      await auditService.logAction({
+        organizationId: data.organization_id,
+        userId: data.received_by,
+        action: 'CREATE_RECEIPT',
+        entity: 'Receipt',
+        entityId: receipt.id,
+        newValue: receipt as unknown as Record<string, unknown>,
+      }, tx);
 
       return {
         message: 'Réception enregistrée avec succès et Lot généré.',
         receiptId: receipt.id,
         batchId: batch.id,
       };
+    }, {
+      timeout: 30000,
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
     });
   },
 
@@ -101,25 +113,19 @@ export const receiptService = {
     });
 
     if (!receipt) {
-      throw { status: 404, error: [{ field: 'receipt', message: 'Réception introuvable' }] };
+      throw new APIError(404, {
+        error: [{ field: 'receipt', message: 'Réception introuvable' }],
+      });
     }
     return receipt;
   },
 
   /**
    * Récupérer un lot par son ID
-   * Note: La sécurité multi-tenant est renforcée par activeOrgId en plus du middleware
+   * Note: La sécurité multi-tenant est déléguée au batchService
    */
   async getBatchById(id: string, activeOrgId: string) {
-    const batch = await prisma.batch.findFirst({
-      where: { id, organization_id: activeOrgId },
-      include: { produit: true, unite: true },
-    });
-
-    if (!batch) {
-      throw { status: 404, error: [{ field: 'batch', message: 'Lot introuvable' }] };
-    }
-    return batch;
+    return batchService.getBatchById(id, activeOrgId);
   },
 
   /**

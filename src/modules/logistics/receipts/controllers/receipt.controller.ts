@@ -3,16 +3,27 @@ import { receiptService } from '../services/receipt.service';
 import { labelService } from '../../shared/services/label.service';
 import { sendSuccess } from '../../../../shared/utils/returnSuccess/returnSuccess';
 import { catchAsync } from '../../../../shared/utils/errorHandler/catchAsync';
-import { AuthenticatedRequest } from '../../middlewares/requireLogisticsRole.middleware';
+import { AuthenticatedRequest } from '../../../identity/types/auth.types';
+import { APIError } from '../../../../shared/utils/errorHandler/APIError';
 
 export const createReceiptController = catchAsync(
   async (req: AuthenticatedRequest, res: Response) => {
     const activeOrgId = req.activeOrgId as string;
+    
+    // Récupération des données validées par le middleware VineJS
+    const validatedData = req.validatedReceipt;
+
+    // Détermination de l'auteur de la réception (Sécurité Web vs M2M)
+    // Si req.user existe (flux Web), on override l'ID pour éviter l'usurpation
+    const receivedBy = req.user?.id || validatedData.received_by;
+
     const result = await receiptService.createReceipt({
-      ...req.body,
+      ...validatedData,
+      received_by: receivedBy,
       organization_id: activeOrgId,
     });
-    sendSuccess(res, 201, 'Réception confirmée', result);
+    
+    sendSuccess(res, 201, 'Réception confirmée et Lot généré', result);
   }
 );
 
@@ -70,15 +81,14 @@ export const getBatchLabelController = catchAsync(
     const gtin = batch.produit?.code_gtin;
 
     if (!gtin) {
-      throw {
-        status: 400,
+      throw new APIError(400, {
         error: [
           {
             field: 'batch',
             message: 'Ce lot ne possède pas de code GTIN valide pour la labellisation.',
           },
         ],
-      };
+      });
     }
 
     const digitalLink = labelService.generateDigitalLink(gtin, batch.id);

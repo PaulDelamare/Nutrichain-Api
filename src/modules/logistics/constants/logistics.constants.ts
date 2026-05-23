@@ -26,6 +26,9 @@ export const LOGISTICS_ROLES = {
 
   /** Qualité: Lecture + gestion des tests de qualité */
   QA: 'quality_control',
+
+  /** Gérant: Accès complet au site logistique */
+  OWNER: 'logistics_owner',
 } as const;
 
 export type LogisticsRole = (typeof LOGISTICS_ROLES)[keyof typeof LOGISTICS_ROLES];
