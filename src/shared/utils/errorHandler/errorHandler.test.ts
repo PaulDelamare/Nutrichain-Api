@@ -23,21 +23,32 @@ describe('handleError middleware', () => {
     expect(mockRes.status).toHaveBeenCalledWith(400);
     expect(resSpy).toHaveBeenCalledWith({
       status: 400,
-      error: 'Erreur : le champ inconnu doit être unique. La valeur fournie est déjà utilisée.',
+      error: [
+        {
+          field: 'database',
+          message:
+            'Erreur : le champ inconnu doit être unique. La valeur fournie est déjà utilisée.',
+        },
+      ],
     });
   });
 
   it('should handle unknown Prisma error', () => {
     const error = {
       code: 'P9999',
-    } as Prisma.PrismaClientKnownRequestError;
+    } as unknown as Prisma.PrismaClientKnownRequestError;
 
     handleError(error, mockReq, mockRes);
 
     expect(mockRes.status).toHaveBeenCalledWith(500);
     expect(mockRes.json).toHaveBeenCalledWith({
       status: 500,
-      error: 'Erreur serveur inconnue',
+      error: [
+        {
+          field: 'server',
+          message: 'Erreur serveur inconnue',
+        },
+      ],
     });
   });
 
@@ -49,7 +60,12 @@ describe('handleError middleware', () => {
     expect(mockRes.status).toHaveBeenCalledWith(500);
     expect(mockRes.json).toHaveBeenCalledWith({
       status: 500,
-      error: 'Generic error',
+      error: [
+        {
+          field: 'server',
+          message: 'Generic error',
+        },
+      ],
     });
   });
 });
