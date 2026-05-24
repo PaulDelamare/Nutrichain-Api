@@ -60,8 +60,8 @@ describe('AuditService (WORM - Write Once Read Many)', () => {
         action: 'INIT',
         entity: 'SYSTEM',
         entityId: '0',
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
       },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       mockTx as any
     );
 
