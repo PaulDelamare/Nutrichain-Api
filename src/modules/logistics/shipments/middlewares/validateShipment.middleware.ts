@@ -16,6 +16,7 @@ export const validateShipmentParams = catchAsync(
       shipment_id: vine.string().minLength(3).maxLength(100),
       transporteur: vine.string().minLength(2).maxLength(100),
       destination_adresse: vine.string().minLength(5),
+      created_by: vine.string().uuid().optional(),
       lots: vine
         .array(
           vine.object({

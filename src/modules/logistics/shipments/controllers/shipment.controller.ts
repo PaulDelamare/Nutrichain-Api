@@ -9,9 +9,17 @@ import { AuthenticatedRequest } from '../../../identity/types/auth.types';
  */
 export const createShipmentController = catchAsync(
   async (req: AuthenticatedRequest, res: Response) => {
-    const { id_client, shipment_id, transporteur, lots } = req.validatedShipment;
+    const { id_client, shipment_id, transporteur, lots, created_by } = req.validatedShipment;
     const activeOrgId = req.activeOrgId as string;
-    const userId = req.user?.id || 'EXTERNAL_SYSTEM';
+
+    // Détermination de l'auteur : Priorité à la session (req.user), fallback sur le payload (M2M)
+    const userId = req.user?.id || created_by;
+
+    if (!userId) {
+      throw new APIError(401, {
+        error: [{ field: 'auth', message: "Auteur de l'expédition non identifié." }],
+      });
+    }
 
     const shipment = await shipmentService.createShipment({
       organization_id: activeOrgId,
@@ -24,6 +32,6 @@ export const createShipmentController = catchAsync(
       items: lots.map((l: any) => ({ id_lot: l.id_lot, quantite: l.quantite_expediee })),
     });
 
-    return sendSuccess(res, 'Expédition créée avec succès', { shipment });
+    return sendSuccess(res, 201, 'Expédition créée avec succès', { shipment });
   }
 );
