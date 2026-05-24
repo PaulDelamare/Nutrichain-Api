@@ -32,8 +32,13 @@ describe('Rate Limiting Middleware', () => {
 
     expect(res3.status).toBe(429);
     expect(res3.body).toEqual({
-      status: 'error',
-      error: 'Too many requests, please try again later.',
+      status: 429,
+      error: [
+        {
+          field: 'rate-limit',
+          message: 'Trop de requêtes, veuillez réessayer plus tard.',
+        },
+      ],
     });
   });
 });

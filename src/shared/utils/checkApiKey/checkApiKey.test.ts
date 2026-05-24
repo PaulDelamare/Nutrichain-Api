@@ -1,11 +1,15 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Request, Response, NextFunction } from 'express';
 import { checkApiKey } from './checkApiKey';
 
 describe('checkApiKey', () => {
   const next: NextFunction = vi.fn();
 
-  it('Should pass if the API key is valid', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('Should pass if the API key is valid', async () => {
     const validApiKey = 'VALID_API_KEY';
 
     const middleware = checkApiKey(validApiKey);
@@ -21,7 +25,7 @@ describe('checkApiKey', () => {
     expect(next).toHaveBeenCalled();
   });
 
-  it('Should return a 401 error if the API key is invalid', () => {
+  it('Should return a 401 error if the API key is invalid', async () => {
     const validApiKey = 'VALID_API_KEY';
 
     const middleware = checkApiKey(validApiKey);
@@ -30,21 +34,18 @@ describe('checkApiKey', () => {
       header: vi.fn().mockReturnValue('INVALID_API_KEY'),
     } as unknown as Request;
 
-    const res = {
-      status: vi.fn().mockReturnThis(),
-      json: vi.fn(),
-    } as unknown as Response;
+    const res = {} as Response;
 
-    middleware(req, res, next);
+    await middleware(req, res, next);
 
-    expect(res.status).toHaveBeenCalledWith(401);
-    expect(res.json).toHaveBeenCalledWith({
-      error: 'Non authentifié. Vous devez utiliser votre clef API.',
-      status: 401,
-    });
+    expect(next).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 401,
+      })
+    );
   });
 
-  it('Should return a 401 error if the API key is missing', () => {
+  it('Should return a 401 error if the API key is missing', async () => {
     const validApiKey = 'VALID_API_KEY';
 
     const middleware = checkApiKey(validApiKey);
@@ -53,17 +54,14 @@ describe('checkApiKey', () => {
       header: vi.fn().mockReturnValue(null),
     } as unknown as Request;
 
-    const res = {
-      status: vi.fn().mockReturnThis(),
-      json: vi.fn(),
-    } as unknown as Response;
+    const res = {} as Response;
 
-    middleware(req, res, next);
+    await middleware(req, res, next);
 
-    expect(res.status).toHaveBeenCalledWith(401);
-    expect(res.json).toHaveBeenCalledWith({
-      error: 'Non authentifié. Vous devez utiliser votre clef API.',
-      status: 401,
-    });
+    expect(next).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 401,
+      })
+    );
   });
 });
