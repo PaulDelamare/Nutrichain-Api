@@ -94,6 +94,17 @@ model Organization {
   invitations        Invitation[]
   Batch              Batch[]
   Receipt            Receipt[]
+  Supplier           Supplier[]
+  Product            Product[]
+  Location           Location[]
+  Equipment          Equipment[]
+  Audit_Log          Audit_Log[]
+  Alert              Alert[]
+  ScrapRecord        ScrapRecord[]
+  QualityControl     QualityControl[]
+  Maintenance        Maintenance[]
+  Customer           Customer[]
+  Shipment           Shipment[]
 
   @@unique([slug])
   @@map("organization")
@@ -173,20 +184,26 @@ model EPCIS_Aggregation_Event {
 
 // --- LIEUX ET MATERIEL ---
 model Location {
-  id          String      @id @default(uuid())
-  nom         String
-  type        String
-  description String?
-  materiel    Equipment[]
+  id              String       @id @default(uuid())
+  organization_id String
+  organization    Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  nom             String
+  type            String
+  description     String?
+  materiel        Equipment[]
+
+  @@index([organization_id])
 }
 
 model Equipment {
-  id              String           @id @default(uuid())
+  id              String       @id @default(uuid())
+  organization_id String
+  organization    Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
   nom             String
   type            String
   id_lieu         String
-  lieu            Location         @relation(fields: [id_lieu], references: [id])
-  statut          String           @default("PRET")
+  lieu            Location     @relation(fields: [id_lieu], references: [id])
+  statut          String       @default("PRET")
   temp_actuelle   Decimal?
   temp_seuil_max  Decimal?
   qr_code_id      String?
@@ -194,11 +211,15 @@ model Equipment {
   lots            Batch[]
   transformations Transformation[]
   Maintenance     Maintenance[]
+
+  @@index([organization_id])
 }
 
 // --- REFERENTIEL CATALOGUE ---
 model Product {
   id                        String              @id @default(uuid())
+  organization_id           String
+  organization              Organization        @relation(fields: [organization_id], references: [id], onDelete: Cascade)
   nom                       String
   code_gtin                 String?
   categorie                 String
@@ -208,6 +229,8 @@ model Product {
   lots                      Batch[]
   transformations           Transformation[]
   RecipeComposition         RecipeComposition[]
+
+  @@index([organization_id])
 }
 
 // --- TRACKING LOTS & TRANSFORMATION ---
@@ -275,70 +298,95 @@ model TransformationComposition {
 
 // --- ALERTE & AUDIT WORM ---
 model Alert {
-  id             String    @id @default(uuid())
-  type           String
-  niveau_gravite String
-  message        String
-  id_materiel    String?
-  related_entity String?
-  related_id     String?
-  statut         String    @default("ACTIVE")
-  created_at     DateTime  @default(now())
-  resolved_by    String?
-  resolved_at    DateTime?
+  id              String       @id @default(uuid())
+  organization_id String
+  organization    Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  type            String
+  niveau_gravite  String
+  message         String
+  id_materiel     String?
+  related_entity  String?
+  related_id      String?
+  statut          String       @default("ACTIVE")
+  created_at      DateTime     @default(now())
+  resolved_by     String?
+  resolved_at     DateTime?
+
+  @@index([organization_id])
 }
 
 model Audit_Log {
-  id              Int      @id @default(autoincrement())
+  id              Int          @id @default(autoincrement())
+  organization_id String
+  organization    Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
   id_user         String?
   action          String
   entity          String
   entity_id       String
   ancienne_valeur Json?
   nouvelle_valeur Json?
-  prev_hash       String
-  signature_hash  String
-  horodatage      DateTime @default(now())
+  prev_hash       String       @db.Char(64)
+  signature_hash  String       @db.Char(64)
+  horodatage      DateTime     @default(now())
+
+  @@index([organization_id])
+  @@index([id_user])
+  @@index([entity, entity_id])
+  @@index([horodatage])
+  @@index([action])
+  @@index([signature_hash])
 }
 
 // --- GESTION DES REJETS/QUALITE ---
 model ScrapRecord {
-  id                 String   @id @default(uuid())
+  id                 String       @id @default(uuid())
+  organization_id    String
+  organization       Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
   id_lot             String
-  lot                Batch    @relation(fields: [id_lot], references: [id])
+  lot                Batch        @relation(fields: [id_lot], references: [id])
   quantite_jetee     Decimal
   unite              String
   motif              String
   date_mise_au_rebut DateTime
   created_by         String
-  user               User     @relation(fields: [created_by], references: [id])
+  user               User         @relation(fields: [created_by], references: [id])
+
+  @@index([organization_id])
 }
 
 model QualityControl {
-  id             String   @id @default(uuid())
-  id_lot         String
-  lot            Batch    @relation(fields: [id_lot], references: [id])
-  type_test      String
-  resultat       String
-  id_user_labo   String
-  user           User     @relation(fields: [id_user_labo], references: [id])
-  certificat_pdf String?
-  date_test      DateTime
-  notes          String?
+  id              String       @id @default(uuid())
+  organization_id String
+  organization    Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  id_lot          String
+  lot             Batch        @relation(fields: [id_lot], references: [id])
+  type_test       String
+  resultat        String
+  id_user_labo    String
+  user            User         @relation(fields: [id_user_labo], references: [id])
+  certificat_pdf  String?
+  date_test       DateTime
+  notes           String?
+
+  @@index([organization_id])
 }
 
 // --- HYGIENE ET MAINTENANCE ---
 model Maintenance {
-  id              String    @id @default(uuid())
+  id              String       @id @default(uuid())
+  organization_id String
+  organization    Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
   id_materiel     String
-  materiel        Equipment @relation(fields: [id_materiel], references: [id])
+  materiel        Equipment    @relation(fields: [id_materiel], references: [id])
   id_user         String
-  user            User      @relation(fields: [id_user], references: [id])
+  user            User         @relation(fields: [id_user], references: [id])
   type_action     String
   produit_utilise String?
   date_debut      DateTime
   date_fin        DateTime?
   valid_until     DateTime?
+
+  @@index([organization_id])
 }
 
 // --- RECETTES ---
@@ -354,12 +402,16 @@ model RecipeComposition {
 
 // --- RECEPTION & FOURNISSEUR ---
 model Supplier {
-  id              String    @id @default(uuid())
+  id              String       @id @default(uuid())
+  organization_id String
+  organization    Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
   nom_ferme       String
   type_produit    String?
   contact_qualite String?
   adresse_siege   String
   receptions      Receipt[]
+
+  @@index([organization_id])
 }
 
 model Receipt {
@@ -381,27 +433,35 @@ model Receipt {
 
 // --- EXPEDITION & CLIENT ---
 model Customer {
-  id                String     @id @default(uuid())
+  id                String       @id @default(uuid())
+  organization_id   String
+  organization      Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
   nom_enseigne      String
   contact_urgence   String?
   adresse_livraison String
   notes             String?
   expeditions       Shipment[]
+
+  @@index([organization_id])
 }
 
 model Shipment {
-  id               String   @id @default(uuid())
+  id               String       @id @default(uuid())
+  organization_id  String
+  organization     Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
   id_client        String
-  client           Customer @relation(fields: [id_client], references: [id])
-  shipment_id      String   @unique
+  client           Customer     @relation(fields: [id_client], references: [id])
+  shipment_id      String       @unique
   date_envoi       DateTime
   transporteur     String
   statut_livraison String
   created_by       String
-  user             User     @relation(fields: [created_by], references: [id])
+  user             User         @relation(fields: [created_by], references: [id])
 
   liaisons   Liaison_Shipment[]
   mouvements Batch_Mouvement[]
+
+  @@index([organization_id])
 }
 
 model Liaison_Shipment {

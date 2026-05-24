@@ -1,5 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { bdd } from '../../../shared/configs/prismaClient.config';
+import { APIError } from '../../../shared/utils/errorHandler/APIError';
+import { catchAsync } from '../../../shared/utils/errorHandler/catchAsync';
 
 /**
  * Middleware métier pour sécuriser la création de compte au strict minimum.
@@ -7,19 +9,15 @@ import { bdd } from '../../../shared/configs/prismaClient.config';
  * 1. La base de données est vide (0 utilisateurs), on l'accepte (pour créer le "First Admin").
  * 2. OU l'email qui essaie de s'inscrire possède une Invitation valide dans la base de données.
  */
-export const requireInvitationOrFirstUser = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
+export const requireInvitationOrFirstUser = catchAsync(
+  async (req: Request, res: Response, next: NextFunction) => {
     const email = req.body?.email;
     if (!email) {
-      res.status(400).json({ status: 400, message: "L'email est requis." });
-      return;
+      throw new APIError(400, {
+        error: [{ field: 'email', message: "L'adresse email est requise." }],
+      });
     }
 
-    // Compter le nombre de membres
     const userCount = await bdd.user.count();
 
     // 1. Bypass si c'est la toute première personne du système
@@ -33,25 +31,23 @@ export const requireInvitationOrFirstUser = async (
         email: email,
         status: 'pending',
         expiresAt: {
-          gt: new Date(), // l'invitation ne doit pas être expirée
+          gt: new Date(),
         },
       },
     });
 
     if (!invitation) {
-      res.status(403).json({
-        status: 403,
-        message:
-          "Création de compte refusée. Vous n'avez pas d'Invitation valide ou elle a expiré.",
+      throw new APIError(403, {
+        error: [
+          {
+            field: 'auth',
+            message:
+              "Création de compte refusée. Vous n'avez pas d'invitation valide ou elle a expiré.",
+          },
+        ],
       });
-      // ! On coupe le flux ICI pour que Better Auth n'aille jamais en DB
-      return;
     }
 
-    // On est bon, la personne a le droit de s'inscrire ! (Dans un flow complet, il faudrait supprimer/marquer l'invitation confirmée après)
     next();
-  } catch (error) {
-    console.error('[SignUp Guard Error]', error);
-    res.status(500).json({ status: 500, message: 'Internal Auth Guard Error' });
   }
-};
+);

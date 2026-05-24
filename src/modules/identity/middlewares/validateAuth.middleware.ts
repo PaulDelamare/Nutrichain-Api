@@ -1,8 +1,8 @@
 import vine from '@vinejs/vine';
 import { RequestHandler } from 'express';
 import { validateData } from '../../../shared/utils/validateData/validateData';
-import { handleError } from '../../../shared/utils/errorHandler/errorHandler';
 import { passwordRule } from '../../../shared/utils/validateData/customRules';
+import { catchAsync } from '../../../shared/utils/errorHandler/catchAsync';
 
 const signUpSchema = vine.object({
   email: vine.string().email(),
@@ -15,20 +15,12 @@ const signInSchema = vine.object({
   password: vine.string(),
 });
 
-export const validateSignUpParams: RequestHandler = async (req, res, next) => {
-  try {
-    await validateData(signUpSchema, req.body);
-    next();
-  } catch (error) {
-    handleError(error, req, res, 'Validation Inscription (SignUp)');
-  }
-};
+export const validateSignUpParams: RequestHandler = catchAsync(async (req, res, next) => {
+  await validateData(signUpSchema, req.body);
+  next();
+});
 
-export const validateSignInParams: RequestHandler = async (req, res, next) => {
-  try {
-    await validateData(signInSchema, req.body);
-    next();
-  } catch (error) {
-    handleError(error, req, res, 'Validation Connexion (SignIn)');
-  }
-};
+export const validateSignInParams: RequestHandler = catchAsync(async (req, res, next) => {
+  await validateData(signInSchema, req.body);
+  next();
+});

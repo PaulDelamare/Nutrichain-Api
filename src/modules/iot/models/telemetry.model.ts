@@ -3,6 +3,7 @@ import { Schema, model } from 'mongoose';
 export interface ITelemetry {
   metadata: {
     sensor_id: string; // Identifier for the Materiel
+    organization_id: string; // Multi-tenant isolation
   };
   timestamp: Date;
   temperature: number;
@@ -14,6 +15,7 @@ const telemetrySchema = new Schema<ITelemetry>(
   {
     metadata: {
       sensor_id: { type: String, required: true },
+      organization_id: { type: String, required: true, index: true },
     },
     timestamp: { type: Date, required: true },
     temperature: { type: Number, required: true },

@@ -21,7 +21,14 @@ vi.mock('../../../../shared/utils/checkApiKey/checkApiKey', () => ({
 
 // Mock des middlewares d'authentification
 vi.mock('../../../identity/middlewares/requireAuth.middleware', () => ({
-  requireAuth: (req: express.Request, res: express.Response, next: express.NextFunction) => next(),
+  requireAuth: (
+    req: express.Request & { activeOrgId?: string },
+    res: express.Response,
+    next: express.NextFunction
+  ) => {
+    req.activeOrgId = 'org-123';
+    next();
+  },
 }));
 
 vi.mock('../../../identity/middlewares/requireOrgRole.middleware', () => ({

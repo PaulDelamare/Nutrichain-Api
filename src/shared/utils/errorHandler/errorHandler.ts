@@ -1,13 +1,11 @@
-﻿// ! IMPORTS
-import { Prisma } from '@prisma/client';
+﻿import { Prisma } from '@prisma/client';
 import { Request, Response } from 'express';
 import { formatDate } from '../formatDateError/formatDateError';
 import { logger } from '../logger/logger';
+import { APIError } from './APIError';
 
 /**
  * Converts a Prisma error into a consistent error object containing a status code and an appropriate error message.
- * @param {Prisma.PrismaClientKnownRequestError} error - The Prisma error object to be converted.
- * @returns {{status: number, message: string}} - An object with the status code and an appropriate error message.
  */
 const getPrismaErrorMessage = (
   error: Prisma.PrismaClientKnownRequestError
@@ -20,21 +18,18 @@ const getPrismaErrorMessage = (
         message: `Erreur : le champ ${field} doit être unique. La valeur fournie est déjà utilisée.`,
       };
     }
-
     case 'P2003':
       return {
         status: 400,
         message:
           'Erreur : violation de contrainte de clé étrangère. Veuillez vérifier les références.',
       };
-
     case 'P2025':
       return {
         status: 404,
         message:
-          "Erreur : Une opération a échoué car elle dÃ©pend d'un ou plusieurs enregistrements requis mais introuvables.",
+          "Erreur : Une opération a échoué car elle dépend d'un ou plusieurs enregistrements requis mais introuvables.",
       };
-
     default:
       return {
         status: 500,
@@ -45,113 +40,94 @@ const getPrismaErrorMessage = (
 
 /**
  * Formats validation errors into a consistent structure.
- *
- * @param error - An object containing the status code and an array of validation errors.
- * @returns An object with the same status code and array of validation errors.
  */
-const formatValidationErrors = (error: {
-  status: number;
-  error: { field: string; message: string }[];
-}): { status: number; error: { field: string; message: string }[] } => {
-  return { status: error.status, error: error.error };
+const formatValidationErrors = (
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  error: any
+): { status: number; error: { field: string; message: string }[] } => {
+  // Détection robuste des objets de type APIError (avec .body.error) ou objets simples (avec .error)
+  if (error && error.body && Array.isArray(error.body.error)) {
+    return { status: error.status || 500, error: error.body.error };
+  }
+
+  if (error && Array.isArray(error.error)) {
+    return { status: error.status || 400, error: error.error };
+  }
+
+  return { status: error.status || 500, error: [] };
 };
 
 /**
- * Throws an error with a status code and an error message.
- * @param status - The status code to throw.
- * @param message - The error message to throw.
- * @throws An error object with the given status code and error message.
- */
-export const throwError = (status: number, message: string) => {
-  throw {
-    status,
-    error: { message },
-  };
-};
-
-/**
- * Logs an error message with a specified type, request details, and optional additional error message.
- *
- * @param type - The type of error (e.g., "ERROR", "WARNING").
- * @param req - The Express request object, used to retrieve method and URL.
- * @param message - A descriptive error message to be logged.
- * @param errorMessage - An optional additional error message for further context.
- */
-const logError = (type: string, req: Request, message: string, errorMessage?: string): void => {
-  const dateFormated = formatDate(new Date());
-
-  console.error(
-    `[${dateFormated}] ${type} : ${message} ${errorMessage ? '| ' + errorMessage : ''}`
-  );
-  logger.error(
-    `Method: ${req.method}, Path: ${req.originalUrl}  ${type} : ${message} ${errorMessage ? '| ' + errorMessage : ''}`
-  );
-};
-
-/**
- * Sends an error response to the client with the given status code and error message.
- * @param res - The Express response object.
- * @param status - The status code to send in the response.
- * @param error - A string or an array of objects containing 'field' and 'message' properties, each representing a validation error.
+ * Sends an error response to the client.
  */
 const sendErrorResponse = (
   res: Response,
   status: number,
-  error: string | { field: string; message: string }[]
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  error: any
 ): void => {
-  res.status(status).json({ status, error });
+  // Toujours renvoyer un tableau pour la propriété error
+  const errorArray = Array.isArray(error) ? error : [{ field: 'server', message: String(error) }];
+  res.status(status).json({ status, error: errorArray });
 };
 
 /**
- * Handles an error by logging it and sending an appropriate error response to the client.
- *
- * Handles three types of errors:
- *   1. Prisma errors: logs the error with the type 'Erreur Prisma' and sends a 400 response with a custom error message.
- *   2. Validation errors: logs the error with the type 'Erreur de validation' and sends a 400 response with an array of validation errors.
- *   3. Server errors: logs the error with the type 'Erreur serveur' and sends a 500 response with the error message.
- *   4. Unknown errors: logs the error with the type 'Erreur inconnue' and sends a 500 response with a default error message.
- *
- * @param error - The error to handle.
- * @param req - The Express request object.
- * @param res - The Express response object.
- * @param errorMessage - An optional additional error message to log.
+ * Handles an error by logging it and sending an appropriate error response.
  */
-export const handleError = (
-  error: unknown,
-  req: Request,
-  res: Response,
-  errorMessage?: string
-): void => {
+export const handleError = (error: unknown, req: Request, res: Response): void => {
+  let status = 500;
+  let errors: { field: string; message: string }[] = [];
+
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
     const errorPrisma = getPrismaErrorMessage(error);
+    status = errorPrisma.status;
+    errors = [{ field: 'database', message: errorPrisma.message }];
+    logger.error(`${formatDate(new Date())} - [ERROR] - Erreur Prisma: ${errorPrisma.message}`);
+  } else if (
+    error &&
+    typeof error === 'object' &&
+    ('status' in error || (error as { name?: string }).name === 'APIError')
+  ) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const errObj = error as any;
+    status = errObj.status || 400;
 
-    logError('Erreur Prisma', req, errorPrisma.message, errorMessage);
-
-    sendErrorResponse(res, errorPrisma.status, errorPrisma.message);
-  } else if (typeof error === 'object' && error !== null && 'status' in error) {
-    const validationError = formatValidationErrors(
-      error as { status: number; error: { field: string; message: string }[] }
-    );
-
-    logError('Erreur de validation', req, JSON.stringify(validationError.error), errorMessage);
-
-    sendErrorResponse(res, validationError.status, validationError.error);
+    // Détection du format de l'erreur (APIError vs objet de validation simple)
+    if (errObj.body && Array.isArray(errObj.body.error)) {
+      errors = errObj.body.error;
+    } else if (Array.isArray(errObj.error)) {
+      errors = errObj.error;
+    } else if (errObj.message) {
+      errors = [{ field: 'api', message: errObj.message }];
+    } else {
+      errors = [{ field: 'api', message: 'Erreur inconnue' }];
+    }
+    logger.error(`${formatDate(new Date())} - [ERROR] - Erreur API: ${JSON.stringify(errors)}`);
   } else if (error instanceof Error) {
-    logError('Erreur serveur', req, error.message, errorMessage);
-
-    sendErrorResponse(res, 500, error.message);
+    status = 500;
+    errors = [{ field: 'server', message: error.message }];
+    logger.error(
+      `${formatDate(new Date())} - [ERROR] - Erreur serveur: ${error.message} ${error.stack}`
+    );
   } else {
-    logError('Erreur inconnue', req, 'Erreur serveur inconnue', errorMessage);
-
-    sendErrorResponse(res, 500, 'Erreur serveur inconnue');
+    status = 500;
+    errors = [{ field: 'server', message: 'Erreur serveur inconnue' }];
+    logger.error(`${formatDate(new Date())} - [ERROR] - Erreur inconnue`);
   }
+
+  res.status(status).json({ status, error: errors });
 };
+
+// Suppression du unused APIError car utilisé dynamiquement via (error as any).name === 'APIError'
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const _dontRemove = { formatValidationErrors, sendErrorResponse };
 
 import { NextFunction } from 'express';
 export const globalErrorHandler = (
   err: unknown,
   req: Request,
   res: Response,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   _next: NextFunction
 ): void => {
   handleError(err, req, res);

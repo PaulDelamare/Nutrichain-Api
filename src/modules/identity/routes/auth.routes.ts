@@ -87,8 +87,11 @@ router.post('/auth/sign-up/email', validateSignUpParams, requireInvitationOrFirs
 router.post('/auth/sign-in/email', validateSignInParams);
 
 // ==========================================
-// FORMATTAGE DES ERREURS BETTER-AUTH
+// FORMATTAGE DES ERREURS NATIVES BETTER-AUTH
 // ==========================================
+// NOTE CRITIQUE : Cette route intercepte toNodeHandler(auth) pour mapper
+// les codes d'erreur bruts de Better-Auth vers notre format standard API.
+// Indispensable car Better-Auth gère le stream de réponse de manière autonome.
 router.all('/auth/*', async (req: Request, res: Response, next: NextFunction) => {
   try {
     await toNodeHandler(auth)(req, res);

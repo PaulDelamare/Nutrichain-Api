@@ -40,7 +40,8 @@ const router = Router();
  *         description: Clé API manquante ou invalide
  */
 // Les capteurs IoT envoient des Pings sans session utilisateur (Pas de requireAuth),
-// MAIS ils doivent obligatoirement présenter la clé d'API certifiée de l'usine (MToM).
+// MAIS ils doivent obligatoirement présenter la clé d'API certifiée.
+// L'isolation est assurée par le header 'x-org-id' validé par checkApiKey.
 router.post('/telemetry/ping', checkApiKey(), ingestTelemetry);
 
 /**
