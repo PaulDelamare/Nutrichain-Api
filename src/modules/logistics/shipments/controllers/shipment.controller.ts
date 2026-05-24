@@ -3,6 +3,7 @@ import { shipmentService } from '../services/shipment.service';
 import { sendSuccess } from '../../../../shared/utils/returnSuccess/returnSuccess';
 import { catchAsync } from '../../../../shared/utils/errorHandler/catchAsync';
 import { AuthenticatedRequest } from '../../../identity/types/auth.types';
+import { APIError } from '../../../../shared/utils/errorHandler/APIError';
 
 /**
  * Créer une expédition.
@@ -28,8 +29,10 @@ export const createShipmentController = catchAsync(
       transporteur,
       date_envoi: new Date(),
       created_by: userId,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      items: lots.map((l: any) => ({ id_lot: l.id_lot, quantite: l.quantite_expediee })),
+      items: lots.map((l: { id_lot: string; quantite_expediee: number }) => ({
+        id_lot: l.id_lot,
+        quantite: l.quantite_expediee,
+      })),
     });
 
     return sendSuccess(res, 201, 'Expédition créée avec succès', { shipment });
