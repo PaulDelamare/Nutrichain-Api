@@ -1,0 +1,186 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { transformationService } from './transformation.service';
+import { prisma } from '../../../../shared/configs/prismaClient.config';
+import { APIError } from '../../../../shared/utils/errorHandler/APIError';
+
+vi.mock('../../../../shared/configs/prismaClient.config', () => ({
+  prisma: {
+    $transaction: vi.fn(),
+    batch: {
+      findFirst: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+    },
+    transformation: {
+      create: vi.fn(),
+    },
+    transformationComposition: {
+      create: vi.fn(),
+    },
+    batch_Mouvement: {
+      create: vi.fn(),
+    },
+  },
+}));
+
+describe('TransformationService', () => {
+  const activeOrgId = 'org-123';
+  const userId = 'user-abc';
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('doit échouer si un lot parent est introuvable ou appartient à une autre organisation', async () => {
+    vi.mocked(prisma.$transaction).mockImplementation(
+      (callback: (tx: unknown) => Promise<unknown>) => callback(prisma)
+    );
+    vi.mocked(prisma.batch.findFirst).mockResolvedValue(null);
+
+    const data = {
+      organization_id: activeOrgId,
+      id_produit_fini: 'prod-fini',
+      id_materiel: 'mat-1',
+      quantite_produite: 100,
+      unite_code: 'KG',
+      created_by: userId,
+      inputs: [
+        { id_lot_parent: 'lot-p1', quantite_prelevee: 50, unite: 'KG', lot_parent_epuise: true },
+      ],
+    };
+
+    await expect(transformationService.createTransformation(data)).rejects.toThrow(APIError);
+  });
+
+  it('doit échouer si un lot parent est périmé', async () => {
+    const mockTx = {
+      batch: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'lot-p1',
+          organization_id: activeOrgId,
+          quantite_actuelle: { toNumber: () => 100 },
+          unite_code: 'KG',
+          statut: 'EN_STOCK',
+          date_peremption: new Date('2020-01-01'), // Déjà périmé
+        }),
+      },
+    };
+    vi.mocked(prisma.$transaction).mockImplementation(
+      (callback: (tx: unknown) => Promise<unknown>) => callback(mockTx)
+    );
+
+    const data = {
+      organization_id: activeOrgId,
+      id_produit_fini: 'prod-fini',
+      id_materiel: 'mat-1',
+      quantite_produite: 50,
+      unite_code: 'KG',
+      created_by: userId,
+      inputs: [
+        { id_lot_parent: 'lot-p1', quantite_prelevee: 10, unite: 'KG', lot_parent_epuise: false },
+      ],
+    };
+
+    try {
+      await transformationService.createTransformation(data);
+      expect.fail('Should have thrown');
+    } catch (error: unknown) {
+      const err = error as APIError;
+      expect(err.status).toBe(400);
+      expect(err.body.error[0].message).toContain('périmé');
+    }
+  });
+
+  it('doit échouer si un lot parent est en ALERTE', async () => {
+    const mockTx = {
+      batch: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'lot-p1',
+          organization_id: activeOrgId,
+          quantite_actuelle: { toNumber: () => 100 },
+          unite_code: 'KG',
+          statut: 'ALERTE',
+        }),
+      },
+    };
+    vi.mocked(prisma.$transaction).mockImplementation(
+      (callback: (tx: unknown) => Promise<unknown>) => callback(mockTx)
+    );
+
+    const data = {
+      organization_id: activeOrgId,
+      id_produit_fini: 'prod-fini',
+      id_materiel: 'mat-1',
+      quantite_produite: 50,
+      unite_code: 'KG',
+      created_by: userId,
+      inputs: [
+        { id_lot_parent: 'lot-p1', quantite_prelevee: 10, unite: 'KG', lot_parent_epuise: false },
+      ],
+    };
+
+    try {
+      await transformationService.createTransformation(data);
+      expect.fail('Should have thrown');
+    } catch (error: unknown) {
+      const err = error as APIError;
+      expect(err.status).toBe(400);
+      expect(err.body.error[0].message).toContain('ALERTE');
+    }
+  });
+
+  it('doit créer une transformation et un lot enfant avec succès', async () => {
+    const mockTx = {
+      batch: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'lot-p1',
+          organization_id: activeOrgId,
+          quantite_actuelle: { toNumber: () => 100 },
+          unite_code: 'KG',
+          statut: 'EN_STOCK',
+        }),
+        create: vi.fn().mockResolvedValue({ id: 'lot-enfant' }),
+        update: vi.fn(),
+      },
+      transformation: {
+        create: vi.fn().mockResolvedValue({ id: 'trans-1' }),
+      },
+      transformationComposition: {
+        create: vi.fn(),
+      },
+      batch_Mouvement: {
+        create: vi.fn(),
+      },
+    };
+
+    vi.mocked(prisma.$transaction).mockImplementation(
+      (callback: (tx: unknown) => Promise<unknown>) => callback(mockTx)
+    );
+
+    const data = {
+      organization_id: activeOrgId,
+      id_produit_fini: 'prod-fini',
+      id_materiel: 'mat-1',
+      quantite_produite: 50,
+      unite_code: 'KG',
+      created_by: userId,
+      inputs: [
+        { id_lot_parent: 'lot-p1', quantite_prelevee: 30, unite: 'KG', lot_parent_epuise: false },
+      ],
+    };
+
+    const result = await transformationService.createTransformation(data);
+
+    expect(result).toBeDefined();
+    expect(mockTx.batch.create).toHaveBeenCalled();
+    expect(mockTx.transformation.create).toHaveBeenCalled();
+    expect(mockTx.batch.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'lot-p1' },
+        data: expect.objectContaining({
+          quantite_actuelle: { decrement: 30 },
+        }),
+      })
+    );
+  });
+});

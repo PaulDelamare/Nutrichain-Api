@@ -57,4 +57,6 @@ export interface AuthenticatedRequest extends Request {
   validatedBatch?: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   validatedShipment?: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  validatedTransformation?: any;
 }
