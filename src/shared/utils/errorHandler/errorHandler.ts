@@ -41,8 +41,8 @@ const getPrismaErrorMessage = (
 /**
  * Formats validation errors into a consistent structure.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const formatValidationErrors = (
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   error: any
 ): { status: number; error: { field: string; message: string }[] } => {
   // Détection robuste des objets de type APIError (avec .body.error) ou objets simples (avec .error)

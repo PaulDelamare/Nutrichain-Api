@@ -78,8 +78,8 @@ describe('ShipmentService', () => {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     vi.mocked(prisma.batch.findFirst).mockResolvedValue(mockBatch as any);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     vi.mocked(prisma.shipment.create).mockImplementation(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       async (args: any) => ({ ...args.data, id: 'ship-new' }) as any
     );
 

@@ -22,7 +22,7 @@ describe('BatchSharedService', () => {
         batch: {
           create: vi.fn().mockResolvedValue({ id: 'batch-123' }),
         },
-      } as any;
+      };
 
       const data = {
         organization_id: 'org-1',
@@ -32,7 +32,8 @@ describe('BatchSharedService', () => {
         created_by: 'user-1',
       };
 
-      const result = await batchService.createBatch(mockTx, data);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const result = await batchService.createBatch(mockTx as any, data);
 
       expect(mockTx.batch.create).toHaveBeenCalledWith({
         data: {

@@ -22,7 +22,7 @@ describe('AuditService (WORM - Write Once Read Many)', () => {
       audit_Log: {
         create: vi.fn().mockImplementation(({ data }) => Promise.resolve({ id: 1, ...data })),
       },
-    } as any;
+    };
 
     const auditData = {
       organizationId: 'org-1',
@@ -33,11 +33,12 @@ describe('AuditService (WORM - Write Once Read Many)', () => {
       newValue: { status: 'OK' },
     };
 
-    const result = await auditService.logAction(auditData, mockTx);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await auditService.logAction(auditData, mockTx as any);
 
     // Vérifier que le hash précédent a été récupéré
     expect(mockTx.$queryRaw).toHaveBeenCalled();
-    
+
     // Vérifier que le nouveau log contient le prev_hash et une signature
     expect(result.prev_hash).toBe('PREV_HASH_123');
     expect(result.signature_hash).toBeDefined();
@@ -50,16 +51,22 @@ describe('AuditService (WORM - Write Once Read Many)', () => {
       audit_Log: {
         create: vi.fn().mockImplementation(({ data }) => Promise.resolve({ id: 1, ...data })),
       },
-    } as any;
+    };
 
-    const result = await auditService.logAction({
-      organizationId: 'org-1',
-      userId: 'admin',
-      action: 'INIT',
-      entity: 'SYSTEM',
-      entityId: '0',
-    }, mockTx);
+    const result = await auditService.logAction(
+      {
+        organizationId: 'org-1',
+        userId: 'admin',
+        action: 'INIT',
+        entity: 'SYSTEM',
+        entityId: '0',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      },
+      mockTx as any
+    );
 
-    expect(result.prev_hash).toBe('0000000000000000000000000000000000000000000000000000000000000000');
+    expect(result.prev_hash).toBe(
+      '0000000000000000000000000000000000000000000000000000000000000000'
+    );
   });
 });
