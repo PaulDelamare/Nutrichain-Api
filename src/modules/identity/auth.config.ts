@@ -17,6 +17,21 @@ const prisma = new PrismaClient();
 
 export const auth = betterAuth({
   baseURL: process.env.API_URL || 'http://localhost:3000',
+  // Origines autorisées pour les requêtes navigateur (Expo Web, back-office).
+  // Les apps natives n'ont pas d'Origin et ne sont pas concernées par cette liste.
+  // En prod : déclarer les domaines web dans TRUSTED_ORIGINS (séparés par virgule).
+  trustedOrigins:
+    process.env.NODE_ENV === 'production'
+      ? (process.env.TRUSTED_ORIGINS || '')
+          .split(',')
+          .map((o) => o.trim())
+          .filter(Boolean)
+      : [
+          'http://localhost:3000',
+          'http://localhost:5173',
+          'http://localhost:8081',
+          'http://localhost:19006',
+        ],
   // 🛡️ Permet d'accepter les requêtes d'API externes (Postman, Bruno, et IoT) qui n'ont pas pu générer automatiquement d'Origin via un navigateur Moteur.
   advanced: {
     crossSubDomainCookies: {

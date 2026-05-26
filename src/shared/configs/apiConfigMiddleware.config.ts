@@ -32,10 +32,36 @@ const configureMiddleware = (app: express.Application) => {
 
   app.use(express.json());
 
+  // CORS — ne concerne que les clients navigateur (Expo Web, back-office web).
+  // Les apps natives iOS/Android n'envoient pas d'header Origin : CORS ne s'applique pas à elles.
+  // En prod : lister les domaines web autorisés dans FRONTEND_URL (séparés par des virgules).
+  // En dev  : on accepte n'importe quelle origine locale pour éviter les conflits de port.
+  const allowedWebOrigins = (process.env.FRONTEND_URL || '')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+
   app.use(
     cors({
-      origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+      origin: (origin, callback) => {
+        if (!origin) {
+          // Pas d'Origin = app native, curl, Postman → on laisse passer
+          return callback(null, true);
+        }
+        if (process.env.NODE_ENV !== 'production') {
+          // Dev : on accepte toutes les origines (localhost sur n'importe quel port)
+          return callback(null, origin);
+        }
+        // Prod : uniquement les origines web déclarées dans FRONTEND_URL
+        if (allowedWebOrigins.includes(origin)) {
+          return callback(null, origin);
+        }
+        callback(new Error(`Origine non autorisée par CORS : ${origin}`));
+      },
       credentials: true,
+      allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key', 'x-org-id'],
+      exposedHeaders: ['Content-Length'],
+      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     })
   );
 

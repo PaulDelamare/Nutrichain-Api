@@ -12,6 +12,12 @@ import { AuthenticatedRequest } from '../../../modules/identity/types/auth.types
  */
 export const checkApiKey = (expectedApiKey?: string, defaultOrgId?: string) => {
   return async (req: Request, res: Response, next: NextFunction) => {
+    // OPTIONS preflight requests must not be blocked — the browser never sends
+    // custom headers on preflights, so we let CORS middleware handle them.
+    if (req.method === 'OPTIONS') {
+      return next();
+    }
+
     const targetKey = expectedApiKey ?? process.env.API_KEY;
     const apiKeyHeader = req.header('x-api-key');
     const orgIdHeader = req.header('x-org-id') || defaultOrgId;
