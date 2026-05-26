@@ -1,11 +1,42 @@
 import { Router } from 'express';
 import { createTransformation } from '../controllers/transformation.controller';
 import { getBatchGenealogy, triggerRecall } from '../controllers/recall.controller';
+import { publicScanBatch } from '../controllers/publicScan.controller';
 import { validateTransformationParams } from '../middlewares/validateTransformation.middleware';
 import { requireAuth } from '../../../identity/middlewares/requireAuth.middleware';
 import { requireOrgRole } from '../../../identity/middlewares/requireOrgRole.middleware';
+import rateLimit from 'express-rate-limit';
 
 const router = Router();
+
+// --- ROUTES PUBLIQUES (B2C) ---
+
+const publicScanLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limite chaque IP à 100 requêtes par fenêtre
+  message: { error: 'Trop de tentatives de scan. Veuillez réessayer dans 15 minutes.' },
+});
+
+/**
+ * @swagger
+ * /api/public/scan/{id}:
+ *   get:
+ *     summary: [B2C] Scanner un lot pour voir son origine
+ *     description: Route publique pour les consommateurs finaux.
+ *     tags: [Public]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Informations de traçabilité
+ */
+router.get('/public/scan/:id', publicScanLimiter, publicScanBatch);
+
+// --- ROUTES PROTEGEES ---
 
 /**
  * @swagger
