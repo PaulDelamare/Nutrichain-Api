@@ -76,15 +76,18 @@ GET /api/telemetry/sensor-UUID-1234/history?limit=50
 x-api-key: <YOUR_FRONTEND_API_KEY>
 ```
 
----
+## 4. Traçabilité & B2C (Nouveau)
 
-## 3. Supply Chain Modules (Coming Soon)
+Les consommateurs finaux peuvent scanner un lot sans être authentifiés.
 
-The following modules are mapped in the architecture and their endpoints will be documented once implemented:
-- **Logistics**: Managing `Reception`, `Expedition`, `Supplier`, and `Client`.
-- **Traceability**: Managing `Batch` (Lot), `Processing` (Transformation), and `QualityCheck`.
-- **Core**: Managing Plant setup (`Location`, `Equipment`).
-# Docs: Intégration Frontend API NutriChain
+### Scan Public (B2C)
+```http
+GET /api/public/scan/{id_du_lot}
+x-api-key: <YOUR_FRONTEND_API_KEY>
+```
+*Note : Cette route ne nécessite pas de Bearer Token. Elle renvoie l'origine du lot et son statut sanitaire.*
+
+## 5. Supply Chain Modules (En cours)
 
 Ce diagramme et ces instructions vous permettront de communiquer avec l'API.
 

@@ -8,8 +8,9 @@ vi.mock('../../../../shared/configs/prismaClient.config', () => ({
     $transaction: vi.fn(),
     batch: {
       findFirst: vi.fn(),
+      findUniqueOrThrow: vi.fn(),
       create: vi.fn(),
-      update: vi.fn(),
+      updateMany: vi.fn(),
     },
     transformation: {
       create: vi.fn(),
@@ -20,6 +21,15 @@ vi.mock('../../../../shared/configs/prismaClient.config', () => ({
     batch_Mouvement: {
       create: vi.fn(),
     },
+    ePCIS_Event: {
+      create: vi.fn(),
+    },
+  },
+}));
+
+vi.mock('../../../../shared/utils/audit/audit.service', () => ({
+  auditService: {
+    logAction: vi.fn().mockResolvedValue({}),
   },
 }));
 
@@ -62,6 +72,7 @@ describe('TransformationService', () => {
           unite_code: 'KG',
           statut: 'EN_STOCK',
           date_peremption: new Date('2020-01-01'), // Déjà périmé
+          version: 1,
         }),
       },
     };
@@ -100,6 +111,7 @@ describe('TransformationService', () => {
           quantite_actuelle: { toNumber: () => 100 },
           unite_code: 'KG',
           statut: 'ALERTE',
+          version: 1,
         }),
       },
     };
@@ -138,9 +150,17 @@ describe('TransformationService', () => {
           quantite_actuelle: { toNumber: () => 100 },
           unite_code: 'KG',
           statut: 'EN_STOCK',
+          version: 1,
         }),
-        create: vi.fn().mockResolvedValue({ id: 'lot-enfant' }),
-        update: vi.fn(),
+        findUniqueOrThrow: vi.fn().mockResolvedValue({
+          id: 'lot-p1',
+          organization_id: activeOrgId,
+          version: 1,
+        }),
+        create: vi
+          .fn()
+          .mockResolvedValue({ id: 'lot-enfant', quantite_actuelle: 50, statut: 'EN_STOCK' }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
       transformation: {
         create: vi.fn().mockResolvedValue({ id: 'trans-1' }),
@@ -149,6 +169,9 @@ describe('TransformationService', () => {
         create: vi.fn(),
       },
       batch_Mouvement: {
+        create: vi.fn(),
+      },
+      ePCIS_Event: {
         create: vi.fn(),
       },
     };
@@ -174,13 +197,15 @@ describe('TransformationService', () => {
     expect(result).toBeDefined();
     expect(mockTx.batch.create).toHaveBeenCalled();
     expect(mockTx.transformation.create).toHaveBeenCalled();
-    expect(mockTx.batch.update).toHaveBeenCalledWith(
+    expect(mockTx.batch.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'lot-p1' },
-        data: expect.objectContaining({
-          quantite_actuelle: { decrement: 30 },
-        }),
+        where: {
+          id: 'lot-p1',
+          organization_id: activeOrgId,
+          version: 1,
+        },
       })
     );
+    expect(mockTx.ePCIS_Event.create).toHaveBeenCalled();
   });
 });

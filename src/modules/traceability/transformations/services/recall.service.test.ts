@@ -3,6 +3,7 @@ import { recallService } from './recall.service';
 import { genealogyService } from './genealogy.service';
 import { prisma } from '../../../../shared/configs/prismaClient.config';
 import { Batch } from '@prisma/client';
+import { auditService } from '../../../../shared/utils/audit/audit.service';
 
 vi.mock('../../../../shared/configs/prismaClient.config', () => ({
   prisma: {
@@ -20,6 +21,12 @@ vi.mock('../../../../shared/configs/prismaClient.config', () => ({
 vi.mock('./genealogy.service', () => ({
   genealogyService: {
     getDownstream: vi.fn(),
+  },
+}));
+
+vi.mock('../../../../shared/utils/audit/audit.service', () => ({
+  auditService: {
+    logAction: vi.fn(),
   },
 }));
 
@@ -59,7 +66,10 @@ describe('RecallService', () => {
         id: { in: ['batch-root', 'batch-child-1', 'batch-child-2'] },
         organization_id: orgId,
       },
-      data: { statut: 'ALERTE' },
+      data: {
+        statut: 'ALERTE',
+        version: { increment: 1 },
+      },
     });
     expect(prisma.alert.create).toHaveBeenCalled();
   });
