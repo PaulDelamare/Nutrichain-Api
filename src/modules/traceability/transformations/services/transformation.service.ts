@@ -1,6 +1,7 @@
 import { prisma } from '../../../../shared/configs/prismaClient.config';
 import { APIError } from '../../../../shared/utils/errorHandler/APIError';
 import { Batch } from '@prisma/client';
+import { auditService } from '../../../../shared/utils/audit/audit.service';
 
 export interface TransformationInput {
   organization_id: string;
@@ -116,7 +117,29 @@ export const transformationService = {
       });
 
       // 4. Création des compositions et mise à jour des parents
-      for (const input of data.inputs) {
+      // TRI DES INPUTS par ID pour éviter les DEADLOCKS (verrouillage dans le même ordre par tous les threads)
+      const sortedInputs = [...data.inputs].sort((a, b) =>
+        a.id_lot_parent.localeCompare(b.id_lot_parent)
+      );
+
+      for (const input of sortedInputs) {
+        // RE-LECTURE DANS LA TRANSACTION pour garantir la version la plus fraîche (Optimistic Locking)
+        const currentParent = await tx.batch.findUniqueOrThrow({
+          where: { id: input.id_lot_parent, organization_id: data.organization_id },
+        });
+
+        // RE-VÉRIFICATION DU STATUT au moment du verrouillage (Sécurité Rappel de dernière seconde)
+        if (currentParent.statut === 'ALERTE') {
+          throw new APIError(400, {
+            error: [
+              {
+                field: 'inputs',
+                message: `Le lot parent ${input.id_lot_parent} vient d'être bloqué (ALERTE) et ne peut plus être transformé.`,
+              },
+            ],
+          });
+        }
+
         // Enregistrement du lien de généalogie
         await tx.transformationComposition.create({
           data: {
@@ -128,15 +151,33 @@ export const transformationService = {
           },
         });
 
-        // Déduction du stock sur le parent
+        // Déduction du stock sur le parent avec Verrouillage Optimiste (version)
+        // On utilise updateMany car Prisma update exige un identifiant unique (id seul)
         const isExhausted = input.lot_parent_epuise;
-        await tx.batch.update({
-          where: { id: input.id_lot_parent },
+
+        const updateResult = await tx.batch.updateMany({
+          where: {
+            id: input.id_lot_parent,
+            organization_id: data.organization_id,
+            version: currentParent.version, // Utilisation de la version fraîche lue dans la tx
+          },
           data: {
             quantite_actuelle: { decrement: input.quantite_prelevee },
             statut: isExhausted ? 'EPUISE' : 'EN_STOCK',
+            version: { increment: 1 }, // Incrément de version à chaque mutation
           },
         });
+
+        if (updateResult.count === 0) {
+          throw new APIError(409, {
+            error: [
+              {
+                field: 'inputs',
+                message: `Conflit de modification sur le lot ${input.id_lot_parent} (Race Condition détectée). Veuillez réessayer.`,
+              },
+            ],
+          });
+        }
 
         // Mouvement de stock (Sortie pour transformation)
         await tx.batch_Mouvement.create({
@@ -149,6 +190,20 @@ export const transformationService = {
             id_user: data.created_by,
           },
         });
+
+        // Audit WORM : Tracé de la consommation du parent
+        await auditService.logAction(
+          {
+            organizationId: data.organization_id,
+            userId: data.created_by,
+            action: 'TRANSFORM_CONSUME',
+            entity: 'Batch',
+            entityId: input.id_lot_parent,
+            oldValue: { quantite: currentParent.quantite_actuelle, statut: currentParent.statut },
+            newValue: { quantite: updateResult.quantite_actuelle, statut: updateResult.statut },
+          },
+          tx
+        );
       }
 
       // 5. Mouvement de stock pour le nouveau lot (Entrée par transformation)
@@ -162,6 +217,37 @@ export const transformationService = {
           id_user: data.created_by,
         },
       });
+
+      // 6. ENREGISTREMENT EVENEMENT EPCIS GS1 (Interopérabilité Internationale)
+      await tx.ePCIS_Event.create({
+        data: {
+          event_time: new Date(),
+          event_type: 'TransformationEvent',
+          related_entity: 'Transformation',
+          related_id: transformation.id,
+          payload: {
+            transformationID: transformation.id,
+            inputEPCList: data.inputs.map((i) => i.id_lot_parent),
+            outputEPCList: [lotEnfant.id],
+            bizStep: 'urn:epcglobal:cbv:bizstep:transforming',
+            disposition: 'urn:epcglobal:cbv:disp:in_progress',
+            readPoint: data.id_materiel,
+          },
+        },
+      });
+
+      // Audit WORM : Tracé de la création du lot enfant
+      await auditService.logAction(
+        {
+          organizationId: data.organization_id,
+          userId: data.created_by,
+          action: 'TRANSFORM_CREATE',
+          entity: 'Batch',
+          entityId: lotEnfant.id,
+          newValue: { produit: data.id_produit_fini, quantite: data.quantite_produite },
+        },
+        tx
+      );
 
       return {
         transformation_id: transformation.id,

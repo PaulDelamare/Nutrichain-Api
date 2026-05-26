@@ -37,9 +37,11 @@ export const auditService = {
       );
       const lastLog = lastLogs.length > 0 ? lastLogs[0] : null;
 
-      const prevHash = lastLog ? lastLog.signature_hash : '0000000000000000000000000000000000000000000000000000000000000000';
+      const prevHash = lastLog
+        ? lastLog.signature_hash
+        : '0000000000000000000000000000000000000000000000000000000000000000';
 
-      // 2. Préparer les données pour le hash (incluant l'organizationId pour le chaînage)
+      // 2. Préparer les données pour le hash (incluant l'organizationId, prevHash et un timestamp précis pour l'unicité)
       const dataToHash = JSON.stringify({
         organizationId: params.organizationId,
         userId: params.userId || 'system',
@@ -49,13 +51,11 @@ export const auditService = {
         oldValue: params.oldValue,
         newValue: params.newValue,
         prevHash: prevHash,
+        timestamp: new Date().toISOString(),
       });
 
       // 3. Calculer le signature_hash
-      const signatureHash = crypto
-        .createHash('sha256')
-        .update(dataToHash)
-        .digest('hex');
+      const signatureHash = crypto.createHash('sha256').update(dataToHash).digest('hex');
 
       // 4. Créer l'entrée
       const log = await db.audit_Log.create({

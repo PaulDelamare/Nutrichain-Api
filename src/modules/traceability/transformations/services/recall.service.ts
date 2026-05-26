@@ -2,6 +2,7 @@ import { prisma } from '../../../../shared/configs/prismaClient.config';
 import { genealogyService } from './genealogy.service';
 import { APIError } from '../../../../shared/utils/errorHandler/APIError';
 import { logger } from '../../../../shared/utils/logger/logger';
+import { auditService } from '../../../../shared/utils/audit/audit.service';
 
 export interface RecallResult {
   blockedBatchesCount: number;
@@ -31,11 +32,11 @@ export const recallService = {
         });
       }
 
-      // 2. Récupérer toute la descendance
-      const descendants = await genealogyService.getDownstream(batchId, organizationId);
+      // 2. Récupérer toute la descendance en passant la transaction active (tx)
+      const descendants = await genealogyService.getDownstream(batchId, organizationId, tx);
       const allImpactedIds = [batchId, ...descendants.map((b) => b.id)];
 
-      // 3. Mise à jour massive des statuts
+      // 3. Mise à jour massive des statuts et incrémentation de la version pour invalider les transactions en cours
       await tx.batch.updateMany({
         where: {
           id: { in: allImpactedIds },
@@ -43,6 +44,7 @@ export const recallService = {
         },
         data: {
           statut: 'ALERTE',
+          version: { increment: 1 },
         },
       });
 
@@ -57,6 +59,25 @@ export const recallService = {
           related_id: batchId,
         },
       });
+
+      // 5. Audit WORM (Immuable) : Tracé légal du rappel
+      await auditService.logAction(
+        {
+          organizationId: organizationId,
+          userId: userId,
+          action: 'BATCH_RECALL_TRIGGERED',
+          entity: 'Batch',
+          entityId: batchId,
+          oldValue: { statut: sourceBatch.statut },
+          newValue: {
+            statut: 'ALERTE',
+            reason,
+            impactedCount: allImpactedIds.length,
+            impactedIds: allImpactedIds,
+          },
+        },
+        tx
+      );
 
       logger.warn(
         `[RECALL] Rappel déclenché par ${userId} pour le lot ${batchId}. ${allImpactedIds.length} lots bloqués.`

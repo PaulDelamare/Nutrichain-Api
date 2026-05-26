@@ -169,6 +169,9 @@ model EPCIS_Event {
   related_entity String
   related_id     String
   payload        Json
+
+  @@index([related_entity, related_id])
+  @@index([event_time])
 }
 
 model EPCIS_Aggregation_Event {
@@ -281,6 +284,8 @@ model Transformation {
 
   compositions TransformationComposition[]
   mouvements   Batch_Mouvement[]
+
+  @@index([id_lot_enfant])
 }
 
 model TransformationComposition {
@@ -294,6 +299,7 @@ model TransformationComposition {
   note              String?
 
   @@id([id_transformation, id_lot_parent])
+  @@index([id_lot_parent])
 }
 
 // --- ALERTE & AUDIT WORM ---
