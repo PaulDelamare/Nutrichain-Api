@@ -42,7 +42,35 @@ async function main() {
     }
   });
 
-  // 2. Création de produits (Catalogue)
+  // 2.a Fournisseur et client par défaut (utiles pour les flows Receipts/Shipments)
+  // UUIDs stables hard-codés pour permettre l'upsert idempotent ET satisfaire la validation UUID côté API.
+  const SUPPLIER_ID = '11111111-1111-4111-8111-111111111111';
+  const CUSTOMER_ID = '22222222-2222-4222-8222-222222222222';
+
+  const supplier = await prisma.supplier.upsert({
+    where: { id: SUPPLIER_ID },
+    update: {},
+    create: {
+      id: SUPPLIER_ID,
+      organization_id: usine.id,
+      nom_ferme: 'Ferme Bio de Paris',
+      type_produit: 'Lait cru',
+      adresse_siege: '1 rue des Champs, 75001 Paris',
+    },
+  });
+
+  const customer = await prisma.customer.upsert({
+    where: { id: CUSTOMER_ID },
+    update: {},
+    create: {
+      id: CUSTOMER_ID,
+      organization_id: usine.id,
+      nom_enseigne: 'Supermarché Central',
+      adresse_livraison: '50 avenue de la Distribution, 75010 Paris',
+    },
+  });
+
+  // 2.b Création de produits (Catalogue)
   const milk = await prisma.product.create({
     data: {
       organization_id: usine.id,
@@ -104,7 +132,38 @@ async function main() {
     },
   });
 
+  // 5. Invitation pré-pending pour permettre un sign-up de dev sans gymnastique
+  // (sans cette invitation, le guardSignUp refuse l'inscription puisque l'admin du seed
+  // existe déjà → on n'est plus "premier user"). L'email cible accepte une connexion
+  // immédiate via Better-Auth Sign Up, et le hook auth.config rattache automatiquement
+  // le nouveau user à l'organisation usine-laitiere-paris comme owner.
+  const DEV_INVITATION_ID = '33333333-3333-4333-8333-333333333333';
+  const DEV_INVITATION_EMAIL = 'first.admin@nutrichain.local';
+  await prisma.invitation.upsert({
+    where: { id: DEV_INVITATION_ID },
+    update: {
+      status: 'pending',
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+    },
+    create: {
+      id: DEV_INVITATION_ID,
+      organizationId: usine.id,
+      email: DEV_INVITATION_EMAIL,
+      role: 'owner',
+      status: 'pending',
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      inviterId: adminUser.id,
+    },
+  });
+
   logger.info('✅ Seeding finished.');
+  logger.info(`   org_id=${usine.id}`);
+  logger.info(`   admin_user_id=${adminUser.id}`);
+  logger.info(`   supplier_id=${supplier.id}`);
+  logger.info(`   customer_id=${customer.id}`);
+  logger.info(`   product_id (milk)=${milk.id}`);
+  logger.info(`   product_id (butter)=${butter.id}`);
+  logger.info(`   dev invitation pending pour: ${DEV_INVITATION_EMAIL} (role owner)`);
 }
 
 main()
