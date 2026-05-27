@@ -3,6 +3,8 @@
 **Date :** 24 Mai 2026
 **Statut de la branche :** 90% Opérationnelle (Cœur métier validé).
 
+> **Suite — 27 Mai 2026** : session de durcissement complète menée sur cette branche. 24 commits, 126 tests verts, 0 bug bloquant, premier flow E2E live validé. Détails et trace audit : `13_SESSION_HARDENING_2026-05-27.md`.
+
 ---
 
 ## ✅ RÉALISATIONS DE LA SESSION

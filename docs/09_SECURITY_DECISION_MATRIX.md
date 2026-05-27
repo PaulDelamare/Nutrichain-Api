@@ -1,5 +1,7 @@
 # Matrice de Sécurité: Décisions d'Accès par Scénario
 
+> **Note 2026-05-27** : la matrice ci-dessous reflète l'état pré-session de durcissement. Plusieurs points ont été modifiés (suppression du bypass `x-api-key` dans `verifyBatchAccess`/`verifyReceiptAccess`, résolution de l'`activeOrgId` depuis `API_KEY_ORG_ID` env au lieu du header `x-org-id`, filtre statut sur le public scan B2C). Voir `13_SESSION_HARDENING_2026-05-27.md` pour la liste des changements.
+
 ## 🎯 Vue d'Ensemble
 
 Ce document trace les décisions de sécurité **exacts** pour chaque route et chaque scénario (B2B vs Web, admin vs operator, etc.).
