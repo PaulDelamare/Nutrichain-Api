@@ -324,7 +324,7 @@ model Alert {
 model Audit_Log {
   id              Int          @id @default(autoincrement())
   organization_id String
-  organization    Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  organization    Organization @relation(fields: [organization_id], references: [id], onDelete: Restrict)
   id_user         String?
   action          String
   entity          String
