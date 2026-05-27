@@ -42,6 +42,36 @@ describe('TransformationService', () => {
     vi.clearAllMocks();
   });
 
+  const buildHappyMockTx = (overrides: { batch?: Record<string, unknown> } = {}) => ({
+    batch: {
+      findFirst: vi.fn().mockResolvedValue({
+        id: 'lot-p1',
+        organization_id: activeOrgId,
+        quantite_actuelle: { toNumber: () => 100 },
+        unite_code: 'KG',
+        statut: 'EN_STOCK',
+        version: 1,
+      }),
+      findUniqueOrThrow: vi.fn().mockResolvedValue({
+        id: 'lot-p1',
+        organization_id: activeOrgId,
+        version: 1,
+        quantite_actuelle: {
+          toNumber: () => 100,
+          minus: (n: number) => ({ toNumber: () => 100 - n }),
+        },
+        statut: 'EN_STOCK',
+      }),
+      create: vi.fn().mockResolvedValue({ id: 'lot-enfant' }),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      ...overrides.batch,
+    },
+    transformation: { create: vi.fn().mockResolvedValue({ id: 'trans-1' }) },
+    transformationComposition: { create: vi.fn() },
+    batch_Mouvement: { create: vi.fn() },
+    ePCIS_Event: { create: vi.fn() },
+  });
+
   it('doit échouer si un lot parent est introuvable ou appartient à une autre organisation', async () => {
     vi.mocked(prisma.$transaction).mockImplementation(
       (callback: (tx: unknown) => Promise<unknown>) => callback(prisma)
@@ -143,44 +173,7 @@ describe('TransformationService', () => {
   });
 
   it('doit créer une transformation et un lot enfant avec succès', async () => {
-    const mockTx = {
-      batch: {
-        findFirst: vi.fn().mockResolvedValue({
-          id: 'lot-p1',
-          organization_id: activeOrgId,
-          quantite_actuelle: { toNumber: () => 100 },
-          unite_code: 'KG',
-          statut: 'EN_STOCK',
-          version: 1,
-        }),
-        findUniqueOrThrow: vi.fn().mockResolvedValue({
-          id: 'lot-p1',
-          organization_id: activeOrgId,
-          version: 1,
-          quantite_actuelle: {
-            toNumber: () => 100,
-            minus: (n: number) => ({ toNumber: () => 100 - n }),
-          },
-          statut: 'EN_STOCK',
-        }),
-        create: vi
-          .fn()
-          .mockResolvedValue({ id: 'lot-enfant', quantite_actuelle: 50, statut: 'EN_STOCK' }),
-        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
-      },
-      transformation: {
-        create: vi.fn().mockResolvedValue({ id: 'trans-1' }),
-      },
-      transformationComposition: {
-        create: vi.fn(),
-      },
-      batch_Mouvement: {
-        create: vi.fn(),
-      },
-      ePCIS_Event: {
-        create: vi.fn(),
-      },
-    };
+    const mockTx = buildHappyMockTx();
 
     vi.mocked(prisma.$transaction).mockImplementation(
       (callback: (tx: unknown) => Promise<unknown>) => callback(mockTx)
@@ -216,34 +209,7 @@ describe('TransformationService', () => {
   });
 
   it("doit enregistrer dans l'audit les valeurs réelles du lot consommé (Bug 2)", async () => {
-    const mockTx = {
-      batch: {
-        findFirst: vi.fn().mockResolvedValue({
-          id: 'lot-p1',
-          organization_id: activeOrgId,
-          quantite_actuelle: { toNumber: () => 100 },
-          unite_code: 'KG',
-          statut: 'EN_STOCK',
-          version: 1,
-        }),
-        findUniqueOrThrow: vi.fn().mockResolvedValue({
-          id: 'lot-p1',
-          organization_id: activeOrgId,
-          version: 1,
-          quantite_actuelle: {
-            toNumber: () => 100,
-            minus: (n: number) => ({ toNumber: () => 100 - n }),
-          },
-          statut: 'EN_STOCK',
-        }),
-        create: vi.fn().mockResolvedValue({ id: 'lot-enfant' }),
-        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
-      },
-      transformation: { create: vi.fn().mockResolvedValue({ id: 'trans-1' }) },
-      transformationComposition: { create: vi.fn() },
-      batch_Mouvement: { create: vi.fn() },
-      ePCIS_Event: { create: vi.fn() },
-    };
+    const mockTx = buildHappyMockTx();
 
     vi.mocked(prisma.$transaction).mockImplementation(
       (callback: (tx: unknown) => Promise<unknown>) => callback(mockTx)
@@ -273,34 +239,9 @@ describe('TransformationService', () => {
   });
 
   it('doit lever APIError 409 si la version du lot parent a changé (optimistic locking)', async () => {
-    const mockTx = {
-      batch: {
-        findFirst: vi.fn().mockResolvedValue({
-          id: 'lot-p1',
-          organization_id: activeOrgId,
-          quantite_actuelle: { toNumber: () => 100 },
-          unite_code: 'KG',
-          statut: 'EN_STOCK',
-          version: 1,
-        }),
-        findUniqueOrThrow: vi.fn().mockResolvedValue({
-          id: 'lot-p1',
-          organization_id: activeOrgId,
-          version: 1,
-          quantite_actuelle: {
-            toNumber: () => 100,
-            minus: (n: number) => ({ toNumber: () => 100 - n }),
-          },
-          statut: 'EN_STOCK',
-        }),
-        create: vi.fn().mockResolvedValue({ id: 'lot-enfant' }),
-        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
-      },
-      transformation: { create: vi.fn().mockResolvedValue({ id: 'trans-1' }) },
-      transformationComposition: { create: vi.fn() },
-      batch_Mouvement: { create: vi.fn() },
-      ePCIS_Event: { create: vi.fn() },
-    };
+    const mockTx = buildHappyMockTx({
+      batch: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
+    });
 
     vi.mocked(prisma.$transaction).mockImplementation(
       (callback: (tx: unknown) => Promise<unknown>) => callback(mockTx)
@@ -329,34 +270,7 @@ describe('TransformationService', () => {
   });
 
   it("doit marquer le lot comme EPUISE dans l'audit si lot_parent_epuise (Bug 2)", async () => {
-    const mockTx = {
-      batch: {
-        findFirst: vi.fn().mockResolvedValue({
-          id: 'lot-p1',
-          organization_id: activeOrgId,
-          quantite_actuelle: { toNumber: () => 100 },
-          unite_code: 'KG',
-          statut: 'EN_STOCK',
-          version: 1,
-        }),
-        findUniqueOrThrow: vi.fn().mockResolvedValue({
-          id: 'lot-p1',
-          organization_id: activeOrgId,
-          version: 1,
-          quantite_actuelle: {
-            toNumber: () => 100,
-            minus: (n: number) => ({ toNumber: () => 100 - n }),
-          },
-          statut: 'EN_STOCK',
-        }),
-        create: vi.fn().mockResolvedValue({ id: 'lot-enfant' }),
-        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
-      },
-      transformation: { create: vi.fn().mockResolvedValue({ id: 'trans-1' }) },
-      transformationComposition: { create: vi.fn() },
-      batch_Mouvement: { create: vi.fn() },
-      ePCIS_Event: { create: vi.fn() },
-    };
+    const mockTx = buildHappyMockTx();
 
     vi.mocked(prisma.$transaction).mockImplementation(
       (callback: (tx: unknown) => Promise<unknown>) => callback(mockTx)
