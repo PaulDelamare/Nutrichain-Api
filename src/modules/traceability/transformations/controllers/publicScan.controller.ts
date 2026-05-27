@@ -12,9 +12,9 @@ import { APIError } from '../../../../shared/utils/errorHandler/APIError';
 export const publicScanBatch = catchAsync(async (req: Request, res: Response) => {
   const { id } = req.params;
 
-  // 1. Trouver le lot avec limitation rigoureuse des données remontées (Sécurité B2C)
-  const batch = await prisma.batch.findUnique({
-    where: { id },
+  // Scan B2C : seuls les lots déjà commercialisés (EXPEDIE) ou en rappel (ALERTE) sont exposés
+  const batch = await prisma.batch.findFirst({
+    where: { id, statut: { in: ['EXPEDIE', 'ALERTE'] } },
     include: {
       produit: {
         select: { nom: true, code_gtin: true },
