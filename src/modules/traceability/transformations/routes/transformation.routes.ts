@@ -21,7 +21,7 @@ const publicScanLimiter = rateLimit({
  * @swagger
  * /api/public/scan/{id}:
  *   get:
- *     summary: [B2C] Scanner un lot pour voir son origine
+ *     summary: "[B2C] Scanner un lot pour voir son origine"
  *     description: Route publique pour les consommateurs finaux.
  *     tags: [Public]
  *     parameters:
