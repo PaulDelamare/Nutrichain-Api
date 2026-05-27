@@ -8,6 +8,7 @@ import { requestLog, rotateLog } from '../utils/logFunction/logFunction';
 import { logger } from '../utils/logger/logger';
 import createRateLimiter from '../middlewares/rateLimiter/rateLimiter.middleware';
 import { sanitizeRequestData } from '../middlewares/sanitizeData/sanitizeData.middleware';
+import { requestIdMiddleware } from '../middlewares/requestId.middleware';
 
 // ! FONCTION
 
@@ -29,6 +30,8 @@ import { sanitizeRequestData } from '../middlewares/sanitizeData/sanitizeData.mi
 
 const configureMiddleware = (app: express.Application) => {
   dotenv.config();
+
+  app.use(requestIdMiddleware);
 
   app.use(express.json());
 
@@ -64,7 +67,7 @@ const configureMiddleware = (app: express.Application) => {
     rotateLog();
     requestLog(req, res, next);
 
-    logger.info(` ${req.method} - ${req.url} - IP:  ${req.ip}`);
+    logger.info(`${req.method} - ${req.url} - IP: ${req.ip}`, { requestId: req.requestId });
   });
 };
 
