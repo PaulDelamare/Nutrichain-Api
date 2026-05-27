@@ -67,17 +67,14 @@ vi.mock('../services/receipt.service', () => ({
   },
 }));
 
-// Mock Prisma
-vi.mock('../../../../shared/configs/prismaClient.config', () => ({
-  prisma: {
-    receipt: {
-      findFirst: vi.fn(),
-    },
-    batch: {
-      findFirst: vi.fn(),
-    },
-  },
-}));
+// Mock Prisma — partagé entre `prisma` (services) et `bdd` (better-auth via auth.config)
+vi.mock('../../../../shared/configs/prismaClient.config', () => {
+  const mock = {
+    receipt: { findFirst: vi.fn() },
+    batch: { findFirst: vi.fn() },
+  };
+  return { prisma: mock, bdd: mock };
+});
 
 describe('Logistics - Receipts Routes', () => {
   beforeEach(() => {

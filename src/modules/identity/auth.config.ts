@@ -3,7 +3,7 @@ import { betterAuth } from 'better-auth';
 import { APIError as BetterAuthError } from 'better-auth/api';
 import { createAuthMiddleware } from 'better-auth/api';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
-import { PrismaClient } from '@prisma/client';
+import { bdd as prisma } from '../../shared/configs/prismaClient.config';
 import { organization, twoFactor, bearer } from 'better-auth/plugins';
 import { APIError } from '../../shared/utils/errorHandler/APIError';
 import { sendEmail } from '../../shared/utils/mailer/mailer';
@@ -12,8 +12,6 @@ import { InvitationEmail } from '../../shared/utils/mailer/templates/InvitationE
 import { ResetPasswordEmail } from '../../shared/utils/mailer/templates/ResetPasswordEmail';
 import React from 'react';
 import crypto from 'crypto';
-
-const prisma = new PrismaClient();
 
 export const auth = betterAuth({
   baseURL: process.env.API_URL || 'http://localhost:3000',
