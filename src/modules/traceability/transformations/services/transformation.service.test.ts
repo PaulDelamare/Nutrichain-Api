@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { transformationService } from './transformation.service';
 import { prisma } from '../../../../shared/configs/prismaClient.config';
 import { APIError } from '../../../../shared/utils/errorHandler/APIError';
+import { auditService } from '../../../../shared/utils/audit/audit.service';
 
 vi.mock('../../../../shared/configs/prismaClient.config', () => ({
   prisma: {
@@ -156,6 +157,11 @@ describe('TransformationService', () => {
           id: 'lot-p1',
           organization_id: activeOrgId,
           version: 1,
+          quantite_actuelle: {
+            toNumber: () => 100,
+            minus: (n: number) => ({ toNumber: () => 100 - n }),
+          },
+          statut: 'EN_STOCK',
         }),
         create: vi
           .fn()
@@ -207,5 +213,119 @@ describe('TransformationService', () => {
       })
     );
     expect(mockTx.ePCIS_Event.create).toHaveBeenCalled();
+  });
+
+  it("doit enregistrer dans l'audit les valeurs réelles du lot consommé (Bug 2)", async () => {
+    const mockTx = {
+      batch: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'lot-p1',
+          organization_id: activeOrgId,
+          quantite_actuelle: { toNumber: () => 100 },
+          unite_code: 'KG',
+          statut: 'EN_STOCK',
+          version: 1,
+        }),
+        findUniqueOrThrow: vi.fn().mockResolvedValue({
+          id: 'lot-p1',
+          organization_id: activeOrgId,
+          version: 1,
+          quantite_actuelle: {
+            toNumber: () => 100,
+            minus: (n: number) => ({ toNumber: () => 100 - n }),
+          },
+          statut: 'EN_STOCK',
+        }),
+        create: vi.fn().mockResolvedValue({ id: 'lot-enfant' }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      transformation: { create: vi.fn().mockResolvedValue({ id: 'trans-1' }) },
+      transformationComposition: { create: vi.fn() },
+      batch_Mouvement: { create: vi.fn() },
+      ePCIS_Event: { create: vi.fn() },
+    };
+
+    vi.mocked(prisma.$transaction).mockImplementation(
+      (callback: (tx: unknown) => Promise<unknown>) => callback(mockTx)
+    );
+
+    const data = {
+      organization_id: activeOrgId,
+      id_produit_fini: 'prod-fini',
+      id_materiel: 'mat-1',
+      quantite_produite: 50,
+      unite_code: 'KG',
+      created_by: userId,
+      inputs: [
+        { id_lot_parent: 'lot-p1', quantite_prelevee: 30, unite: 'KG', lot_parent_epuise: false },
+      ],
+    };
+
+    await transformationService.createTransformation(data);
+
+    expect(vi.mocked(auditService.logAction)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'TRANSFORM_CONSUME',
+        newValue: { quantite: 70, statut: 'EN_STOCK' },
+      }),
+      expect.anything()
+    );
+  });
+
+  it("doit marquer le lot comme EPUISE dans l'audit si lot_parent_epuise (Bug 2)", async () => {
+    const mockTx = {
+      batch: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'lot-p1',
+          organization_id: activeOrgId,
+          quantite_actuelle: { toNumber: () => 100 },
+          unite_code: 'KG',
+          statut: 'EN_STOCK',
+          version: 1,
+        }),
+        findUniqueOrThrow: vi.fn().mockResolvedValue({
+          id: 'lot-p1',
+          organization_id: activeOrgId,
+          version: 1,
+          quantite_actuelle: {
+            toNumber: () => 100,
+            minus: (n: number) => ({ toNumber: () => 100 - n }),
+          },
+          statut: 'EN_STOCK',
+        }),
+        create: vi.fn().mockResolvedValue({ id: 'lot-enfant' }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      transformation: { create: vi.fn().mockResolvedValue({ id: 'trans-1' }) },
+      transformationComposition: { create: vi.fn() },
+      batch_Mouvement: { create: vi.fn() },
+      ePCIS_Event: { create: vi.fn() },
+    };
+
+    vi.mocked(prisma.$transaction).mockImplementation(
+      (callback: (tx: unknown) => Promise<unknown>) => callback(mockTx)
+    );
+
+    const data = {
+      organization_id: activeOrgId,
+      id_produit_fini: 'prod-fini',
+      id_materiel: 'mat-1',
+      quantite_produite: 50,
+      unite_code: 'KG',
+      created_by: userId,
+      inputs: [
+        { id_lot_parent: 'lot-p1', quantite_prelevee: 100, unite: 'KG', lot_parent_epuise: true },
+      ],
+    };
+
+    await transformationService.createTransformation(data);
+
+    expect(vi.mocked(auditService.logAction)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'TRANSFORM_CONSUME',
+        newValue: { quantite: 0, statut: 'EPUISE' },
+      }),
+      expect.anything()
+    );
   });
 });

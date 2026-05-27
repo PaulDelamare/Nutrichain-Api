@@ -191,7 +191,11 @@ export const transformationService = {
           },
         });
 
-        // Audit WORM : Tracé de la consommation du parent
+        const newQuantite = currentParent.quantite_actuelle
+          .minus(input.quantite_prelevee)
+          .toNumber();
+        const newStatut = isExhausted ? 'EPUISE' : 'EN_STOCK';
+
         await auditService.logAction(
           {
             organizationId: data.organization_id,
@@ -199,8 +203,11 @@ export const transformationService = {
             action: 'TRANSFORM_CONSUME',
             entity: 'Batch',
             entityId: input.id_lot_parent,
-            oldValue: { quantite: currentParent.quantite_actuelle, statut: currentParent.statut },
-            newValue: { quantite: updateResult.quantite_actuelle, statut: updateResult.statut },
+            oldValue: {
+              quantite: currentParent.quantite_actuelle.toNumber(),
+              statut: currentParent.statut,
+            },
+            newValue: { quantite: newQuantite, statut: newStatut },
           },
           tx
         );
