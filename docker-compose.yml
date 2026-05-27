@@ -1,0 +1,36 @@
+services:
+  postgres:
+    image: postgres:15
+    container_name: nutrichain-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: nutrichain
+      POSTGRES_PASSWORD: nutrichain-pwd
+      POSTGRES_DB: nutrichain_db
+    ports:
+      - '5433:5432'
+    volumes:
+      - nutrichain_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U nutrichain -d nutrichain_db']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mongo:
+    image: mongo:7
+    container_name: nutrichain-mongo
+    restart: unless-stopped
+    ports:
+      - '27017:27017'
+    volumes:
+      - nutrichain_mongo_data:/data/db
+    healthcheck:
+      test: ['CMD', 'mongosh', '--eval', "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  nutrichain_pg_data:
+  nutrichain_mongo_data:

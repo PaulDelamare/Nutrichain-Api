@@ -76,6 +76,25 @@ Ce dépôt contient une implémentation API pour NutriChain. Le code est organis
 npm install
 ```
 
+### Base de données (Docker)
+
+```bash
+# 1. Lancer Postgres (port 5433) + MongoDB
+npm run db:up
+
+# 2. Créer les tables + seed
+npm run db:setup
+
+# Reset complet (supprime les volumes)
+npm run db:reset
+```
+
+Compte démo créé par le seed :
+- Email : `nutrichain@test.fr`
+- Mot de passe : `NutriChain123!`
+
+> Postgres écoute sur le **port 5433** pour éviter les conflits avec une instance locale.
+
 ### Appliquer les migrations
 
 ```bash

@@ -9,6 +9,7 @@ import authRoutes from './modules/identity/routes/auth.routes';
 import catalogRoutes from './modules/traceability/catalog/routes/catalog.routes';
 import receiptRoutes from './modules/logistics/receipts/routes/receipt.routes';
 import shipmentRoutes from './modules/logistics/shipments/routes/shipment.routes';
+import organizationRoutes from './modules/organization/routes/organization.routes';
 import configureMiddleware from './shared/configs/apiConfigMiddleware.config';
 import { globalErrorHandler } from './shared/utils/errorHandler/errorHandler';
 
@@ -32,6 +33,7 @@ app.use('/api', shipmentRoutes);
 app.use('/api', helloRoutes);
 app.use('/api', healthRoutes);
 app.use('/api', telemetryRoutes);
+app.use('/api', organizationRoutes);
 
 // ! Global Error Handler (Doit être le dernier middleware)
 app.use(globalErrorHandler);

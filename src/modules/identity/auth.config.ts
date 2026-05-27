@@ -1,7 +1,6 @@
 import { logger } from '../../shared/utils/logger/logger';
 import { betterAuth } from 'better-auth';
-import { APIError as BetterAuthError } from 'better-auth/api';
-import { createAuthMiddleware } from 'better-auth/api';
+import { APIError as BetterAuthError, createAuthMiddleware } from 'better-auth/api';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
 import { PrismaClient } from '@prisma/client';
 import { organization, twoFactor, bearer } from 'better-auth/plugins';
@@ -11,12 +10,15 @@ import { render } from '@react-email/render';
 import { InvitationEmail } from '../../shared/utils/mailer/templates/InvitationEmail';
 import { ResetPasswordEmail } from '../../shared/utils/mailer/templates/ResetPasswordEmail';
 import React from 'react';
-import crypto from 'crypto';
+import crypto from 'node:crypto';
 
 const prisma = new PrismaClient();
 
+const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+
 export const auth = betterAuth({
   baseURL: process.env.API_URL || 'http://localhost:3000',
+  trustedOrigins: [frontendUrl, process.env.API_URL || 'http://localhost:3000'],
   // 🛡️ Permet d'accepter les requêtes d'API externes (Postman, Bruno, et IoT) qui n'ont pas pu générer automatiquement d'Origin via un navigateur Moteur.
   advanced: {
     crossSubDomainCookies: {
@@ -31,7 +33,7 @@ export const auth = betterAuth({
       // Si le retour est une erreur API, on peut la traduire
       if (error instanceof BetterAuthError) {
         const expectedError = error as Error & { body?: { code?: string }; statusCode?: number };
-        let message: string = error.message || "Erreur d'authentification";
+        let message: string = expectedError.message || "Erreur d'authentification";
 
         const errCode = expectedError.body?.code;
 

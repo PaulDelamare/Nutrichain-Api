@@ -1,6 +1,6 @@
 import { NextFunction, Request, Response } from 'express';
 import { APIError } from '../errorHandler/APIError';
-import { AuthenticatedRequest } from '../../../modules/identity/types/auth.types';
+import { AuthenticatedRequest, AuthContext } from '../../../modules/identity/types/auth.types';
 
 /**
  * Générateur de middleware pour vérifier une clé API spécifique.

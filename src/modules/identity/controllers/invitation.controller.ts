@@ -59,7 +59,7 @@ export const generateInvitation = catchAsync(async (req: AuthenticatedRequest, r
       id: invitationId,
       email,
       role,
-      organizationId,
+      organizationId: activeOrgId,
       inviterId,
       expiresAt,
       status: 'pending',

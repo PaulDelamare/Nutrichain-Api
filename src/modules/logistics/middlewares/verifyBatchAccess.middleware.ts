@@ -12,42 +12,43 @@ import { catchAsync } from '../../../shared/utils/errorHandler/catchAsync';
  * - Vérifier que l'utilisateur Web peut accéder à ce lot (multi-tenant)
  * - Rejeter les tentatives de cross-organization access
  */
-export const verifyBatchAccess = catchAsync(async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
-	const batchId = req.params.id as string;
-	const activeOrgId = req.activeOrgId;
+import { catchAsync } from '../../../shared/utils/errorHandler/catchAsync';
+import { resolveActiveOrgId } from '../../identity/utils/resolveActiveOrgId';
 
-	const apiKey = req.header('x-api-key');
-	if (apiKey) return next();
+export const verifyBatchAccess = catchAsync(
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+    const batchId = req.params.id as string;
 
-	if (!activeOrgId) {
-		throw new APIError(400, {
-			error: [{ field: 'organization', message: 'Organisation active manquante.' }],
-		});
-	}
+    const apiKey = req.header('x-api-key');
+    if (apiKey) return next();
 
-	// ===== ÉTAPE 1: Récupérer le lot =====
-	const batch = await prisma.batch.findFirst({
-		where: { 
-			id: batchId,
-			organization_id: activeOrgId 
-		},
-		include: {
-			product: true,
-			unit: true
-		},
-	});
+    const activeOrgId = req.activeOrgId ?? (await resolveActiveOrgId(req));
+    req.activeOrgId = activeOrgId;
 
-	// ===== ÉTAPE 2: Vérifier existence et isolation =====
-	if (!batch) {
-		throw new APIError(404, {
-			error: [{ field: 'batch', message: 'Lot introuvable dans votre organisation.' }],
-		});
-	}
+    // ===== ÉTAPE 1: Récupérer le lot =====
+    const batch = await prisma.batch.findFirst({
+      where: {
+        id: batchId,
+        organization_id: activeOrgId,
+      },
+      include: {
+        produit: true,
+        unite: true,
+      },
+    });
 
-	// ✅ SUCCESS: Accès autorisé - Attacher le lot au contexte
-	req.batch = batch;
+    // ===== ÉTAPE 2: Vérifier existence et isolation =====
+    if (!batch) {
+      throw new APIError(404, {
+        error: [{ field: 'batch', message: 'Lot introuvable dans votre organisation.' }],
+      });
+    }
 
-	next();
-});
+    // ✅ SUCCESS: Accès autorisé - Attacher le lot au contexte
+    req.batch = batch;
+
+    next();
+  }
+);
 
 export default verifyBatchAccess;

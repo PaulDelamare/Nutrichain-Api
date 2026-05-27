@@ -3,6 +3,7 @@ import { auth } from '../auth.config';
 import { APIError } from '../../../shared/utils/errorHandler/APIError';
 import { AuthenticatedRequest, AuthUser, AuthSession } from '../types/auth.types';
 import { catchAsync } from '../../../shared/utils/errorHandler/catchAsync';
+import { resolveActiveOrgId } from '../utils/resolveActiveOrgId';
 
 /**
  * Middleware pour Exiger un Rôle Spécifique au sein de l'Organisation active.
@@ -22,13 +23,14 @@ export const requireOrgRole = (allowedRoles: string[]) => {
         });
       }
 
-      const activeOrgId = sessionPayload.session.activeOrganizationId;
+      req.auth = {
+        user: sessionPayload.user as AuthUser,
+        session: sessionPayload.session as AuthSession,
+      };
+      req.user = sessionPayload.user as AuthUser;
+      req.session = sessionPayload.session as AuthSession;
 
-      if (!activeOrgId) {
-        throw new APIError(400, {
-          error: [{ field: 'auth', message: "Vous n'avez pas sélectionné d'Organisation active." }],
-        });
-      }
+      const activeOrgId = await resolveActiveOrgId(req);
 
       const orgDetails = await auth.api.getFullOrganization({
         headers: new Headers(req.headers as Record<string, string>),

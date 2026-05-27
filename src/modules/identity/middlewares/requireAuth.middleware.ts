@@ -2,6 +2,8 @@ import { Response, NextFunction } from 'express';
 import { auth } from '../auth.config';
 import { APIError } from '../../../shared/utils/errorHandler/APIError';
 import { AuthenticatedRequest, AuthUser, AuthSession } from '../types/auth.types';
+
+export type { AuthenticatedRequest, AuthUser, AuthSession } from '../types/auth.types';
 import { catchAsync } from '../../../shared/utils/errorHandler/catchAsync';
 
 /**

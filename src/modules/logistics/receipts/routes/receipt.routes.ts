@@ -1,11 +1,11 @@
 ﻿import { Router } from 'express';
 import {
-createReceiptController,
-getReceiptStatsController,
-getReceiptByIdController,
-getBatchByIdController,
-getBatchLabelController,
-listReceiptsController,
+  createReceiptController,
+  getReceiptStatsController,
+  getReceiptByIdController,
+  getBatchByIdController,
+  getBatchLabelController,
+  listReceiptsController,
 } from '../controllers/receipt.controller';
 import { validateReceiptParams } from '../middlewares/validateReceipt.middleware';
 import { mixedAuth } from '../../../../shared/middlewares/mixedAuth';
@@ -43,11 +43,7 @@ router.get(
   getReceiptStatsController
 );
 
-router.get(
-  '/logistics/receipts',
-  mixedAuth(LOGISTICS_READ_ROLES),
-  listReceiptsController
-);
+router.get('/logistics/receipts', mixedAuth(LOGISTICS_READ_ROLES), listReceiptsController);
 
 router.get(
   '/logistics/receipts/:id',
@@ -56,16 +52,27 @@ router.get(
   getReceiptByIdController
 );
 
+// Rôles Better Auth (front web) + rôles métier logistique
+const BATCH_READ_ROLES = [
+  'owner',
+  'admin',
+  'member',
+  LOGISTICS_ROLES.VIEWER,
+  LOGISTICS_ROLES.OPERATOR,
+  LOGISTICS_ROLES.ADMIN,
+  LOGISTICS_ROLES.OWNER,
+];
+
 router.get(
   '/logistics/batches/:id',
-  mixedAuth(LOGISTICS_READ_ROLES),
+  mixedAuth(BATCH_READ_ROLES),
   verifyBatchAccess,
   getBatchByIdController
 );
 
 router.get(
   '/logistics/batches/:id/label',
-  mixedAuth(LOGISTICS_READ_ROLES),
+  mixedAuth(BATCH_READ_ROLES),
   verifyBatchAccess,
   getBatchLabelController
 );

@@ -47,6 +47,13 @@ export const batchService = {
       include: {
         produit: true,
         unite: true,
+        user: { select: { name: true, email: true } },
+        materiel: { include: { lieu: true } },
+        mouvements: {
+          orderBy: { created_at: 'desc' },
+          take: 10,
+          include: { user: { select: { name: true } } },
+        },
       },
     });
 
