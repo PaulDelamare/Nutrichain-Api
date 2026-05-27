@@ -1,5 +1,6 @@
 import { prisma } from '../src/shared/configs/prismaClient.config';
 import { auditService } from '../src/shared/utils/audit/audit.service';
+import { genealogyService } from '../src/modules/traceability/transformations/services/genealogy.service';
 import crypto from 'crypto';
 
 /**
@@ -15,6 +16,7 @@ import crypto from 'crypto';
  *   3. Public scan filtre EXPEDIE/ALERTE (Sec C)
  *   4. Chaîne WORM recompute exacte (WORM A)
  *   5. Audit_Log onDelete: Restrict (WORM B)
+ *   6. Généalogie CTE récursive (upstream + downstream + isolation tenant)
  */
 
 const API_BASE = process.env.API_BASE || 'http://localhost:3000';
@@ -349,6 +351,164 @@ async function scenario5_auditRestrict() {
   await prisma.organization.delete({ where: { id: sentinelOrgId } });
 }
 
+async function scenario6_genealogyCte(ctx: Fixtures) {
+  log('\n6️⃣  Généalogie via CTE récursive (upstream + downstream + isolation tenant)');
+
+  const stamp = Date.now();
+  const productMilkId = `e2e-gen-milk-${stamp}`;
+  const productPasteurizedId = `e2e-gen-pasteur-${stamp}`;
+  const productYogurtId = `e2e-gen-yogurt-${stamp}`;
+  const batchAId = `e2e-gen-batch-A-${stamp}`;
+  const batchBId = `e2e-gen-batch-B-${stamp}`;
+  const batchCId = `e2e-gen-batch-C-${stamp}`;
+  const materialId = `e2e-gen-equipment-${stamp}`;
+  const locationId = `e2e-gen-location-${stamp}`;
+  const transformationT1Id = `e2e-gen-trans-T1-${stamp}`;
+  const transformationT2Id = `e2e-gen-trans-T2-${stamp}`;
+
+  try {
+    await prisma.location.create({
+      data: {
+        id: locationId,
+        organization_id: ORG_ID!,
+        nom: 'Atelier E2E',
+        type: 'PRODUCTION',
+      },
+    });
+    await prisma.equipment.create({
+      data: {
+        id: materialId,
+        organization_id: ORG_ID!,
+        nom: 'Cuve E2E',
+        type: 'CUVE',
+        id_lieu: locationId,
+      },
+    });
+
+    for (const [id, nom] of [
+      [productMilkId, 'Lait cru E2E'],
+      [productPasteurizedId, 'Lait pasteurisé E2E'],
+      [productYogurtId, 'Yaourt E2E'],
+    ] as const) {
+      await prisma.product.create({
+        data: {
+          id,
+          organization_id: ORG_ID!,
+          nom,
+          categorie: 'Test',
+          duree_conservation_defaut: 30,
+          seuil_alerte_stock: 1,
+          unite_reference: 'KG',
+        },
+      });
+    }
+
+    await prisma.batch.create({
+      data: {
+        id: batchAId,
+        organization_id: ORG_ID!,
+        id_produit: productMilkId,
+        unite_code: 'KG',
+        quantite_actuelle: 100,
+        quantite_base: 100,
+        statut: 'EN_STOCK',
+        created_by: ctx.userId,
+      },
+    });
+
+    const buildIntermediateBatch = async (id: string, productId: string) => {
+      await prisma.batch.create({
+        data: {
+          id,
+          organization_id: ORG_ID!,
+          id_produit: productId,
+          unite_code: 'KG',
+          quantite_actuelle: 50,
+          quantite_base: 50,
+          statut: 'EN_STOCK',
+          created_by: ctx.userId,
+        },
+      });
+    };
+
+    await buildIntermediateBatch(batchBId, productPasteurizedId);
+    await buildIntermediateBatch(batchCId, productYogurtId);
+
+    const buildTransformation = async (
+      id: string,
+      childBatchId: string,
+      childProductId: string,
+      parentBatchId: string
+    ) => {
+      await prisma.transformation.create({
+        data: {
+          id,
+          id_lot_enfant: childBatchId,
+          id_produit_fini: childProductId,
+          id_user: ctx.userId,
+          id_materiel: materialId,
+          statut: 'TERMINE',
+        },
+      });
+      await prisma.transformationComposition.create({
+        data: {
+          id_transformation: id,
+          id_lot_parent: parentBatchId,
+          quantite_prelevee: 50,
+          unite: 'KG',
+          lot_parent_epuise: false,
+        },
+      });
+    };
+
+    await buildTransformation(transformationT1Id, batchBId, productPasteurizedId, batchAId);
+    await buildTransformation(transformationT2Id, batchCId, productYogurtId, batchBId);
+
+    const ancestors = await genealogyService.getUpstream(batchCId, ORG_ID!);
+    const ancestorIds = ancestors.map((a) => a.id).sort();
+    const expectedAncestors = [batchAId, batchBId].sort();
+    if (JSON.stringify(ancestorIds) !== JSON.stringify(expectedAncestors)) {
+      fail(
+        `getUpstream(C) attendu [A, B], reçu [${ancestorIds.join(', ')}]`
+      );
+    }
+    ok('getUpstream(yaourt) → [lait pasteurisé, lait cru] (2 niveaux)');
+
+    const descendants = await genealogyService.getDownstream(batchAId, ORG_ID!);
+    const descendantIds = descendants.map((d) => d.id).sort();
+    const expectedDescendants = [batchBId, batchCId].sort();
+    if (JSON.stringify(descendantIds) !== JSON.stringify(expectedDescendants)) {
+      fail(
+        `getDownstream(A) attendu [B, C], reçu [${descendantIds.join(', ')}]`
+      );
+    }
+    ok('getDownstream(lait cru) → [lait pasteurisé, yaourt] (2 niveaux)');
+
+    const isolated = await genealogyService.getUpstream(batchCId, ctx.foreignOrgId);
+    if (isolated.length !== 0) {
+      fail(
+        `Isolation tenant cassée : getUpstream avec foreignOrgId a retourné ${isolated.length} résultats au lieu de 0`
+      );
+    }
+    ok(`getUpstream avec mauvaise org → [] (isolation tenant respectée)`);
+  } finally {
+    await prisma.transformationComposition.deleteMany({
+      where: { id_transformation: { in: [transformationT1Id, transformationT2Id] } },
+    });
+    await prisma.transformation.deleteMany({
+      where: { id: { in: [transformationT1Id, transformationT2Id] } },
+    });
+    await prisma.batch.deleteMany({
+      where: { id: { in: [batchAId, batchBId, batchCId] } },
+    });
+    await prisma.product.deleteMany({
+      where: { id: { in: [productMilkId, productPasteurizedId, productYogurtId] } },
+    });
+    await prisma.equipment.deleteMany({ where: { id: materialId } });
+    await prisma.location.deleteMany({ where: { id: locationId } });
+  }
+}
+
 async function cleanup(ctx: Fixtures) {
   log('\n🧹 Cleanup...');
   await prisma.batch.deleteMany({ where: { organization_id: ctx.foreignOrgId } });
@@ -366,6 +526,7 @@ async function main() {
     await scenario3_publicScanFilter(ctx);
     await scenario4_wormChain();
     await scenario5_auditRestrict();
+    await scenario6_genealogyCte(ctx);
     await cleanup(ctx);
     console.log('\n🎉 TOUS LES SCÉNARIOS E2E SÉCURITÉ ONT PASSÉ');
   } catch (err) {
