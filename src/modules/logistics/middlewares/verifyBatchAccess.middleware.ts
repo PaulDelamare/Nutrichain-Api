@@ -12,42 +12,41 @@ import { catchAsync } from '../../../shared/utils/errorHandler/catchAsync';
  * - Vérifier que l'utilisateur Web peut accéder à ce lot (multi-tenant)
  * - Rejeter les tentatives de cross-organization access
  */
-export const verifyBatchAccess = catchAsync(async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
-	const batchId = req.params.id as string;
-	const activeOrgId = req.activeOrgId;
+export const verifyBatchAccess = catchAsync(
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+    const batchId = req.params.id as string;
+    const activeOrgId = req.activeOrgId;
 
-	const apiKey = req.header('x-api-key');
-	if (apiKey) return next();
+    if (!activeOrgId) {
+      throw new APIError(400, {
+        error: [{ field: 'organization', message: 'Organisation active manquante.' }],
+      });
+    }
 
-	if (!activeOrgId) {
-		throw new APIError(400, {
-			error: [{ field: 'organization', message: 'Organisation active manquante.' }],
-		});
-	}
+    // ===== ÉTAPE 1: Récupérer le lot =====
+    const batch = await prisma.batch.findFirst({
+      where: {
+        id: batchId,
+        organization_id: activeOrgId,
+      },
+      include: {
+        product: true,
+        unit: true,
+      },
+    });
 
-	// ===== ÉTAPE 1: Récupérer le lot =====
-	const batch = await prisma.batch.findFirst({
-		where: { 
-			id: batchId,
-			organization_id: activeOrgId 
-		},
-		include: {
-			product: true,
-			unit: true
-		},
-	});
+    // ===== ÉTAPE 2: Vérifier existence et isolation =====
+    if (!batch) {
+      throw new APIError(404, {
+        error: [{ field: 'batch', message: 'Lot introuvable dans votre organisation.' }],
+      });
+    }
 
-	// ===== ÉTAPE 2: Vérifier existence et isolation =====
-	if (!batch) {
-		throw new APIError(404, {
-			error: [{ field: 'batch', message: 'Lot introuvable dans votre organisation.' }],
-		});
-	}
+    // ✅ SUCCESS: Accès autorisé - Attacher le lot au contexte
+    req.batch = batch;
 
-	// ✅ SUCCESS: Accès autorisé - Attacher le lot au contexte
-	req.batch = batch;
-
-	next();
-});
+    next();
+  }
+);
 
 export default verifyBatchAccess;

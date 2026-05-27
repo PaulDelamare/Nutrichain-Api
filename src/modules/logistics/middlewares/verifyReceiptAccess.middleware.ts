@@ -11,41 +11,40 @@ import { catchAsync } from '../../../shared/utils/errorHandler/catchAsync';
  * - Vérifier qu'une réception existe
  * - Vérifier que l'utilisateur Web peut accéder à cette réception (multi-tenant)
  */
-export const verifyReceiptAccess = catchAsync(async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
-	const receiptId = req.params.id as string;
-	const activeOrgId = req.activeOrgId;
+export const verifyReceiptAccess = catchAsync(
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+    const receiptId = req.params.id as string;
+    const activeOrgId = req.activeOrgId;
 
-	const apiKey = req.header('x-api-key');
-	if (apiKey) return next();
+    if (!activeOrgId) {
+      throw new APIError(400, {
+        error: [{ field: 'organization', message: 'Organisation active manquante.' }],
+      });
+    }
 
-	if (!activeOrgId) {
-		throw new APIError(400, {
-			error: [{ field: 'organization', message: 'Organisation active manquante.' }],
-		});
-	}
+    // ===== ÉTAPE 1: Récupérer la réception =====
+    const receipt = await prisma.receipt.findFirst({
+      where: {
+        id: receiptId,
+        organization_id: activeOrgId,
+      },
+      include: {
+        fournisseur: true,
+      },
+    });
 
-	// ===== ÉTAPE 1: Récupérer la réception =====
-	const receipt = await prisma.receipt.findFirst({
-		where: { 
-			id: receiptId,
-			organization_id: activeOrgId 
-		},
-		include: {
-			fournisseur: true
-		},
-	});
+    // ===== ÉTAPE 2: Vérifier existence et isolation =====
+    if (!receipt) {
+      throw new APIError(404, {
+        error: [{ field: 'receipt', message: 'Réception introuvable dans votre organisation.' }],
+      });
+    }
 
-	// ===== ÉTAPE 2: Vérifier existence et isolation =====
-	if (!receipt) {
-		throw new APIError(404, {
-			error: [{ field: 'receipt', message: 'Réception introuvable dans votre organisation.' }],
-		});
-	}
+    // ✅ SUCCESS: Accès autorisé
+    req.receipt = receipt;
 
-	// ✅ SUCCESS: Accès autorisé
-	req.receipt = receipt;
-
-	next();
-});
+    next();
+  }
+);
 
 export default verifyReceiptAccess;
