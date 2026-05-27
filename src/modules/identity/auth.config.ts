@@ -17,6 +17,9 @@ export const auth = betterAuth({
   baseURL: process.env.API_URL || 'http://localhost:3000',
   // 🛡️ Permet d'accepter les requêtes d'API externes (Postman, Bruno, et IoT) qui n'ont pas pu générer automatiquement d'Origin via un navigateur Moteur.
   advanced: {
+    // Aligne Better-Auth sur le standard UUID v4 du reste du projet (Prisma @default(uuid)).
+    // Sans ça, les routes métier qui valident `vine.string().uuid()` rejettent le user de session.
+    generateId: () => crypto.randomUUID(),
     crossSubDomainCookies: {
       enabled: true,
     },
