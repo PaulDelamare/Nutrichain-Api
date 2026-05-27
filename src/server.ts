@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { assertEnv } from './shared/configs/env.validator';
 
 try {

@@ -6,7 +6,6 @@ import { globalErrorHandler } from '../../../../shared/utils/errorHandler/errorH
 vi.mock('../../../../shared/configs/prismaClient.config', () => ({
   prisma: {
     batch: {
-      findUnique: vi.fn(),
       findFirst: vi.fn(),
     },
   },
@@ -56,7 +55,6 @@ describe('publicScanBatch controller (route publique B2C — Sec C)', () => {
 
   it('doit refuser (404) un lot non encore expédié (statut EN_STOCK)', async () => {
     vi.mocked(prisma.batch.findFirst).mockResolvedValue(null);
-    vi.mocked(prisma.batch.findUnique).mockResolvedValue(buildBatch({ statut: 'EN_STOCK' }));
 
     const res = await request(buildApp()).get('/api/public/scan/batch-1');
 
@@ -64,9 +62,7 @@ describe('publicScanBatch controller (route publique B2C — Sec C)', () => {
   });
 
   it('doit accepter (200) un lot EXPEDIE et exposer un payload limité', async () => {
-    const batch = buildBatch({ statut: 'EXPEDIE' });
-    vi.mocked(prisma.batch.findFirst).mockResolvedValue(batch);
-    vi.mocked(prisma.batch.findUnique).mockResolvedValue(batch);
+    vi.mocked(prisma.batch.findFirst).mockResolvedValue(buildBatch({ statut: 'EXPEDIE' }));
 
     const res = await request(buildApp()).get('/api/public/scan/batch-1');
 
@@ -78,9 +74,7 @@ describe('publicScanBatch controller (route publique B2C — Sec C)', () => {
   });
 
   it('doit accepter (200) un lot ALERTE et signaler RAPPEL_CONSOMMATEUR', async () => {
-    const batch = buildBatch({ statut: 'ALERTE' });
-    vi.mocked(prisma.batch.findFirst).mockResolvedValue(batch);
-    vi.mocked(prisma.batch.findUnique).mockResolvedValue(batch);
+    vi.mocked(prisma.batch.findFirst).mockResolvedValue(buildBatch({ statut: 'ALERTE' }));
 
     const res = await request(buildApp()).get('/api/public/scan/batch-1');
 

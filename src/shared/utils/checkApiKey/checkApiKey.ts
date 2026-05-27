@@ -3,13 +3,9 @@ import { APIError } from '../errorHandler/APIError';
 import { AuthenticatedRequest, AuthContext } from '../../../modules/identity/types/auth.types';
 
 /**
- * Vérifie une clé API et résout l'organisation depuis l'environnement (jamais depuis le client).
- *
- * @param expectedApiKey - clé attendue (défaut : `process.env.API_KEY`)
- * @param defaultOrgId   - org à injecter (défaut : `process.env.API_KEY_ORG_ID`)
- *
- * Si aucune source d'org n'est définie, le middleware fonctionne en mode "frontend gate" :
- * il valide la clé mais n'injecte pas d'`activeOrgId`. Le header `x-org-id` est ignoré.
+ * L'organisation est résolue depuis `defaultOrgId` ou `process.env.API_KEY_ORG_ID` —
+ * le header `x-org-id` est volontairement ignoré (vecteur de spoofing).
+ * Sans source d'org, le middleware fonctionne en "frontend gate" : clé validée, pas d'`activeOrgId`.
  */
 export const checkApiKey = (expectedApiKey?: string, defaultOrgId?: string) => {
   return async (req: Request, res: Response, next: NextFunction) => {
