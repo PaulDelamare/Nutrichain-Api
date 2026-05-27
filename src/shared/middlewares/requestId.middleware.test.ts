@@ -41,4 +41,30 @@ describe('requestIdMiddleware', () => {
     expect(res.setHeader).toHaveBeenCalledWith('X-Request-ID', incoming);
     expect(next).toHaveBeenCalledWith();
   });
+
+  it('doit régénérer un UUID si le X-Request-ID entrant contient des caractères de contrôle (anti CRLF log-injection)', () => {
+    const malicious = 'fake-id\r\nFAKE_LOG: injected';
+    const req = buildReq(malicious);
+    const res = buildRes();
+    const next = vi.fn() as unknown as NextFunction;
+
+    requestIdMiddleware(req, res, next);
+
+    expect(req.requestId).not.toBe(malicious);
+    expect(req.requestId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+    );
+  });
+
+  it('doit régénérer un UUID si le X-Request-ID entrant dépasse 128 caractères', () => {
+    const oversized = 'a'.repeat(129);
+    const req = buildReq(oversized);
+    const res = buildRes();
+    const next = vi.fn() as unknown as NextFunction;
+
+    requestIdMiddleware(req, res, next);
+
+    expect(req.requestId).not.toBe(oversized);
+    expect(req.requestId!.length).toBeLessThanOrEqual(128);
+  });
 });
