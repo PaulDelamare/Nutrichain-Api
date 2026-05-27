@@ -12,6 +12,7 @@
     "migrate": "npx prisma migrate dev",
     "push": "npx prisma db push",
     "unit:test": "vitest",
+    "e2e:security": "tsx --env-file=.env scripts/e2e-security-fixes.ts",
     "docker:linux": "docker build -t api-nutrichain . --platform=linux/amd64",
     "docker:tar": "docker save api-nutrichain > image-linux.tar",
     "prepare": "husky",
