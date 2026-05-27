@@ -30,8 +30,8 @@ export const verifyBatchAccess = catchAsync(
         organization_id: activeOrgId,
       },
       include: {
-        product: true,
-        unit: true,
+        produit: true,
+        unite: true,
       },
     });
 
