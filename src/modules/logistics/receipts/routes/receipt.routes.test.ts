@@ -67,17 +67,14 @@ vi.mock('../services/receipt.service', () => ({
   },
 }));
 
-// Mock Prisma
-vi.mock('../../../../shared/configs/prismaClient.config', () => ({
-  prisma: {
-    receipt: {
-      findFirst: vi.fn(),
-    },
-    batch: {
-      findFirst: vi.fn(),
-    },
-  },
-}));
+// Mock Prisma — partagé entre `prisma` (services) et `bdd` (better-auth via auth.config)
+vi.mock('../../../../shared/configs/prismaClient.config', () => {
+  const mock = {
+    receipt: { findFirst: vi.fn() },
+    batch: { findFirst: vi.fn() },
+  };
+  return { prisma: mock, bdd: mock };
+});
 
 describe('Logistics - Receipts Routes', () => {
   beforeEach(() => {
@@ -118,10 +115,12 @@ describe('Logistics - Receipts Routes', () => {
 
       expect(res.status).toBe(201);
       expect(res.body.data.receiptId).toBe('receipt_uuid');
-      expect(receiptService.createReceipt).toHaveBeenCalledWith(expect.objectContaining({
-        id_fournisseur: payloadParfait.id_fournisseur,
-        organization_id: 'org_test_123',
-      }));
+      expect(receiptService.createReceipt).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id_fournisseur: payloadParfait.id_fournisseur,
+          organization_id: 'org_test_123',
+        })
+      );
     });
   });
 
@@ -129,7 +128,7 @@ describe('Logistics - Receipts Routes', () => {
     it('doit retourner 404 si la réception appartient à une autre organisation', async () => {
       vi.mocked(receiptService.getReceiptById).mockRejectedValue({
         status: 404,
-        error: [{ field: 'receipt', message: 'Réception introuvable' }]
+        error: [{ field: 'receipt', message: 'Réception introuvable' }],
       });
 
       const res = await request(app)
@@ -141,7 +140,6 @@ describe('Logistics - Receipts Routes', () => {
   });
 
   describe('GET /api/logistics/receipts/stats', () => {
-
     it('doit retourner les statistiques de réception (200)', async () => {
       vi.mocked(receiptService.getReceiptStats).mockResolvedValue({
         total_receipts_today: 12,
@@ -167,6 +165,32 @@ describe('Logistics - Receipts Routes', () => {
 
       expect(res.status).toBe(404); // Le middleware renvoie 404 si pas trouvé dans l'org
       expect(res.body.error[0].message).toContain('introuvable dans votre organisation');
+    });
+
+    it("doit aussi refuser l'accès (404) en mode M2M (x-api-key) — pas de bypass tenant", async () => {
+      const { prisma } = await import('../../../../shared/configs/prismaClient.config');
+      vi.mocked(prisma.receipt.findFirst).mockResolvedValue(null);
+
+      const res = await request(app)
+        .get('/api/logistics/receipts/rcpt-1')
+        .set('x-api-key', 'any-key');
+
+      expect(res.status).toBe(404);
+      expect(res.body.error[0].message).toContain('introuvable dans votre organisation');
+      expect(prisma.receipt.findFirst).toHaveBeenCalled();
+    });
+
+    it("doit aussi refuser l'accès (404) sur un batch en mode M2M (x-api-key) — pas de bypass tenant", async () => {
+      const { prisma } = await import('../../../../shared/configs/prismaClient.config');
+      vi.mocked(prisma.batch.findFirst).mockResolvedValue(null);
+
+      const res = await request(app)
+        .get('/api/logistics/batches/batch-1')
+        .set('x-api-key', 'any-key');
+
+      expect(res.status).toBe(404);
+      expect(res.body.error[0].message).toContain('introuvable dans votre organisation');
+      expect(prisma.batch.findFirst).toHaveBeenCalled();
     });
 
     it("doit autoriser l'accès (200) si la réception appartient à la même organisation", async () => {

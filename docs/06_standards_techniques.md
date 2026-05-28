@@ -1,5 +1,7 @@
 # Standards Techniques (Nutrichain API)
 
+> **Note 2026-05-27** : les sections §2 (Request ID) et §3 (validation env fail-fast) sont **implémentées** depuis la session de durcissement — voir `13_SESSION_HARDENING_2026-05-27.md`. Ce document décrit toujours la cible, mais l'état réel est désormais aligné.
+
 Au-delà de l'architecture "Clean Code", l'API respecte les piliers suivants pour garantir qu'elle est "Prête pour la Production" (Production-ready).
 
 ## 1. Documentation Automatique (Swagger / OpenAPI)

@@ -13,8 +13,9 @@ const loglevel = {
 
 const logFormat = format.combine(
   format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-  format.printf(({ level, message, timestamp }) => {
-    return `${timestamp} [${level.toUpperCase()}]: ${message}`;
+  format.printf(({ level, message, timestamp, requestId }) => {
+    const reqIdSegment = requestId ? ` [req:${requestId}]` : '';
+    return `${timestamp} [${level.toUpperCase()}]${reqIdSegment}: ${message}`;
   })
 );
 

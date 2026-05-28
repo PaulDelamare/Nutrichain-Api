@@ -1,8 +1,7 @@
-import { PrismaClient, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import crypto from 'crypto';
 import { logger } from '../logger/logger';
-
-const prismaClient = new PrismaClient();
+import { prisma as prismaClient } from '../../configs/prismaClient.config';
 
 export interface AuditLogParams {
   organizationId: string;
@@ -31,15 +30,18 @@ export const auditService = {
   async logAction(params: AuditLogParams, tx?: Prisma.TransactionClient) {
     const db = tx || prismaClient;
     try {
-      // 1. Récupérer le dernier log de l'ORGANISATION avec un verrou
       const lastLogs = await db.$queryRaw<AuditLogRecord[]>(
         Prisma.sql`SELECT signature_hash FROM "Audit_Log" WHERE organization_id = ${params.organizationId} ORDER BY id DESC LIMIT 1 FOR UPDATE`
       );
       const lastLog = lastLogs.length > 0 ? lastLogs[0] : null;
 
-      const prevHash = lastLog ? lastLog.signature_hash : '0000000000000000000000000000000000000000000000000000000000000000';
+      const prevHash = lastLog
+        ? lastLog.signature_hash
+        : '0000000000000000000000000000000000000000000000000000000000000000';
 
-      // 2. Préparer les données pour le hash (incluant l'organizationId pour le chaînage)
+      // Source unique pour le hash ET la persistence — garantit la recompute exacte
+      const horodatage = new Date();
+
       const dataToHash = JSON.stringify({
         organizationId: params.organizationId,
         userId: params.userId || 'system',
@@ -49,15 +51,11 @@ export const auditService = {
         oldValue: params.oldValue,
         newValue: params.newValue,
         prevHash: prevHash,
+        timestamp: horodatage.toISOString(),
       });
 
-      // 3. Calculer le signature_hash
-      const signatureHash = crypto
-        .createHash('sha256')
-        .update(dataToHash)
-        .digest('hex');
+      const signatureHash = crypto.createHash('sha256').update(dataToHash).digest('hex');
 
-      // 4. Créer l'entrée
       const log = await db.audit_Log.create({
         data: {
           organization_id: params.organizationId,
@@ -69,6 +67,7 @@ export const auditService = {
           nouvelle_valeur: params.newValue as Prisma.InputJsonValue,
           prev_hash: prevHash,
           signature_hash: signatureHash,
+          horodatage,
         },
       });
 

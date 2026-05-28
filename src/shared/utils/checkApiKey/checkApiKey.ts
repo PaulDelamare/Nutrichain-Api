@@ -1,30 +1,25 @@
 import { NextFunction, Request, Response } from 'express';
 import { APIError } from '../errorHandler/APIError';
-import { AuthenticatedRequest } from '../../../modules/identity/types/auth.types';
+import { AuthenticatedRequest, AuthContext } from '../../../modules/identity/types/auth.types';
 
 /**
- * Générateur de middleware pour vérifier une clé API spécifique.
- * Dans une architecture multi-tenant, une clé API devrait idéalement être liée à une organisation.
- *
- * @param expectedApiKey - La clé API attendue (par exemple, provenant de process.env)
- * @param defaultOrgId - Optionnel: ID de l'organisation à injecter si la clé est valide
- * @return - Un middleware Express qui valide la clé API
+ * L'organisation est résolue depuis `defaultOrgId` ou `process.env.API_KEY_ORG_ID` —
+ * le header `x-org-id` est volontairement ignoré (vecteur de spoofing).
+ * Sans source d'org, le middleware fonctionne en "frontend gate" : clé validée, pas d'`activeOrgId`.
  */
 export const checkApiKey = (expectedApiKey?: string, defaultOrgId?: string) => {
   return async (req: Request, res: Response, next: NextFunction) => {
     const targetKey = expectedApiKey ?? process.env.API_KEY;
     const apiKeyHeader = req.header('x-api-key');
-    const orgIdHeader = req.header('x-org-id') || defaultOrgId;
+    const boundOrgId = defaultOrgId ?? process.env.API_KEY_ORG_ID;
 
     if (targetKey && apiKeyHeader === targetKey) {
-      // Si on utilise une clé API, on injecte l'organisation active
-      // Cela permet aux services (IoT, automatisés) d'être isolés.
-      if (orgIdHeader) {
+      if (boundOrgId) {
         const authReq = req as AuthenticatedRequest;
-        authReq.activeOrgId = orgIdHeader;
+        authReq.activeOrgId = boundOrgId;
         authReq.auth = {
           ...(authReq.auth || {}),
-          activeOrgId: orgIdHeader,
+          activeOrgId: boundOrgId,
         } as AuthContext;
       }
 

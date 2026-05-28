@@ -1,3 +1,13 @@
+import 'dotenv/config';
+import { assertEnv } from './shared/configs/env.validator';
+
+try {
+  assertEnv();
+} catch (error) {
+  console.error(`[CRIT] ${(error as Error).message}`);
+  process.exit(1);
+}
+
 import { logger } from './shared/utils/logger/logger';
 // ! IMPORTS
 import { app } from './app';

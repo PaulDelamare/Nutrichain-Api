@@ -93,7 +93,6 @@ async function runFlow() {
   const headers = {
     'Content-Type': 'application/json',
     'x-api-key': API_KEY,
-    'x-org-id': ORG_ID,
   };
 
   console.log('\n--- 🚚 Étape 1 : Réception de 100kg de Lait ---');

@@ -3,7 +3,7 @@ import { betterAuth } from 'better-auth';
 import { APIError as BetterAuthError } from 'better-auth/api';
 import { createAuthMiddleware } from 'better-auth/api';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
-import { PrismaClient } from '@prisma/client';
+import { bdd as prisma } from '../../shared/configs/prismaClient.config';
 import { organization, twoFactor, bearer } from 'better-auth/plugins';
 import { APIError } from '../../shared/utils/errorHandler/APIError';
 import { sendEmail } from '../../shared/utils/mailer/mailer';
@@ -13,12 +13,13 @@ import { ResetPasswordEmail } from '../../shared/utils/mailer/templates/ResetPas
 import React from 'react';
 import crypto from 'crypto';
 
-const prisma = new PrismaClient();
-
 export const auth = betterAuth({
   baseURL: process.env.API_URL || 'http://localhost:3000',
   // 🛡️ Permet d'accepter les requêtes d'API externes (Postman, Bruno, et IoT) qui n'ont pas pu générer automatiquement d'Origin via un navigateur Moteur.
   advanced: {
+    // Aligne Better-Auth sur le standard UUID v4 du reste du projet (Prisma @default(uuid)).
+    // Sans ça, les routes métier qui valident `vine.string().uuid()` rejettent le user de session.
+    generateId: () => crypto.randomUUID(),
     crossSubDomainCookies: {
       enabled: true,
     },

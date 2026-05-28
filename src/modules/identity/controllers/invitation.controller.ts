@@ -46,7 +46,7 @@ export const generateInvitation = catchAsync(async (req: AuthenticatedRequest, r
 
   // Nettoyer d'éventuelles anciennes invitations 'pending' pour cet email
   await bdd.invitation.deleteMany({
-    where: { email, status: 'pending' },
+    where: { email, status: 'pending', organizationId: activeOrgId },
   });
 
   // 1. Créer l'invitation dans la base de données
@@ -59,7 +59,7 @@ export const generateInvitation = catchAsync(async (req: AuthenticatedRequest, r
       id: invitationId,
       email,
       role,
-      organizationId,
+      organizationId: activeOrgId,
       inviterId,
       expiresAt,
       status: 'pending',
