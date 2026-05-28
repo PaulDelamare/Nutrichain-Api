@@ -10,6 +10,7 @@ import catalogRoutes from './modules/traceability/catalog/routes/catalog.routes'
 import transformationRoutes from './modules/traceability/transformations/routes/transformation.routes';
 import receiptRoutes from './modules/logistics/receipts/routes/receipt.routes';
 import shipmentRoutes from './modules/logistics/shipments/routes/shipment.routes';
+import syncRoutes from './modules/sync/routes/sync.routes';
 import configureMiddleware from './shared/configs/apiConfigMiddleware.config';
 import { globalErrorHandler } from './shared/utils/errorHandler/errorHandler';
 
@@ -31,6 +32,7 @@ app.use('/api', catalogRoutes);
 app.use('/api', transformationRoutes);
 app.use('/api', receiptRoutes);
 app.use('/api', shipmentRoutes);
+app.use('/api', syncRoutes);
 app.use('/api', helloRoutes);
 app.use('/api', healthRoutes);
 app.use('/api', telemetryRoutes);
