@@ -1,0 +1,238 @@
+import { Prisma } from '@prisma/client';
+import { prisma } from '../../../shared/configs/prismaClient.config';
+import { receiptService } from '../../logistics/receipts/services/receipt.service';
+import { auditService } from '../../../shared/utils/audit/audit.service';
+import { APIError } from '../../../shared/utils/errorHandler/APIError';
+import { logger } from '../../../shared/utils/logger/logger';
+import { idempotencyService } from './idempotency.service';
+import { IDEMPOTENCY_TTL_MS, SYNC_WRITE_ROLES } from '../constants/sync.constants';
+import { SyncItem, SyncItemError, SyncItemResult, SyncScansResponse } from '../types/sync.types';
+
+export interface SyncScansParams {
+  items: SyncItem[];
+  organizationId: string;
+  sessionUserId?: string;
+  actorUserId?: string;
+}
+
+export const syncScansService = {
+  /**
+   * Orchestre le bulk sync mobile. Chaque item est traité dans sa propre transaction
+   * atomique (idempotency claim + receipt + audit) ; une erreur sur un item ne casse
+   * pas les autres (réponse 207 multi-status côté controller).
+   */
+  async syncScans(params: SyncScansParams): Promise<SyncScansResponse> {
+    const userId = await resolveAndAuthorize(params);
+
+    const results: SyncItemResult[] = [];
+    for (const item of params.items) {
+      results.push(await processItem(item, params.organizationId, userId));
+    }
+
+    return { results, summary: buildSummary(results) };
+  },
+};
+
+/**
+ * Résout l'identité de l'acteur :
+ * - session : sessionUserId est forcé serveur-side (anti-usurpation, déjà authentifié par mixedAuth)
+ * - M2M    : actorUserId doit être fourni ET membre de l'org avec un rôle ∈ SYNC_WRITE_ROLES
+ */
+async function resolveAndAuthorize(params: SyncScansParams): Promise<string> {
+  if (params.sessionUserId) {
+    return params.sessionUserId;
+  }
+
+  if (!params.actorUserId) {
+    throw new APIError(400, {
+      error: [
+        {
+          field: 'actorUserId',
+          message:
+            "actorUserId requis en mode M2M (clé API). En mode session, l'utilisateur est résolu depuis la session.",
+        },
+      ],
+    });
+  }
+
+  const member = await prisma.member.findFirst({
+    where: {
+      userId: params.actorUserId,
+      organizationId: params.organizationId,
+      role: { in: SYNC_WRITE_ROLES },
+    },
+    select: { id: true },
+  });
+
+  if (!member) {
+    throw new APIError(403, {
+      error: [{ field: 'actorUserId', message: 'Utilisateur non membre ou rôle insuffisant' }],
+    });
+  }
+
+  return params.actorUserId;
+}
+
+/**
+ * Traite un item dans une transaction atomique :
+ *  1. claim idempotency (findUnique) — replay / conflict / first-write
+ *  2. crée placeholder IdempotencyKey
+ *  3. délégue receiptService.createReceipt avec le même tx
+ *  4. met à jour IdempotencyKey avec la réponse finale
+ *  5. audit WORM
+ * Si une étape échoue, la transaction rollback intégralement (rien de partiel persiste).
+ */
+async function processItem(
+  item: SyncItem,
+  organizationId: string,
+  userId: string
+): Promise<SyncItemResult> {
+  try {
+    const result = await prisma.$transaction(
+      async (tx) => {
+        const requestHash = idempotencyService.hashPayload(item.payload);
+        const compoundKey = {
+          organization_id: organizationId,
+          client_op_id: item.clientOpId,
+        };
+
+        // 1. Idempotency claim
+        const existing = await tx.idempotencyKey.findUnique({
+          where: { organization_id_client_op_id: compoundKey },
+        });
+
+        if (existing) {
+          if (existing.request_hash !== requestHash) {
+            throw new APIError(409, {
+              error: [{ field: 'clientOpId', message: 'Idempotency conflict — payload diverged' }],
+            });
+          }
+          // Replay — renvoie la réponse cachée
+          return existing.response_payload as unknown as SyncItemResult;
+        }
+
+        // 2. First-write : créer placeholder
+        const now = new Date();
+        await tx.idempotencyKey.create({
+          data: {
+            organization_id: organizationId,
+            client_op_id: item.clientOpId,
+            user_id: userId,
+            request_hash: requestHash,
+            response_status: 'pending',
+            response_payload: {} as Prisma.InputJsonValue,
+            created_at: now,
+            expires_at: new Date(now.getTime() + IDEMPOTENCY_TTL_MS),
+          },
+        });
+
+        // 3. Op métier dans la même tx
+        const created = await runOperation(item, organizationId, userId, tx);
+
+        const okResult: SyncItemResult = {
+          clientOpId: item.clientOpId,
+          status: 'ok',
+          serverId: created,
+        };
+
+        // 4. Finalise la clé d'idempotency
+        await tx.idempotencyKey.update({
+          where: { organization_id_client_op_id: compoundKey },
+          data: {
+            response_status: 'ok',
+            response_payload: okResult as unknown as Prisma.InputJsonValue,
+          },
+        });
+
+        // 5. Audit WORM (action distincte pour distinguer du flow non-bulk)
+        await auditService.logAction(
+          {
+            organizationId,
+            userId,
+            action: 'CREATE_RECEIPT_VIA_SYNC',
+            entity: 'Receipt',
+            entityId: created.receiptId,
+            newValue: { batchId: created.batchId, clientOpId: item.clientOpId },
+          },
+          tx
+        );
+
+        return okResult;
+      },
+      {
+        timeout: 30000,
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      }
+    );
+
+    return result;
+  } catch (err) {
+    return toErrorResult(item.clientOpId, err);
+  }
+}
+
+/**
+ * Dispatch d'une opération sync vers le service métier correspondant.
+ * L'assertion `never` garantit qu'ajouter un nouveau type cassera la compilation
+ * tant qu'on n'a pas câblé son handler.
+ */
+async function runOperation(
+  item: SyncItem,
+  organizationId: string,
+  userId: string,
+  tx: Prisma.TransactionClient
+): Promise<{ receiptId: string; batchId: string }> {
+  switch (item.type) {
+    case 'receipt': {
+      const result = await receiptService.createReceipt(
+        {
+          organization_id: organizationId,
+          id_fournisseur: item.payload.id_fournisseur,
+          shipment_id: item.payload.shipment_id,
+          id_produit: item.payload.id_produit,
+          quantite_actuelle: item.payload.quantite_actuelle,
+          unite_code: item.payload.unite_code,
+          statut_controle: item.payload.statut_controle,
+          received_by: userId, // forcé serveur-side (anti-usurpation)
+        },
+        tx
+      );
+      return { receiptId: result.receiptId, batchId: result.batchId };
+    }
+    default: {
+      const _exhaustive: never = item.type;
+      throw new APIError(400, {
+        error: [
+          { field: 'type', message: `Type d'opération non supporté: ${String(_exhaustive)}` },
+        ],
+      });
+    }
+  }
+}
+
+function toErrorResult(clientOpId: string, err: unknown): SyncItemResult {
+  if (err instanceof APIError) {
+    const detail = err.body.error[0];
+    const error: SyncItemError = { field: detail.field, message: detail.message };
+    const status: 'error' | 'conflict' = err.status === 409 ? 'conflict' : 'error';
+    return { clientOpId, status, error };
+  }
+
+  // Erreur non-métier (Prisma, réseau, etc.) : log brut côté serveur, message générique côté client
+  // pour éviter de leak des détails techniques (stack, connection strings, etc.).
+  const rawMessage = err instanceof Error ? err.message : String(err);
+  logger.error(`[SyncScans] Erreur interne sur item ${clientOpId}: ${rawMessage}`);
+  return {
+    clientOpId,
+    status: 'error',
+    error: { field: 'internal', message: 'Erreur interne du serveur' },
+  };
+}
+
+function buildSummary(results: SyncItemResult[]) {
+  const summary = { total: results.length, ok: 0, error: 0, conflict: 0 };
+  for (const r of results) {
+    summary[r.status] += 1;
+  }
+  return summary;
+}
