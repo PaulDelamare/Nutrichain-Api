@@ -18,85 +18,93 @@ export interface CreateReceiptData {
   unite_code: string;
 }
 
+/**
+ * Logique métier de création d'un Receipt + Batch + audit, exécutée dans un client
+ * de transaction Prisma. Extrait pour permettre l'imbrication dans une tx externe
+ * (utilisé par le module sync pour atomicité avec l'idempotency key).
+ */
+async function createReceiptInTx(tx: Prisma.TransactionClient, data: CreateReceiptData) {
+  const supplier = await tx.supplier.findFirst({
+    where: { id: data.id_fournisseur, organization_id: data.organization_id },
+  });
+  if (!supplier) {
+    throw new APIError(404, {
+      error: [{ field: 'id_fournisseur', message: 'Fournisseur introuvable ou accès refusé' }],
+    });
+  }
+
+  const product = await tx.product.findFirst({
+    where: { id: data.id_produit, organization_id: data.organization_id },
+  });
+  if (!product) {
+    throw new APIError(404, {
+      error: [{ field: 'id_produit', message: 'Produit introuvable ou accès refusé' }],
+    });
+  }
+
+  const user = await tx.user.findUnique({ where: { id: data.received_by } });
+  if (!user) {
+    throw new APIError(404, {
+      error: [{ field: 'received_by', message: 'Utilisateur introuvable' }],
+    });
+  }
+
+  if (data.unite_code) {
+    const unit = await tx.unit.findUnique({ where: { code: data.unite_code } });
+    if (!unit) {
+      throw new APIError(400, { error: [{ field: 'unite_code', message: 'Unité inconnue' }] });
+    }
+  }
+
+  const receipt = await tx.receipt.create({
+    data: {
+      organization_id: data.organization_id,
+      id_fournisseur: data.id_fournisseur,
+      shipment_id: data.shipment_id,
+      date_reception: new Date(),
+      statut_controle: data.statut_controle,
+      received_by: data.received_by,
+    },
+  });
+
+  const batch = await batchService.createBatch(tx, {
+    organization_id: data.organization_id,
+    id_produit: data.id_produit,
+    quantite_actuelle: data.quantite_actuelle,
+    unite_code: data.unite_code,
+    created_by: data.received_by,
+  });
+
+  await auditService.logAction(
+    {
+      organizationId: data.organization_id,
+      userId: data.received_by,
+      action: 'CREATE_RECEIPT',
+      entity: 'Receipt',
+      entityId: receipt.id,
+      newValue: receipt as unknown as Record<string, unknown>,
+    },
+    tx
+  );
+
+  return {
+    message: 'Réception enregistrée avec succès et Lot généré.',
+    receiptId: receipt.id,
+    batchId: batch.id,
+  };
+}
+
 export const receiptService = {
   /**
-   * Action métier critique : Crée l'historique de réception GS1 et le lot NutriChain
+   * Crée un Receipt + Batch + audit dans une transaction.
+   * Si `externalTx` est fourni, la création se fait DANS cette transaction (pas de tx imbriquée).
+   * Sinon, ouvre sa propre transaction Serializable.
    */
-  async createReceipt(data: CreateReceiptData) {
-    return prisma.$transaction(async (tx) => {
-      // 1. Vérifications d'existence et de sécurité (Multi-tenant)
-      const supplier = await tx.supplier.findFirst({
-        where: { id: data.id_fournisseur, organization_id: data.organization_id },
-      });
-      if (!supplier) {
-        throw new APIError(404, {
-          error: [{ field: 'id_fournisseur', message: 'Fournisseur introuvable ou accès refusé' }],
-        });
-      }
-
-      const product = await tx.product.findFirst({
-        where: { id: data.id_produit, organization_id: data.organization_id },
-      });
-      if (!product) {
-        throw new APIError(404, {
-          error: [{ field: 'id_produit', message: 'Produit introuvable ou accès refusé' }],
-        });
-      }
-
-      const user = await tx.user.findUnique({ where: { id: data.received_by } });
-      if (!user) {
-        throw new APIError(404, {
-          error: [{ field: 'received_by', message: 'Utilisateur introuvable' }],
-        });
-      }
-
-      // Vérifier l'unité
-      if (data.unite_code) {
-        const unit = await tx.unit.findUnique({ where: { code: data.unite_code } });
-        if (!unit) {
-          throw new APIError(400, {
-            error: [{ field: 'unite_code', message: 'Unité inconnue' }],
-          });
-        }
-      }
-
-      // 2. Création de la Réception (Trace logistique)
-      const receipt = await tx.receipt.create({
-        data: {
-          organization_id: data.organization_id,
-          id_fournisseur: data.id_fournisseur,
-          shipment_id: data.shipment_id,
-          date_reception: new Date(),
-          statut_controle: data.statut_controle,
-          received_by: data.received_by,
-        },
-      });
-
-      // 3. Délégation de la création du Lot au BatchSharedService (SRP)
-      const batch = await batchService.createBatch(tx, {
-        organization_id: data.organization_id,
-        id_produit: data.id_produit,
-        quantite_actuelle: data.quantite_actuelle,
-        unite_code: data.unite_code,
-        created_by: data.received_by,
-      });
-
-      // 4. Audit Log (Objectif 7 - WORM)
-      await auditService.logAction({
-        organizationId: data.organization_id,
-        userId: data.received_by,
-        action: 'CREATE_RECEIPT',
-        entity: 'Receipt',
-        entityId: receipt.id,
-        newValue: receipt as unknown as Record<string, unknown>,
-      }, tx);
-
-      return {
-        message: 'Réception enregistrée avec succès et Lot généré.',
-        receiptId: receipt.id,
-        batchId: batch.id,
-      };
-    }, {
+  async createReceipt(data: CreateReceiptData, externalTx?: Prisma.TransactionClient) {
+    if (externalTx) {
+      return createReceiptInTx(externalTx, data);
+    }
+    return prisma.$transaction((tx) => createReceiptInTx(tx, data), {
       timeout: 30000,
       isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
     });
