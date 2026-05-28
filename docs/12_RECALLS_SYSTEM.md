@@ -21,13 +21,43 @@ Ce module implémente la capacité critique de NutriChain à identifier et bloqu
 `POST /api/traceability/batches/:id/recall`
 - **Rôles** : Owner, Admin.
 - **Body** : `{ "reason": "Détection Listeria" }`
-- **Action** : Bloque le lot source + toute sa descendance de manière récursive.
+- **Action** :
+  1. Bloque le lot source + toute sa descendance (statut `ALERTE`, version incrémentée).
+  2. **Identifie les expéditions déjà parties** qui contiennent un de ces lots (Liaison_Shipment → Shipment → Customer).
+  3. Crée une alerte système (`PRODUCT_RECALL`, niveau `CRITIQUE`).
+  4. Log immuable dans `Audit_Log` (action `BATCH_RECALL_TRIGGERED`).
+
+#### Structure de la réponse
+
+```json
+{
+  "blockedBatchesCount": 12,
+  "impactedBatchIds": ["uuid-source", "uuid-child-1", ...],
+  "affectedShipments": [
+    {
+      "shipmentId": "uuid",
+      "shipmentRef": "SHIP-20260520-007",
+      "customerId": "uuid",
+      "customerName": "Supermarché Central Paris 10e",
+      "customerContact": "+33612345678",
+      "customerAddress": "50 av Distribution, 75010 Paris",
+      "dateEnvoi": "2026-05-20T10:00:00Z",
+      "statutLivraison": "LIVRE",
+      "transporteur": "Transports Nutri",
+      "batchIds": ["uuid-source"]
+    }
+  ]
+}
+```
+
+**Workflow client** : l'équipe Qualité utilise `affectedShipments` pour déclencher la notification externe (email/SMS/téléphone) vers chaque `customerContact`. L'envoi automatique des notifications est différé en P3 — pour la v1, le frontend liste les contacts à appeler.
 
 ## 🛡️ Sécurité & Performance
 
-- **Multi-tenancy** : L'algorithme de recherche récursive vérifie strictement l'ID de l'organisation à chaque étape pour éviter toute fuite de données inter-sites.
-- **Atomicité** : Le blocage est exécuté dans une `$transaction` Prisma pour garantir que soit tout le monde est bloqué, soit personne (en cas d'erreur).
-- **Audit Log** : Chaque rappel est logué avec l'ID utilisateur et une alerte système est créée.
+- **Multi-tenancy** : L'algorithme de recherche récursive ET la query d'expéditions vérifient strictement l'`organization_id` (la requête `Liaison_Shipment.findMany` filtre via `expedition.organization_id` puisque Liaison_Shipment n'a pas d'`organization_id` direct).
+- **Atomicité** : Tout (blocage lots + query expéditions + alerte + audit) est exécuté dans une `$transaction` Prisma Serializable — soit tout, soit rien.
+- **Audit WORM** : `newValue` inclut `affectedShipmentsCount` + `shipmentRefs` (capés à 100 références pour éviter le bloat WORM sur rappel massif ; la liste complète reste dans la réponse HTTP).
+- **PII protection** : si une `Liaison_Shipment` référence un `Customer` supprimé (drift référentiel), l'entrée est skippée silencieusement avec un `logger.warn` ne contenant QUE le `shipmentId` (jamais `contact_urgence` ni `adresse_livraison`).
 
 ## 🔍 Algorithme
 
