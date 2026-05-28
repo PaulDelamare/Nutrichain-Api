@@ -14,6 +14,7 @@ import { app } from './app';
 import { bdd } from './shared/configs/prismaClient.config';
 import { connectMongoDB, disconnectMongoDB } from './shared/configs/mongoClient.config';
 import { startCleanupJob } from './modules/identity/jobs/cleanupInvitations.job';
+import { startCleanupIdempotencyKeysJob } from './modules/sync/jobs/cleanupIdempotencyKeys.job';
 
 // ! CONFIG
 const PORT = process.env.PORT || 3000;
@@ -27,6 +28,7 @@ connectMongoDB()
 
       // Lancement des tÃ¢ches rÃ©currentes (Cron, Background Jobs)
       startCleanupJob();
+      startCleanupIdempotencyKeysJob();
     });
 
     // ! FERMETURE

@@ -663,6 +663,49 @@
     },
     {
       "type": "folder",
+      "name": "Sync - Mobile",
+      "items": [
+        {
+          "type": "http",
+          "name": "Sync Scans (Bulk)",
+          "seq": 1,
+          "request": {
+            "url": "{{url}}sync/scans",
+            "method": "POST",
+            "headers": [
+              {
+                "name": "x-api-key",
+                "value": "{{api_key}}",
+                "enabled": true
+              }
+            ],
+            "params": [],
+            "body": {
+              "mode": "json",
+              "json": "{\n  \"items\": [\n    {\n      \"clientOpId\": \"550e8400-e29b-41d4-a716-446655440000\",\n      \"type\": \"receipt\",\n      \"payload\": {\n        \"id_fournisseur\": \"{{supplier_id}}\",\n        \"shipment_id\": \"SHIP-SYNC-001\",\n        \"id_produit\": \"{{product_id}}\",\n        \"quantite_actuelle\": 100,\n        \"unite_code\": \"KG\",\n        \"statut_controle\": \"OK\"\n      }\n    },\n    {\n      \"clientOpId\": \"550e8400-e29b-41d4-a716-446655440001\",\n      \"type\": \"receipt\",\n      \"payload\": {\n        \"id_fournisseur\": \"{{supplier_id}}\",\n        \"shipment_id\": \"SHIP-SYNC-002\",\n        \"id_produit\": \"{{product_id}}\",\n        \"quantite_actuelle\": 250,\n        \"unite_code\": \"KG\",\n        \"statut_controle\": \"OK\"\n      }\n    }\n  ],\n  \"actorUserId\": \"{{user_id}}\"\n}",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Bulk sync mobile offline-first. Idempotency par clientOpId, reponse 207 Multi-Status. Mode M2M (x-api-key) : actorUserId requis. Mode session (Bearer / Cookie) : actorUserId ignore, l'utilisateur est resolu depuis req.auth. Voir docs/14_sync_mobile_offline.md.",
+            "auth": {
+              "mode": "apikey",
+              "apikey": {
+                "key": "x-api-key",
+                "value": "{{api_key}}",
+                "placement": "header"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "folder",
       "name": "Traceability - Catalog",
       "items": [
         {

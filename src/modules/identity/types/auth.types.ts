@@ -1,5 +1,6 @@
 import { Request } from 'express';
 import { Batch, Receipt } from '@prisma/client';
+import { SyncScansPayload } from '../../sync/types/sync.types';
 
 /**
  * Interface standard pour un utilisateur Better-Auth
@@ -59,4 +60,6 @@ export interface AuthenticatedRequest extends Request {
   validatedShipment?: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   validatedTransformation?: any;
+  // Sync mobile offline-first (typé proprement, début de réduction de la dette P3)
+  validatedSyncScans?: SyncScansPayload;
 }

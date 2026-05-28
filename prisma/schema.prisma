@@ -29,6 +29,7 @@ model User {
   receptions       Receipt[]
   expeditions      Shipment[]
   mouvements       Batch_Mouvement[]
+  idempotencyKeys  IdempotencyKey[]
 
   @@map("user")
 }
@@ -105,6 +106,7 @@ model Organization {
   Maintenance        Maintenance[]
   Customer           Customer[]
   Shipment           Shipment[]
+  IdempotencyKey     IdempotencyKey[]
 
   @@unique([slug])
   @@map("organization")
@@ -506,4 +508,26 @@ model PerformanceStat {
   valeur        Decimal
   id_reference  String?
   horodatage    DateTime @default(now())
+}
+
+// --- SYNC MOBILE OFFLINE-FIRST ---
+// Stocke les clés d'idempotency pour POST /api/sync/scans.
+// Permet aux clients (React Native offline) de rejouer un bulk sans créer de doublons.
+// TTL ~7j géré par cleanupIdempotencyKeys.job.
+model IdempotencyKey {
+  id               String       @id @default(uuid())
+  organization_id  String
+  organization     Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  client_op_id     String
+  user_id          String
+  user             User         @relation(fields: [user_id], references: [id])
+  request_hash     String       @db.Char(64) // SHA256 hex du payload normalisé
+  response_status  String // 'pending' (placeholder pendant l'exécution) → 'ok' (finalisée). Les conflits/erreurs ne persistent pas (rollback de la transaction atomique).
+  response_payload Json
+  created_at       DateTime     @default(now())
+  expires_at       DateTime
+
+  @@unique([organization_id, client_op_id])
+  @@index([organization_id])
+  @@index([expires_at])
 }
