@@ -201,10 +201,12 @@ describe('RecallService', () => {
       await recallService.triggerRecall(batchId, orgId, userId, 'Reason');
 
       const findManyCall = vi.mocked(prisma.liaison_Shipment.findMany).mock.calls[0][0];
+      // Defense-in-depth : les DEUX côtés de la jointure sont scoped à l'org courante
       expect(findManyCall).toMatchObject({
         where: {
           id_lot: { in: expect.arrayContaining(['batch-root']) },
           expedition: { organization_id: orgId },
+          lot: { organization_id: orgId },
         },
       });
     });

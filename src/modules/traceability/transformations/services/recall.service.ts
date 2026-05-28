@@ -99,12 +99,12 @@ export const recallService = {
           },
         });
 
-        // 4. Identifier les expéditions impactées (déjà parties) — Objectif 5 cascade
-        // Filtre cross-tenant explicite via expedition.organization_id (Liaison_Shipment n'a pas
-        // de organization_id direct, il faut passer par la relation Shipment).
+        // 4. Identifier les expéditions impactées (déjà parties) — Objectif 5 cascade.
         // Filtre cross-tenant via les DEUX côtés de la jointure (defense-in-depth) :
-        // - expedition.organization_id : Liaison_Shipment n'a pas de organization_id direct
-        // - lot.organization_id : si getDownstream renvoyait un batch hors-org (régression future), on bloque
+        // - `expedition.organization_id` : Liaison_Shipment n'a pas de organization_id direct,
+        //   on passe par Shipment.
+        // - `lot.organization_id` : si `getDownstream` renvoyait un batch hors-org (régression
+        //   future), on bloque côté Liaison.
         const liaisons = await tx.liaison_Shipment.findMany({
           where: {
             id_lot: { in: allImpactedIds },
