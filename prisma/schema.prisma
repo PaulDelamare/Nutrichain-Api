@@ -212,11 +212,13 @@ model Equipment {
   temp_actuelle   Decimal?
   temp_seuil_max  Decimal?
   qr_code_id      String?
+  sensor_id       String? // Identifiant du capteur IoT lié (mapping vers TelemetryModel.metadata.sensor_id)
   last_cleaned_at DateTime?
   lots            Batch[]
   transformations Transformation[]
   Maintenance     Maintenance[]
 
+  @@unique([organization_id, sensor_id]) // composite : permet à 2 orgs d'utiliser le même sensor_id sans collision, empêche enumeration cross-tenant
   @@index([organization_id])
 }
 
