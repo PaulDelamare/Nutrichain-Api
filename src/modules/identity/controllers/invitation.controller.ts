@@ -67,8 +67,11 @@ export const generateInvitation = catchAsync(async (req: AuthenticatedRequest, r
     },
   });
 
-  // 2. Générer l'URL et le template Mail
-  const invitationLink = `${process.env.API_URL || 'http://localhost:3000'}/register?token=${invitation.id}`;
+  // 2. Générer l'URL frontend (clickable depuis l'email — pointe vers la page Svelte
+  // d'inscription, pas vers l'API). FRONTEND_URL est garanti non-vide par assertEnv au boot.
+  // Le frontend récupère le `token` dans la query et le passe au sign-up Better-Auth
+  // pour validation (cf. guardSignUp.middleware).
+  const invitationLink = `${process.env.FRONTEND_URL}/register?token=${invitation.id}`;
 
   const htmlBody = await render(
     React.createElement(InvitationEmail, {

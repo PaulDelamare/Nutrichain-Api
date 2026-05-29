@@ -3,6 +3,7 @@ export const REQUIRED_ENV_VARS = [
   'API_KEY',
   'API_KEY_ORG_ID',
   'API_URL',
+  'FRONTEND_URL',
   'MONGO_URI',
   'BETTER_AUTH_SECRET',
 ] as const;
