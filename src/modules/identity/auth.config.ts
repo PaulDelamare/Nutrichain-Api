@@ -66,16 +66,25 @@ export const auth = betterAuth({
 
           if (invitation) {
             try {
-              // On la marque comme acceptée : le token est brulé
-              await prisma.invitation.update({
-                where: { id: invitation.id },
+              // Consommation atomique : updateMany avec la guard `status='pending'` garantit
+              // qu'un seul caller concurrent passe (count===1). Si une autre transaction a
+              // déjà consommé l'invitation entre-temps, count===0 et on n'enrôle pas en double.
+              const { count } = await prisma.invitation.updateMany({
+                where: { id: invitation.id, status: 'pending' },
                 data: { status: 'accepted' },
               });
+
+              if (count === 0) {
+                logger.warn(
+                  `[BetterAuth Hook] Invitation ${invitation.id} déjà consommée — Member non créé pour ${user.email}`
+                );
+                return;
+              }
 
               // Association Automatique de l'utilisateur à l'Organisation de l'invitation
               await prisma.member.create({
                 data: {
-                  id: crypto.randomUUID(), // fake id, prisma might need string or uuid
+                  id: crypto.randomUUID(),
                   organizationId: invitation.organizationId,
                   userId: user.id,
                   role: invitation.role || 'member',
@@ -141,7 +150,9 @@ export const auth = betterAuth({
   plugins: [
     organization({
       sendInvitationEmail: async (data): Promise<void> => {
-        const invitationLink = `${process.env.API_URL || 'http://localhost:3000'}/front-end-acceptation-page?token=${data.id}`;
+        // Aligné sur le flow custom : on pointe vers la page /register du frontend (Svelte),
+        // pas vers l'API. FRONTEND_URL garanti par assertEnv. Voir docs/16_invitation_register_flow.md.
+        const invitationLink = `${process.env.FRONTEND_URL}/register?token=${data.id}`;
 
         const htmlBody = await render(
           React.createElement(InvitationEmail, {
