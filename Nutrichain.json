@@ -503,6 +503,40 @@
     },
     {
       "type": "folder",
+      "name": "Audit",
+      "items": [
+        {
+          "type": "http",
+          "name": "Verify Chain",
+          "seq": 1,
+          "request": {
+            "url": "{{url}}audit/verify",
+            "method": "GET",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "none",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Vérifie l'intégrité de la chaîne WORM Audit_Log de l'org active (recompute SHA256 + prev_hash + truncation via checkpoint). 200 même si valid:false. Cache-Control: no-store. Owner/admin uniquement. Voir docs/18.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "folder",
       "name": "Logistics - Receipts",
       "items": [
         {
