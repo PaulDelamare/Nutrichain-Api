@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import crypto from 'crypto';
 import { auditService } from './audit.service';
-import { prisma } from '../../../../shared/configs/prismaClient.config';
 
 vi.mock('../../../../shared/configs/prismaClient.config', () => ({
   prisma: {
