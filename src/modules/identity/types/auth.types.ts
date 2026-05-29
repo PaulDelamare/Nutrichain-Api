@@ -1,5 +1,5 @@
 import { Request } from 'express';
-import { Batch, Receipt } from '@prisma/client';
+import { Alert, Batch, Receipt } from '@prisma/client';
 import { SyncScansPayload } from '../../sync/types/sync.types';
 
 /**
@@ -52,6 +52,7 @@ export interface AuthenticatedRequest extends Request {
   // Champs optionnels injectés par les middlewares métiers (Logistique, etc.)
   batch?: Batch;
   receipt?: Receipt;
+  alert?: Alert;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   validatedReceipt?: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -62,4 +63,6 @@ export interface AuthenticatedRequest extends Request {
   validatedTransformation?: any;
   // Sync mobile offline-first (typé proprement, début de réduction de la dette P3)
   validatedSyncScans?: SyncScansPayload;
+  // Alert resolve endpoint (PATCH /api/alerts/:id/resolve) — typé proprement
+  validatedResolveAlert?: { note?: string };
 }

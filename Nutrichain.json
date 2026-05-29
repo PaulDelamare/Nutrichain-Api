@@ -468,6 +468,41 @@
     },
     {
       "type": "folder",
+      "name": "Alerts",
+      "items": [
+        {
+          "type": "http",
+          "name": "Resolve Alert",
+          "seq": 1,
+          "request": {
+            "url": "{{url}}alerts/{{alert_id}}/resolve",
+            "method": "PATCH",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "json",
+              "json": "{\n  \"note\": \"Nettoyage capteur effectué — fausse alerte porte ouverte 2min.\"\n}",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Résout une Alert (transition ACTIVE → RESOLVED). Idempotent. Owner/admin uniquement. 404 anti-enum cross-org. PRODUCT_RECALL : message contextuel — ne ferme pas le Recall.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "folder",
       "name": "Logistics - Receipts",
       "items": [
         {

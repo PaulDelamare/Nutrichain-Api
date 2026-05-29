@@ -11,6 +11,7 @@ import transformationRoutes from './modules/traceability/transformations/routes/
 import receiptRoutes from './modules/logistics/receipts/routes/receipt.routes';
 import shipmentRoutes from './modules/logistics/shipments/routes/shipment.routes';
 import syncRoutes from './modules/sync/routes/sync.routes';
+import alertRoutes from './modules/alerts/routes/alert.routes';
 import configureMiddleware from './shared/configs/apiConfigMiddleware.config';
 import { globalErrorHandler } from './shared/utils/errorHandler/errorHandler';
 
@@ -36,6 +37,7 @@ app.use('/api', syncRoutes);
 app.use('/api', helloRoutes);
 app.use('/api', healthRoutes);
 app.use('/api', telemetryRoutes);
+app.use('/api', alertRoutes);
 
 // ! Global Error Handler (Doit être le dernier middleware)
 app.use(globalErrorHandler);
