@@ -15,6 +15,7 @@
     "e2e:security": "tsx --env-file=.env scripts/e2e-security-fixes.ts",
     "e2e:sync": "tsx --env-file=.env scripts/e2e-mobile-sync.ts",
     "e2e:recall": "tsx --env-file=.env scripts/e2e-recall-impact.ts",
+    "e2e:iot-alert": "tsx --env-file=.env scripts/e2e-iot-alert.ts",
     "docker:linux": "docker build -t api-nutrichain . --platform=linux/amd64",
     "docker:tar": "docker save api-nutrichain > image-linux.tar",
     "prepare": "husky",
