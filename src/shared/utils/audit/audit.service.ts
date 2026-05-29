@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client';
-import crypto from 'crypto';
 import { logger } from '../logger/logger';
 import { prisma as prismaClient } from '../../configs/prismaClient.config';
+import { computeAuditHash, GENESIS_PREV_HASH } from './auditHash.util';
 
 export interface AuditLogParams {
   organizationId: string;
@@ -35,27 +35,34 @@ export const auditService = {
       );
       const lastLog = lastLogs.length > 0 ? lastLogs[0] : null;
 
-      const prevHash = lastLog
-        ? lastLog.signature_hash
-        : '0000000000000000000000000000000000000000000000000000000000000000';
+      const prevHash = lastLog ? lastLog.signature_hash : GENESIS_PREV_HASH;
 
       // Source unique pour le hash ET la persistence — garantit la recompute exacte
       const horodatage = new Date();
 
-      const dataToHash = JSON.stringify({
+      // Normalisation `?? null` : Postgres persiste `undefined` comme `NULL`, et la
+      // relecture retourne `null`. Sans normalisation à l'écriture, le hash calculé
+      // côté write (avec `undefined` qui drop dans JSON.stringify) divergerait du
+      // recompute côté verify (qui voit `null` depuis Postgres). Verrouillage du
+      // contrat avant persistence.
+      const oldValueNormalized = params.oldValue ?? null;
+      const newValueNormalized = params.newValue ?? null;
+
+      const signatureHash = computeAuditHash({
         organizationId: params.organizationId,
-        userId: params.userId || 'system',
+        userId: params.userId,
         action: params.action,
         entity: params.entity,
         entityId: params.entityId,
-        oldValue: params.oldValue,
-        newValue: params.newValue,
-        prevHash: prevHash,
+        oldValue: oldValueNormalized,
+        newValue: newValueNormalized,
+        prevHash,
         timestamp: horodatage.toISOString(),
       });
 
-      const signatureHash = crypto.createHash('sha256').update(dataToHash).digest('hex');
-
+      // Persist les MÊMES valeurs que celles hashées — verrouille l'invariant
+      // "hash inputs === stored values" (sans ça, un futur changement du hash mais
+      // pas du create pourrait à nouveau diverger).
       const log = await db.audit_Log.create({
         data: {
           organization_id: params.organizationId,
@@ -63,8 +70,8 @@ export const auditService = {
           action: params.action,
           entity: params.entity,
           entity_id: params.entityId,
-          ancienne_valeur: params.oldValue as Prisma.InputJsonValue,
-          nouvelle_valeur: params.newValue as Prisma.InputJsonValue,
+          ancienne_valeur: oldValueNormalized as Prisma.InputJsonValue,
+          nouvelle_valeur: newValueNormalized as Prisma.InputJsonValue,
           prev_hash: prevHash,
           signature_hash: signatureHash,
           horodatage,

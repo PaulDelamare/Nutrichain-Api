@@ -84,7 +84,7 @@ model Verification {
 }
 
 model Organization {
-  id                 String       @id
+  id                 String            @id
   name               String
   slug               String
   logo               String?
@@ -100,6 +100,7 @@ model Organization {
   Location           Location[]
   Equipment          Equipment[]
   Audit_Log          Audit_Log[]
+  Audit_Checkpoint   Audit_Checkpoint?
   Alert              Alert[]
   ScrapRecord        ScrapRecord[]
   QualityControl     QualityControl[]
@@ -201,14 +202,14 @@ model Location {
 }
 
 model Equipment {
-  id              String       @id @default(uuid())
+  id              String           @id @default(uuid())
   organization_id String
-  organization    Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  organization    Organization     @relation(fields: [organization_id], references: [id], onDelete: Cascade)
   nom             String
   type            String
   id_lieu         String
-  lieu            Location     @relation(fields: [id_lieu], references: [id])
-  statut          String       @default("PRET")
+  lieu            Location         @relation(fields: [id_lieu], references: [id])
+  statut          String           @default("PRET")
   temp_actuelle   Decimal?
   temp_seuil_max  Decimal?
   qr_code_id      String?
@@ -345,6 +346,19 @@ model Audit_Log {
   @@index([horodatage])
   @@index([action])
   @@index([signature_hash])
+}
+
+// --- INTEGRITE AUDIT (PCA/PRA) ---
+// High-water mark per-org : permet de détecter une troncature silencieuse
+// de la fin de la hash chain (rows supprimés post-restore ou tampering).
+// Le cron `auditChainVerify` upsert cette ligne après chaque verify OK.
+model Audit_Checkpoint {
+  organization_id     String       @id
+  organization        Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  last_id             Int
+  last_signature_hash String       @db.Char(64)
+  last_row_count      Int
+  verified_at         DateTime     @default(now())
 }
 
 // --- GESTION DES REJETS/QUALITE ---
