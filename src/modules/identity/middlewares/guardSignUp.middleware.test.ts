@@ -52,14 +52,20 @@ describe('requireInvitationOrFirstUser', () => {
 
   it('rejette 403 si token absent ET userCount > 0 (anti-downgrade)', async () => {
     vi.mocked(bdd.user.count).mockResolvedValue(5);
+    vi.mocked(bdd.invitation.findFirst).mockResolvedValue(null);
 
     const next = await runGuard({ email: 'invited@nutrichain.local' });
 
     const err = next.mock.calls[0][0];
     expect(err?.status).toBe(403);
     expect(err?.body?.error?.[0]?.message).toContain('invitation valide');
-    // findFirst PAS appelé puisque le token est manquant : rejet upstream
-    expect(bdd.invitation.findFirst).not.toHaveBeenCalled();
+    // Anti-timing : findFirst est appelé avec un UUID dummy pour égaliser le temps
+    // par rapport aux branches "token bidon" et "email inconnu"
+    expect(bdd.invitation.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: '00000000-0000-0000-0000-000000000000' }),
+      })
+    );
   });
 
   it('invitation valide avec token correspondant à (id, email) → next()', async () => {
@@ -140,21 +146,33 @@ describe('requireInvitationOrFirstUser', () => {
 
   it('token == empty string → traité comme absent → 403 (pas de fall-through silencieux)', async () => {
     vi.mocked(bdd.user.count).mockResolvedValue(5);
+    vi.mocked(bdd.invitation.findFirst).mockResolvedValue(null);
 
     const next = await runGuard({ email: 'invited@nutrichain.local', token: '' });
 
     const err = next.mock.calls[0][0];
     expect(err?.status).toBe(403);
-    expect(bdd.invitation.findFirst).not.toHaveBeenCalled();
+    // findFirst quand même appelé avec DUMMY_TOKEN (anti-timing)
+    expect(bdd.invitation.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: '00000000-0000-0000-0000-000000000000' }),
+      })
+    );
   });
 
   it("token n'est pas une string (type confusion) → traité comme absent", async () => {
     vi.mocked(bdd.user.count).mockResolvedValue(5);
+    vi.mocked(bdd.invitation.findFirst).mockResolvedValue(null);
 
     const next = await runGuard({ email: 'invited@nutrichain.local', token: 12345 });
 
     const err = next.mock.calls[0][0];
     expect(err?.status).toBe(403);
-    expect(bdd.invitation.findFirst).not.toHaveBeenCalled();
+    // findFirst quand même appelé avec DUMMY_TOKEN (anti-timing)
+    expect(bdd.invitation.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: '00000000-0000-0000-0000-000000000000' }),
+      })
+    );
   });
 });

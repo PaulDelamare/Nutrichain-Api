@@ -37,25 +37,21 @@ export const requireInvitationOrFirstUser = catchAsync(
       return next();
     }
 
-    // 2. Le token est obligatoire pour tous les sign-ups après le premier user
-    if (!token) {
-      throw new APIError(403, {
-        error: [
-          {
-            field: 'auth',
-            message:
-              "Création de compte refusée. Vous n'avez pas d'invitation valide ou elle a expiré.",
-          },
-        ],
-      });
-    }
-
-    // 3. On cherche une invitation pending non-expirée correspondant à (id, email).
+    // 2. On cherche une invitation pending non-expirée correspondant à (id, email).
     // Le filtre sur les deux champs simultanément empêche un attaquant de combiner un
     // token réel avec un email arbitraire.
+    //
+    // Anti-enumeration : si le token est absent on lance quand même la requête avec un
+    // UUID qui ne matche jamais. Comme ça les 3 branches d'échec (pas de token / token
+    // bidon / email-token incohérents) prennent le même temps DB côté serveur — un
+    // attaquant ne peut pas distinguer "email connu sans token" de "email inconnu" par
+    // timing.
+    const DUMMY_TOKEN = '00000000-0000-0000-0000-000000000000';
+    // `||` (et pas `??`) pour traiter aussi empty string comme absent,
+    // sinon `id: ''` créerait une 4e branche de timing.
     const invitation = await bdd.invitation.findFirst({
       where: {
-        id: token,
+        id: token || DUMMY_TOKEN,
         email,
         status: 'pending',
         expiresAt: { gt: new Date() },

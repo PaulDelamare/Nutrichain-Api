@@ -95,7 +95,7 @@ export const auth = betterAuth({
                 `[BetterAuth Hook] Invitation acceptée et Membre généré pour l'utilisateur: ${user.email}`
               );
             } catch (e) {
-              console.error("[BetterAuth Hook] Erreur lors de la consommation de l'invitation:", e);
+              logger.error("[BetterAuth Hook] Erreur lors de la consommation de l'invitation:", e);
             }
           } else {
             // RECOMMANDATION 1: Processus du "Premier Utilisateur"
@@ -126,7 +126,7 @@ export const auth = betterAuth({
                 `[BetterAuth Hook] Premier utilisateur détecté : Zone 'Siège Central' créée pour ${user.email}`
               );
             } catch (e) {
-              console.error('[BetterAuth Hook] Erreur lors de la création de la zone initiale:', e);
+              logger.error('[BetterAuth Hook] Erreur lors de la création de la zone initiale:', e);
             }
           }
         },
