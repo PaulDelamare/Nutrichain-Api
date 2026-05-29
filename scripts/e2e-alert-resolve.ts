@@ -89,18 +89,20 @@ async function setup(): Promise<Fixtures> {
     throw new Error('Pas de member owner/admin seedé pour cette org.');
   }
 
-  let unite = await prisma.unite_Mesure.findFirst();
-  if (!unite) {
-    unite = await prisma.unite_Mesure.create({ data: { code: 'KG', nom: 'Kilogramme' } });
+  let unit = await prisma.unit.findFirst();
+  if (!unit) {
+    unit = await prisma.unit.create({ data: { code: 'KG', nom: 'Kilogramme', factor_to_base: 1 } });
   }
-  let product = await prisma.produit.findFirst({ where: { organization_id: ORG_ID! } });
+  let product = await prisma.product.findFirst({ where: { organization_id: ORG_ID! } });
   if (!product) {
-    product = await prisma.produit.create({
+    product = await prisma.product.create({
       data: {
         organization_id: ORG_ID!,
         nom: `E2E-Produit-${stamp}`,
-        unite_code: unite.code,
-        type_produit: 'MATIERE_PREMIERE',
+        categorie: 'MATIERE_PREMIERE',
+        duree_conservation_defaut: 30,
+        seuil_alerte_stock: 10,
+        unite_reference: unit.code,
       },
     });
   }
@@ -127,7 +129,7 @@ async function setup(): Promise<Fixtures> {
     sensorId,
     locationId: location.id,
     productId: product.id,
-    uniteId: unite.code,
+    uniteId: unit.code,
     resolverUserId: adminMember.user.id,
     initialAlertId: initialAlert.id,
   };
@@ -250,9 +252,10 @@ async function main(): Promise<void> {
         organization_id: ORG_ID!,
         id_produit: fixtures.productId,
         unite_code: fixtures.uniteId,
-        quantite_initiale: 100,
-        quantite_restante: 100,
+        quantite_actuelle: 100,
+        quantite_base: 100,
         statut: 'ALERTE',
+        created_by: fixtures.resolverUserId,
       },
     });
     fixtures.recallBatchId = recallBatch.id;
