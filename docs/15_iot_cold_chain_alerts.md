@@ -113,7 +113,7 @@ Justification : tolère le jitter capteur (un seul outlier ne reset pas la déte
 - **SSE/WebSocket** pour dashboard temps réel (email suffit MVP)
 - **Workers/queue** (BullMQ) pour scale > 600 pings/s
 - **Détection humidité / batterie / porte ouverte** (juste température v1)
-- **`PATCH /api/alerts/:id/resolve`** pour résolution manuelle via API
+- ~~**`PATCH /api/alerts/:id/resolve`** pour résolution manuelle via API~~ → **Livré** dans `feat/alert-resolve-endpoint`, cf. `docs/17_alert_resolve.md`
 - **Configurable per-Equipment `windowMinutes`** (constant 15min v1)
 - **Métriques Prometheus** (latence détection, taux d'excursion)
 - **Mailer `transporter.verify()` une fois au boot** (actuellement à chaque envoi — pas critique)
