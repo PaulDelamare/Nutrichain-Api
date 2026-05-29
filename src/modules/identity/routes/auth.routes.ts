@@ -13,6 +13,17 @@ const router = Router();
  * /api/auth/sign-up/email:
  *   post:
  *     summary: Inscription d'un nouvel utilisateur (fermé par défaut)
+ *     description: |
+ *       Inscription gérée par Better-Auth. Le middleware `requireInvitationOrFirstUser`
+ *       valide en amont qu'une `Invitation` pending non-expirée existe pour `(email, token)`.
+ *       Le tout premier utilisateur du système bypasse cette guard (création du First Admin).
+ *
+ *       Après création du `User`, le hook `databaseHooks.user.create.after` :
+ *       - marque l'`Invitation` comme `accepted` (consommation atomique)
+ *       - crée un `Member` dans l'org de l'invitation avec le rôle correspondant
+ *       - (si first user) crée une org "Siège Central" + role 'owner'
+ *
+ *       Voir `docs/16_invitation_register_flow.md` pour l'intégration frontend.
  *     tags: [Identité]
  *     security:
  *       - apiKeyAuth: []
@@ -22,18 +33,30 @@ const router = Router();
  *         application/json:
  *           schema:
  *             type: object
+ *             required: [email, password, name]
  *             properties:
  *               email:
  *                 type: string
+ *                 format: email
  *               name:
  *                 type: string
+ *                 minLength: 2
  *               password:
  *                 type: string
+ *                 description: Doit respecter passwordRule (longueur, complexité)
+ *               token:
+ *                 type: string
+ *                 format: uuid
+ *                 description: |
+ *                   UUID de l'`Invitation` reçue par email. Optionnel pour le premier
+ *                   utilisateur du système, OBLIGATOIRE pour tous les autres sign-ups.
  *     responses:
  *       200:
- *         description: Succès
+ *         description: Compte créé, session active (cookie pour web + header `set-auth-token` pour mobile/Bearer)
+ *       400:
+ *         description: Payload invalide (email, password trop faible, name trop court, token mal formé)
  *       403:
- *         description: Pas d'invitation
+ *         description: Pas d'invitation valide ou token incorrect (message générique, anti-enumeration)
  *
  * /api/auth/sign-in/email:
  *   post:
