@@ -1,6 +1,6 @@
 import { prisma } from '../../../../shared/configs/prismaClient.config';
 import { APIError } from '../../../../shared/utils/errorHandler/APIError';
-import { Batch } from '@prisma/client';
+import { Batch, Prisma } from '@prisma/client';
 import { auditService } from '../../../../shared/utils/audit/audit.service';
 
 export interface TransformationInput {
@@ -111,7 +111,7 @@ export const transformationService = {
           id_user: data.created_by,
           id_materiel: data.id_materiel,
           statut: 'TERMINE',
-          note_technique: data.note_technique || {},
+          note_technique: (data.note_technique || {}) as Prisma.InputJsonValue,
           horodatage_fin: new Date(),
         },
       });

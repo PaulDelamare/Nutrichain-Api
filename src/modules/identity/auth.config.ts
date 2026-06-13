@@ -32,7 +32,7 @@ export const auth = betterAuth({
       // Si le retour est une erreur API, on peut la traduire
       if (error instanceof BetterAuthError) {
         const expectedError = error as Error & { body?: { code?: string }; statusCode?: number };
-        let message: string = error.message || "Erreur d'authentification";
+        let message: string = expectedError.message || "Erreur d'authentification";
 
         const errCode = expectedError.body?.code;
 

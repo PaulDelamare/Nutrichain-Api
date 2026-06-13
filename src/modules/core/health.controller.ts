@@ -89,7 +89,10 @@ const checkMigrations = async (): Promise<HealthCheckResult> => {
 
     const columnNames = Array.isArray(cols)
       ? cols
-          .map((c: Record<string, unknown>) => String(c.column_name || c.COLUMN_NAME || c.name))
+          .map((c) => {
+            const row = c as Record<string, unknown>;
+            return String(row.column_name || row.COLUMN_NAME || row.name);
+          })
           .filter(Boolean)
       : [];
 
@@ -120,7 +123,7 @@ const checkMigrations = async (): Promise<HealthCheckResult> => {
       ok: Boolean(latest),
       optional: true,
       durationMs: Date.now() - started,
-      details: latest ? latest : { message: 'No migration rows' },
+      details: latest ? (latest as Record<string, unknown>) : { message: 'No migration rows' },
     };
   } catch (err) {
     return {
