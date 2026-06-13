@@ -100,6 +100,7 @@ async function setup(): Promise<Fixtures> {
         organization_id: ORG_ID!,
         nom: `E2E-Produit-${stamp}`,
         categorie: 'MATIERE_PREMIERE',
+        code_gtin: '3000000000048',
         duree_conservation_defaut: 30,
         seuil_alerte_stock: 10,
         unite_reference: unit.code,

@@ -21,6 +21,7 @@ async function main() {
         id: '123e4567-e89b-12d3-a456-426614174001',
         nom: 'Produit Test',
         categorie: 'Test',
+        code_gtin: '3000000000031',
         duree_conservation_defaut: 365,
         seuil_alerte_stock: 0,
         unite_reference: 'KG',

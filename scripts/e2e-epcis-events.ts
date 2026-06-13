@@ -43,6 +43,7 @@ async function seed() {
       organization_id: API_KEY_ORG_ID,
       nom: 'Produit EPCIS Test',
       categorie: 'Test',
+      code_gtin: '3000000000017',
       duree_conservation_defaut: 365,
       seuil_alerte_stock: 0,
       unite_reference: 'KG',
