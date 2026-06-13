@@ -188,6 +188,24 @@ async function main() {
         'epcList expédition contient le lot'
       );
     }
+
+    console.log('Scénario : restitution via GET /api/traceability/events (filtre + cloisonnement)');
+    const evRes = await fetch(`${API_BASE}/api/traceability/events?related_entity=Shipment&limit=50`, {
+      headers: { ...(API_KEY ? { 'x-api-key': API_KEY } : {}) },
+    });
+    const evBody = await evRes.json().catch(() => null);
+    console.log('GET /traceability/events ->', evRes.status);
+    assert(evRes.status === 200, 'GET /traceability/events retourne 200');
+
+    const items = (evBody?.data?.data ?? []) as Array<Record<string, unknown>>;
+    assert(
+      items.some((e) => e.related_id === shipmentId && e.event_type === 'ObjectEvent'),
+      'l événement d expédition est restitué par l API'
+    );
+    assert(
+      items.every((e) => e.organization_id === API_KEY_ORG_ID),
+      'tous les événements restitués appartiennent à l organisation (cloisonnement)'
+    );
   } catch (e) {
     failed++;
     console.error('E2E error:', e);
