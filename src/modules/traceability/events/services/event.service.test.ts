@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { eventService } from './event.service';
 import { prisma } from '../../../../shared/configs/prismaClient.config';
+import { APIError } from '../../../../shared/utils/errorHandler/APIError';
 
 vi.mock('../../../../shared/configs/prismaClient.config', () => ({
   prisma: {
@@ -35,6 +36,15 @@ describe('eventService.listEvents', () => {
     );
     expect(result.pagination).toEqual({ page: 1, limit: 20, total: 2, totalPages: 1 });
     expect(result.data).toHaveLength(1);
+  });
+
+  it('refuse la lecture sans organisation (anti-fuite cross-tenant)', async () => {
+    await expect(eventService.listEvents('', 1, 20)).rejects.toThrow(APIError);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await expect(eventService.listEvents(undefined as any, 1, 20)).rejects.toMatchObject({
+      status: 401,
+    });
+    expect(prisma.ePCIS_Event.findMany).not.toHaveBeenCalled();
   });
 
   it('borne limit à 500 et page minimale à 1', async () => {

@@ -1,4 +1,5 @@
 import { prisma } from '../../../../shared/configs/prismaClient.config';
+import { APIError } from '../../../../shared/utils/errorHandler/APIError';
 
 export interface ListEventsFilters {
   eventType?: string;
@@ -11,6 +12,13 @@ export interface ListEventsFilters {
  */
 export const eventService = {
   async listEvents(activeOrgId: string, page = 1, limit = 20, filters: ListEventsFilters = {}) {
+    // Garde multi-tenant : sans org, Prisma ignorerait le filtre et fuiterait les autres organisations
+    if (!activeOrgId) {
+      throw new APIError(401, {
+        error: [{ field: 'auth', message: 'Organisation non identifiée.' }],
+      });
+    }
+
     const safePage = page > 0 ? page : 1;
     const safeLimit = limit > 0 && limit <= 500 ? limit : 20;
     const skip = (safePage - 1) * safeLimit;
