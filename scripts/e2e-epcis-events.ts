@@ -9,6 +9,7 @@ const API_KEY_ORG_ID = process.env.API_KEY_ORG_ID || '';
 const SUPPLIER_ID = '123e4567-e89b-12d3-a456-426614174000';
 const PRODUCT_ID = '123e4567-e89b-12d3-a456-426614174001';
 const USER_ID = '123e4567-e89b-12d3-a456-426614174099';
+const CUSTOMER_ID = '123e4567-e89b-12d3-a456-426614174002';
 
 let passed = 0;
 let failed = 0;
@@ -57,6 +58,16 @@ async function seed() {
     update: {},
     create: { code: 'KG', nom: 'Kilogramme', factor_to_base: 1 },
   });
+  await prisma.customer.upsert({
+    where: { id: CUSTOMER_ID },
+    update: {},
+    create: {
+      id: CUSTOMER_ID,
+      organization_id: API_KEY_ORG_ID,
+      nom_enseigne: 'Client EPCIS Test',
+      adresse_livraison: 'Adresse Livraison Test',
+    },
+  });
 }
 
 async function postReceipt() {
@@ -84,6 +95,31 @@ async function postReceipt() {
   return { status: res.status, body };
 }
 
+async function postShipment(batchId: string) {
+  const payload = {
+    id_client: CUSTOMER_ID,
+    transporteur: 'Transports EPCIS',
+    destination_adresse: 'Adresse Livraison Test',
+    created_by: USER_ID,
+    date_expedition: new Date().toISOString(),
+    shipment_id: 'AUTO',
+    lots: [{ id_lot: batchId, quantite_expediee: 10 }],
+  };
+
+  const res = await fetch(`${API_BASE}/api/logistics/shipments`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(API_KEY ? { 'x-api-key': API_KEY } : {}),
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const body = await res.json().catch(() => null);
+  console.log('POST /shipments ->', res.status);
+  return { status: res.status, body };
+}
+
 async function main() {
   if (!API_KEY_ORG_ID) {
     console.error('API_KEY_ORG_ID manquant : impossible de vérifier le cloisonnement EPCIS. Abandon.');
@@ -92,6 +128,7 @@ async function main() {
 
   let receiptId: string | undefined;
   let batchId: string | undefined;
+  let shipmentId: string | undefined;
 
   try {
     console.log('Seeding fixtures...');
@@ -125,10 +162,43 @@ async function main() {
         'epcList contient le lot créé'
       );
     }
+
+    console.log('Scénario : une expédition émet un ObjectEvent EPCIS shipping cloisonné par organisation');
+    const ship = await postShipment(batchId as string);
+    assert(ship.status === 201, 'POST /shipments retourne 201');
+    shipmentId = ship.body?.data?.shipment?.id || ship.body?.data?.id;
+    assert(Boolean(shipmentId), 'shipmentId présent dans la réponse');
+
+    const shipEvents = await prisma.ePCIS_Event.findMany({
+      where: { related_entity: 'Shipment', related_id: shipmentId },
+    });
+    assert(shipEvents.length === 1, 'exactement 1 EPCIS_Event lié à l expédition');
+    const shipEvent = shipEvents[0];
+
+    if (shipEvent) {
+      assert(shipEvent.event_type === 'ObjectEvent', "event_type expédition === 'ObjectEvent'");
+      assert(
+        shipEvent.organization_id === API_KEY_ORG_ID,
+        'organization_id de l événement expédition === org de la clé API'
+      );
+      const shipPayload = shipEvent.payload as Record<string, unknown>;
+      assert(shipPayload?.bizStep === 'urn:epcglobal:cbv:bizstep:shipping', 'bizStep GS1 shipping');
+      assert(
+        Array.isArray(shipPayload?.epcList) && (shipPayload.epcList as unknown[]).includes(batchId),
+        'epcList expédition contient le lot'
+      );
+    }
   } catch (e) {
     failed++;
     console.error('E2E error:', e);
   } finally {
+    // Ordre de suppression imposé par les contraintes de clés étrangères
+    if (shipmentId) {
+      await prisma.ePCIS_Event.deleteMany({ where: { related_entity: 'Shipment', related_id: shipmentId } });
+      await prisma.liaison_Shipment.deleteMany({ where: { id_expedition: shipmentId } });
+    }
+    if (batchId) await prisma.batch_Mouvement.deleteMany({ where: { id_lot: batchId } });
+    if (shipmentId) await prisma.shipment.deleteMany({ where: { id: shipmentId } });
     if (receiptId) {
       await prisma.ePCIS_Event.deleteMany({ where: { related_entity: 'Receipt', related_id: receiptId } });
       await prisma.receipt.deleteMany({ where: { id: receiptId } });

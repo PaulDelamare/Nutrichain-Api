@@ -40,6 +40,7 @@ export const shipmentService = {
       });
 
       // 2. Traiter chaque lot (Déduction de stock + Liaison)
+      const shippedLots: string[] = [];
       for (const item of data.items) {
         const batch = await tx.batch.findFirst({
           where: {
@@ -108,7 +109,28 @@ export const shipmentService = {
             id_user: data.created_by,
           },
         });
+
+        shippedLots.push(item.id_lot);
       }
+
+      // 7. Événement EPCIS ObjectEvent : sortie des lots de la chaîne lors de l'expédition (interopérabilité GS1)
+      await tx.ePCIS_Event.create({
+        data: {
+          organization_id: data.organization_id,
+          event_time: new Date(),
+          event_type: 'ObjectEvent',
+          related_entity: 'Shipment',
+          related_id: shipment.id,
+          payload: {
+            epcList: shippedLots,
+            action: 'OBSERVE',
+            bizStep: 'urn:epcglobal:cbv:bizstep:shipping',
+            disposition: 'urn:epcglobal:cbv:disp:in_transit',
+            destinationParty: data.id_client,
+            sscc: finalShipmentId,
+          },
+        },
+      });
 
       return shipment;
     });

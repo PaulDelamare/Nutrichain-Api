@@ -20,6 +20,9 @@ vi.mock('../../../../shared/configs/prismaClient.config', () => ({
       create: vi.fn(),
       count: vi.fn().mockResolvedValue(10), // On simule 10 expéditions existantes
     },
+    ePCIS_Event: {
+      create: vi.fn(),
+    },
   },
 }));
 
@@ -65,6 +68,38 @@ describe('ShipmentService', () => {
     expect(prisma.liaison_Shipment.create).toHaveBeenCalled();
     expect(prisma.batch_Mouvement.create).toHaveBeenCalled();
     expect(result).toBeDefined();
+  });
+
+  it('devrait émettre un ObjectEvent EPCIS cloisonné par organisation lors de l expédition', async () => {
+    const mockBatch = {
+      id: 'batch-1',
+      organization_id: 'org-123',
+      quantite_actuelle: { toNumber: () => 100 },
+      unite_code: 'KG',
+      statut: 'EN_STOCK',
+      date_peremption: new Date(Date.now() + 1000000),
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(prisma.batch.findFirst).mockResolvedValue(mockBatch as any);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(prisma.shipment.create).mockResolvedValue({ id: 'ship-1' } as any);
+
+    await shipmentService.createShipment(mockShipmentData);
+
+    expect(prisma.ePCIS_Event.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        organization_id: 'org-123',
+        event_type: 'ObjectEvent',
+        related_entity: 'Shipment',
+        related_id: 'ship-1',
+        payload: expect.objectContaining({
+          epcList: ['batch-1'],
+          bizStep: 'urn:epcglobal:cbv:bizstep:shipping',
+          destinationParty: 'client-456',
+        }),
+      }),
+    });
   });
 
   it('devrait générer un SSCC automatiquement si shipment_id est AUTO', async () => {
