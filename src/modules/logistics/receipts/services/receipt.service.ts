@@ -75,6 +75,24 @@ async function createReceiptInTx(tx: Prisma.TransactionClient, data: CreateRecei
     created_by: data.received_by,
   });
 
+  // Événement EPCIS ObjectEvent : entrée du lot dans la chaîne lors de la réception (interopérabilité GS1)
+  await tx.ePCIS_Event.create({
+    data: {
+      organization_id: data.organization_id,
+      event_time: new Date(),
+      event_type: 'ObjectEvent',
+      related_entity: 'Receipt',
+      related_id: receipt.id,
+      payload: {
+        epcList: [batch.id],
+        action: 'ADD',
+        bizStep: 'urn:epcglobal:cbv:bizstep:receiving',
+        disposition: 'urn:epcglobal:cbv:disp:active',
+        sourceParty: data.id_fournisseur,
+      },
+    },
+  });
+
   await auditService.logAction(
     {
       organizationId: data.organization_id,

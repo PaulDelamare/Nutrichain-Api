@@ -228,6 +228,7 @@ export const transformationService = {
       // 6. ENREGISTREMENT EVENEMENT EPCIS GS1 (Interopérabilité Internationale)
       await tx.ePCIS_Event.create({
         data: {
+          organization_id: data.organization_id,
           event_time: new Date(),
           event_type: 'TransformationEvent',
           related_entity: 'Transformation',
