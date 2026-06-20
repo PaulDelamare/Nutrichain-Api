@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { ingestTelemetry, getSensorHistory } from '../controllers/telemetry.controller';
 import { checkApiKey } from '../../../shared/utils/checkApiKey/checkApiKey';
+import { mixedAuth } from '../../../shared/middlewares/mixedAuth';
 import { requireAuth } from '../../identity/middlewares/requireAuth.middleware';
 import { requireOrgRole } from '../../identity/middlewares/requireOrgRole.middleware';
 
@@ -84,9 +85,10 @@ const router = Router();
  *       401:
  *         description: Clé API manquante ou invalide
  */
-// Capteurs IoT : pas de session utilisateur, clé API obligatoire.
-// L'organisation est résolue depuis API_KEY_ORG_ID (env), pas depuis le header.
-router.post('/telemetry/ping', checkApiKey(), ingestTelemetry);
+// Capteurs IoT : pas de session utilisateur, clé API obligatoire (M2M).
+// mixedAuth([]) applique la garde multi-tenant centralisée : org résolue (API_KEY_ORG_ID)
+// obligatoire, sinon 401 — pas de bypass de la politique cross-tenant.
+router.post('/telemetry/ping', mixedAuth([]), ingestTelemetry);
 
 /**
  * @swagger
