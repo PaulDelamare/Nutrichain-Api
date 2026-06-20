@@ -3,6 +3,13 @@ import { prisma } from '../../../../shared/configs/prismaClient.config';
 import { batchService } from '../../shared/services/batch.service';
 import { auditService } from '../../../../shared/utils/audit/audit.service';
 import { APIError } from '../../../../shared/utils/errorHandler/APIError';
+import {
+  EPCIS_ACTION,
+  EPCIS_BIZSTEP,
+  EPCIS_DISPOSITION,
+  EPCIS_EVENT_TYPE,
+  EPCIS_RELATED_ENTITY,
+} from '../../../../shared/constants/epcis.constants';
 
 /**
  * Interface pour les données de création d'une réception.
@@ -80,14 +87,14 @@ async function createReceiptInTx(tx: Prisma.TransactionClient, data: CreateRecei
     data: {
       organization_id: data.organization_id,
       event_time: new Date(),
-      event_type: 'ObjectEvent',
-      related_entity: 'Receipt',
+      event_type: EPCIS_EVENT_TYPE.object,
+      related_entity: EPCIS_RELATED_ENTITY.receipt,
       related_id: receipt.id,
       payload: {
         epcList: [batch.id],
-        action: 'ADD',
-        bizStep: 'urn:epcglobal:cbv:bizstep:receiving',
-        disposition: 'urn:epcglobal:cbv:disp:active',
+        action: EPCIS_ACTION.add,
+        bizStep: EPCIS_BIZSTEP.receiving,
+        disposition: EPCIS_DISPOSITION.active,
         sourceParty: data.id_fournisseur,
       },
     },

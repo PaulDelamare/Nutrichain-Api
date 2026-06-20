@@ -1,6 +1,13 @@
 import { prisma } from '../../../../shared/configs/prismaClient.config';
 import { APIError } from '../../../../shared/utils/errorHandler/APIError';
 import { gs1Utils } from '../../shared/utils/gs1.utils';
+import {
+  EPCIS_ACTION,
+  EPCIS_BIZSTEP,
+  EPCIS_DISPOSITION,
+  EPCIS_EVENT_TYPE,
+  EPCIS_RELATED_ENTITY,
+} from '../../../../shared/constants/epcis.constants';
 
 /**
  * Service pour la gestion des Expéditions (Shipments)
@@ -118,14 +125,14 @@ export const shipmentService = {
         data: {
           organization_id: data.organization_id,
           event_time: new Date(),
-          event_type: 'ObjectEvent',
-          related_entity: 'Shipment',
+          event_type: EPCIS_EVENT_TYPE.object,
+          related_entity: EPCIS_RELATED_ENTITY.shipment,
           related_id: shipment.id,
           payload: {
             epcList: shippedLots,
-            action: 'OBSERVE',
-            bizStep: 'urn:epcglobal:cbv:bizstep:shipping',
-            disposition: 'urn:epcglobal:cbv:disp:in_transit',
+            action: EPCIS_ACTION.observe,
+            bizStep: EPCIS_BIZSTEP.shipping,
+            disposition: EPCIS_DISPOSITION.inTransit,
             destinationParty: data.id_client,
             sscc: finalShipmentId,
           },
