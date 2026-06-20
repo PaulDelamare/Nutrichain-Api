@@ -24,7 +24,7 @@ La journalisation des logs utilise l'utilitaire interne (basé sur `winston` et 
 ## 4. Standardisation des Listes (Collections)
 
 Toutes les routes retournant des listes (Utilisateurs, Lots, Produits) doivent respecter un format universel adapté aux volumes industriels :
-- **Pagination systématique** (`?page=1&limit=500`). Vu la volumétrie (millions de lots, palettes entières), la limite par défaut/minimale est calibrée à 500 pour éviter d'inonder le réseau avec des milliers de petites requêtes.
+- **Pagination systématique** (`?page=1&limit=...`). Vu la volumétrie (millions de lots, palettes entières), le **plafond** de `limit` est calibré à **500** pour les imports/exports massifs. Le **défaut** est laissé à l'appréciation de l'endpoint : **20** pour les restitutions consultées à l'écran (ex: `GET /api/traceability/events`, `listReceipts`), 500 pour les flux bulk. Toute valeur `limit` est bornée à `[1, 500]` et validée côté entrée (VineJS).
 - **Structure JSON retournée** standardisée au travers d'un utilitaire (ex: `returnPaginatedSuccess`), qui retourne à la fois les données et les "méta" (total de pages, nombre d'éléments restants).
 
 ## 5. CI/CD et Processus Git
