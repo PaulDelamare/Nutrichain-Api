@@ -58,6 +58,7 @@ async function setup() {
       organization_id: ORG_ID,
       nom: 'Lait Cru E2E',
       categorie: 'Matière Première',
+      code_gtin: '3000000000062',
       duree_conservation_defaut: 5,
       seuil_alerte_stock: 10,
       unite_reference: 'KG',

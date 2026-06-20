@@ -15,7 +15,7 @@ export const validateTransformationParams = catchAsync(
     const schema = vine.object({
       id_produit_fini: vine.string().uuid(),
       id_materiel: vine.string().uuid(),
-      quantite_produite: vine.number().positive().decimal({ places: 2 }),
+      quantite_produite: vine.number().positive().decimal([0, 2]),
       unite_code: vine.enum(VALID_UNITS),
       date_peremption: vine.string().optional(),
       note_technique: vine.record(vine.any()).optional(),
@@ -25,7 +25,7 @@ export const validateTransformationParams = catchAsync(
         .array(
           vine.object({
             id_lot_parent: vine.string().uuid(),
-            quantite_prelevee: vine.number().positive().decimal({ places: 2 }),
+            quantite_prelevee: vine.number().positive().decimal([0, 2]),
             unite: vine.enum(VALID_UNITS),
             lot_parent_epuise: vine.boolean(),
           })

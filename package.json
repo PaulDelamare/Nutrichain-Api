@@ -18,6 +18,7 @@
     "e2e:iot-alert": "tsx --env-file=.env scripts/e2e-iot-alert.ts",
     "e2e:alert-resolve": "tsx --env-file=.env scripts/e2e-alert-resolve.ts",
     "e2e:audit-verify": "tsx --env-file=.env scripts/e2e-audit-verify.ts",
+    "e2e:epcis": "tsx --env-file=.env scripts/e2e-epcis-events.ts",
     "backup:postgres": "tsx --env-file=.env scripts/backup-postgres.ts",
     "backup:mongo": "tsx --env-file=.env scripts/backup-mongo.ts",
     "restore:postgres": "tsx --env-file=.env scripts/restore-postgres.ts",

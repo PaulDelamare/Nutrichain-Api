@@ -1,6 +1,6 @@
 import { prisma } from '../../../../shared/configs/prismaClient.config';
 import { APIError } from '../../../../shared/utils/errorHandler/APIError';
-import { Batch } from '@prisma/client';
+import { Batch, Prisma } from '@prisma/client';
 import { auditService } from '../../../../shared/utils/audit/audit.service';
 
 export interface TransformationInput {
@@ -111,7 +111,7 @@ export const transformationService = {
           id_user: data.created_by,
           id_materiel: data.id_materiel,
           statut: 'TERMINE',
-          note_technique: data.note_technique || {},
+          note_technique: (data.note_technique || {}) as Prisma.InputJsonValue,
           horodatage_fin: new Date(),
         },
       });
@@ -228,6 +228,7 @@ export const transformationService = {
       // 6. ENREGISTREMENT EVENEMENT EPCIS GS1 (Interopérabilité Internationale)
       await tx.ePCIS_Event.create({
         data: {
+          organization_id: data.organization_id,
           event_time: new Date(),
           event_type: 'TransformationEvent',
           related_entity: 'Transformation',

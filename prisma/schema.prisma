@@ -108,6 +108,7 @@ model Organization {
   Customer           Customer[]
   Shipment           Shipment[]
   IdempotencyKey     IdempotencyKey[]
+  EPCIS_Event        EPCIS_Event[]
 
   @@unique([slug])
   @@map("organization")
@@ -166,13 +167,16 @@ model Unit {
 }
 
 model EPCIS_Event {
-  id             String   @id @default(uuid())
-  event_time     DateTime
-  event_type     String
-  related_entity String
-  related_id     String
-  payload        Json
+  id              String       @id @default(uuid())
+  organization_id String
+  organization    Organization @relation(fields: [organization_id], references: [id], onDelete: Restrict)
+  event_time      DateTime
+  event_type      String
+  related_entity  String
+  related_id      String
+  payload         Json
 
+  @@index([organization_id])
   @@index([related_entity, related_id])
   @@index([event_time])
 }
@@ -229,7 +233,7 @@ model Product {
   organization_id           String
   organization              Organization        @relation(fields: [organization_id], references: [id], onDelete: Cascade)
   nom                       String
-  code_gtin                 String?
+  code_gtin                 String
   categorie                 String
   duree_conservation_defaut Int
   seuil_alerte_stock        Decimal

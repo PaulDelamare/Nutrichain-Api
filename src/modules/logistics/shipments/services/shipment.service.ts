@@ -1,6 +1,13 @@
 import { prisma } from '../../../../shared/configs/prismaClient.config';
 import { APIError } from '../../../../shared/utils/errorHandler/APIError';
 import { gs1Utils } from '../../shared/utils/gs1.utils';
+import {
+  EPCIS_ACTION,
+  EPCIS_BIZSTEP,
+  EPCIS_DISPOSITION,
+  EPCIS_EVENT_TYPE,
+  EPCIS_RELATED_ENTITY,
+} from '../../../../shared/constants/epcis.constants';
 
 /**
  * Service pour la gestion des Expéditions (Shipments)
@@ -40,6 +47,7 @@ export const shipmentService = {
       });
 
       // 2. Traiter chaque lot (Déduction de stock + Liaison)
+      const shippedLots: string[] = [];
       for (const item of data.items) {
         const batch = await tx.batch.findFirst({
           where: {
@@ -108,7 +116,28 @@ export const shipmentService = {
             id_user: data.created_by,
           },
         });
+
+        shippedLots.push(item.id_lot);
       }
+
+      // 7. Événement EPCIS ObjectEvent : sortie des lots de la chaîne lors de l'expédition (interopérabilité GS1)
+      await tx.ePCIS_Event.create({
+        data: {
+          organization_id: data.organization_id,
+          event_time: new Date(),
+          event_type: EPCIS_EVENT_TYPE.object,
+          related_entity: EPCIS_RELATED_ENTITY.shipment,
+          related_id: shipment.id,
+          payload: {
+            epcList: shippedLots,
+            action: EPCIS_ACTION.observe,
+            bizStep: EPCIS_BIZSTEP.shipping,
+            disposition: EPCIS_DISPOSITION.inTransit,
+            destinationParty: data.id_client,
+            sscc: finalShipmentId,
+          },
+        },
+      });
 
       return shipment;
     });
