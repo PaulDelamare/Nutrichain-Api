@@ -197,12 +197,20 @@ async function main() {
       where: { action: 'BATCH_RECALL_TRIGGERED', organization_id: ORG_ID! },
     });
 
+    const recallStart = Date.now();
     const result = await recallService.triggerRecall(
       fixtures.sourceBatchId,
       ORG_ID!,
       fixtures.userId,
       'E2E test — Listeria simulation'
     );
+    const recallMs = Date.now() - recallStart;
+
+    // 0. Objectif SMART n°5 : décision → traitement < 15 min.
+    // La métrique couvre le coeur transactionnel (blocage descendance + alerte + audit).
+    // La notification email est fire-and-forget hors transaction, donc hors de cette mesure.
+    console.log(`Rappel exécuté en ${recallMs} ms`);
+    assert(recallMs < 15 * 60 * 1000, `rappel exécuté en < 15 min (mesuré ${recallMs} ms)`);
 
     // 1. Blocage propagé : source + child
     assert(result.blockedBatchesCount === 2, `blockedBatchesCount === 2 (reçu ${result.blockedBatchesCount})`);
