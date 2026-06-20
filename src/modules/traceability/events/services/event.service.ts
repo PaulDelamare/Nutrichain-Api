@@ -11,7 +11,12 @@ export interface ListEventsFilters {
  * Toutes les lectures sont cloisonnées par organisation (multi-tenant).
  */
 export const eventService = {
-  async listEvents(activeOrgId: string, page = 1, limit = 20, filters: ListEventsFilters = {}) {
+  async listEvents(
+    activeOrgId: string | undefined,
+    page = 1,
+    limit = 20,
+    filters: ListEventsFilters = {}
+  ) {
     // Garde multi-tenant : sans org, Prisma ignorerait le filtre et fuiterait les autres organisations
     if (!activeOrgId) {
       throw new APIError(401, {
@@ -19,8 +24,10 @@ export const eventService = {
       });
     }
 
-    const safePage = page > 0 ? page : 1;
-    const safeLimit = limit > 0 && limit <= 500 ? limit : 20;
+    // Défense en profondeur : la validation VineJS borne déjà l'entrée HTTP, mais le service
+    // garantit aussi des arguments Prisma sûrs (entiers, plafond 500) s'il est appelé autrement.
+    const safePage = Number.isFinite(page) && page > 0 ? Math.trunc(page) : 1;
+    const safeLimit = Number.isFinite(limit) && limit > 0 && limit <= 500 ? Math.trunc(limit) : 20;
     const skip = (safePage - 1) * safeLimit;
 
     const where = {

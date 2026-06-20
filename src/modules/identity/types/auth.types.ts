@@ -1,6 +1,7 @@
 import { Request } from 'express';
 import { Alert, Batch, Receipt } from '@prisma/client';
 import { SyncScansPayload } from '../../sync/types/sync.types';
+import { EventsQuery } from '../../traceability/events/middlewares/eventsQuery.schema';
 
 /**
  * Interface standard pour un utilisateur Better-Auth
@@ -65,4 +66,6 @@ export interface AuthenticatedRequest extends Request {
   validatedSyncScans?: SyncScansPayload;
   // Alert resolve endpoint (PATCH /api/alerts/:id/resolve) — typé proprement
   validatedResolveAlert?: { note?: string };
+  // Query params validés de GET /api/traceability/events — typé via Infer du schéma VineJS
+  validatedEventsQuery?: EventsQuery;
 }

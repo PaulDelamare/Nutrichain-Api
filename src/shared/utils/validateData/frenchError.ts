@@ -7,6 +7,8 @@ export const frenchErrorMessages = {
   date: 'Ce champ doit être une date.',
   minLength: (meta: { data: number }) => `La valeur doit être supérieure ou égale à ${meta.data}.`,
   min: (meta: { data: number }) => `La valeur doit être supérieure ou égale à ${meta.data}.`,
+  max: (meta: { data: number }) => `La valeur doit être inférieure ou égale à ${meta.data}.`,
+  enum: 'La valeur sélectionnée est invalide.',
   MaxLength: (meta: { data: number }) => `La valeur doit être inférieure ou égale à ${meta.data}.`,
   uuid: 'Ce champ doit être un UUID.',
   'date.after': (_meta: { data: string }) =>

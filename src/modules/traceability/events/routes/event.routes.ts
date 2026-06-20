@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { listEventsController } from '../controllers/event.controller';
+import { validateEventsQuery } from '../middlewares/validateEventsQuery.middleware';
 import { mixedAuth } from '../../../../shared/middlewares/mixedAuth';
 
 const router = Router();
@@ -37,6 +38,11 @@ const READ_ROLES = ['owner', 'admin', 'member'];
  *       200:
  *         description: Liste des événements EPCIS
  */
-router.get('/traceability/events', mixedAuth(READ_ROLES), listEventsController);
+router.get(
+  '/traceability/events',
+  mixedAuth(READ_ROLES),
+  validateEventsQuery,
+  listEventsController
+);
 
 export default router;
