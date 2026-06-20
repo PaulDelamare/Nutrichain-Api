@@ -4,6 +4,8 @@ import { genealogyService } from './genealogy.service';
 import { APIError } from '../../../../shared/utils/errorHandler/APIError';
 import { logger } from '../../../../shared/utils/logger/logger';
 import { auditService } from '../../../../shared/utils/audit/audit.service';
+import { notifyOrgAdmins, OrgAdminEmail } from '../../../../shared/utils/mailer/notifyOrgAdmins';
+import { escapeHtml } from '../../../../shared/utils/html/escapeHtml';
 
 /**
  * Liaison_Shipment hydratée avec sa Shipment et Client (via include nested Prisma).
@@ -70,7 +72,7 @@ export const recallService = {
     userId: string,
     reason: string
   ): Promise<RecallResult> {
-    return await prisma.$transaction(
+    const result = await prisma.$transaction(
       async (tx) => {
         // 1. Vérifier l'existence du lot source
         const sourceBatch = await tx.batch.findFirst({
@@ -170,8 +172,35 @@ export const recallService = {
         isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
       }
     );
+
+    // Notification automatique APRÈS commit (Objectif SMART n°5 : décision → notification < 15 min).
+    // Fire-and-forget hors transaction : le rappel est déjà persisté, l'email ne doit ni le bloquer
+    // ni l'annuler. La notification des clients externes reste manuelle (cf. docs/12, P3).
+    void notifyOrgAdmins(organizationId, buildRecallEmail(batchId, reason, result));
+
+    return result;
   },
 };
+
+/**
+ * Construit l'email de rappel destiné aux admins de l'organisation.
+ * Le motif et l'identifiant de lot sont échappés (saisie utilisateur → anti-XSS inbox).
+ */
+function buildRecallEmail(batchId: string, reason: string, result: RecallResult): OrgAdminEmail {
+  const safeBatchId = escapeHtml(batchId);
+  const safeReason = escapeHtml(reason);
+  return {
+    subject: `[RAPPEL PRODUIT] Lot ${safeBatchId} — action immédiate requise`,
+    html: `
+      <h2>Rappel produit déclenché</h2>
+      <p>Lot source : <strong>${safeBatchId}</strong></p>
+      <p>Motif : ${safeReason}</p>
+      <p>Lots impactés (source + descendance) : <strong>${result.blockedBatchesCount}</strong></p>
+      <p>Expéditions déjà parties à notifier : <strong>${result.affectedShipments.length}</strong></p>
+      <p>Connectez-vous à NutriChain pour traiter le rappel sans délai.</p>
+    `,
+  };
+}
 
 /**
  * Agrège les Liaison_Shipment par expédition.

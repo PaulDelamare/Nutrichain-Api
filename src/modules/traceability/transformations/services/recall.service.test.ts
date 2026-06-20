@@ -5,6 +5,7 @@ import { prisma } from '../../../../shared/configs/prismaClient.config';
 import { Batch } from '@prisma/client';
 import { auditService } from '../../../../shared/utils/audit/audit.service';
 import { logger } from '../../../../shared/utils/logger/logger';
+import { notifyOrgAdmins } from '../../../../shared/utils/mailer/notifyOrgAdmins';
 
 vi.mock('../../../../shared/configs/prismaClient.config', () => ({
   prisma: {
@@ -40,6 +41,10 @@ vi.mock('../../../../shared/utils/logger/logger', () => ({
     info: vi.fn(),
     error: vi.fn(),
   },
+}));
+
+vi.mock('../../../../shared/utils/mailer/notifyOrgAdmins', () => ({
+  notifyOrgAdmins: vi.fn(),
 }));
 
 const orgId = 'org-123';
@@ -128,6 +133,29 @@ describe('RecallService', () => {
       },
     });
     expect(prisma.alert.create).toHaveBeenCalled();
+  });
+
+  it('notifie les admins de l org après un rappel réussi, avec le motif échappé (anti-XSS)', async () => {
+    const result = await recallService.triggerRecall(batchId, orgId, userId, '<b>contaminé</b>');
+
+    expect(notifyOrgAdmins).toHaveBeenCalledWith(
+      orgId,
+      expect.objectContaining({
+        subject: expect.stringContaining(batchId),
+        html: expect.stringContaining('&lt;b&gt;contaminé&lt;/b&gt;'),
+      })
+    );
+    // La notification ne change pas le résultat métier
+    expect(result.blockedBatchesCount).toBe(1);
+  });
+
+  it("n'émet aucune notification si le rappel échoue (lot source introuvable)", async () => {
+    vi.mocked(prisma.batch.findFirst).mockResolvedValue(null);
+
+    await expect(
+      recallService.triggerRecall('inconnu', orgId, userId, 'motif')
+    ).rejects.toMatchObject({ status: 404 });
+    expect(notifyOrgAdmins).not.toHaveBeenCalled();
   });
 
   // ===== Nouveaux tests pour affectedShipments =====

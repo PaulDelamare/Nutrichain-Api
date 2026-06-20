@@ -2,7 +2,8 @@ import { createHash } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../../shared/configs/prismaClient.config';
 import { auditService } from '../../../shared/utils/audit/audit.service';
-import { sendEmail } from '../../../shared/utils/mailer/mailer';
+import { notifyOrgAdmins } from '../../../shared/utils/mailer/notifyOrgAdmins';
+import { escapeHtml } from '../../../shared/utils/html/escapeHtml';
 import { logger } from '../../../shared/utils/logger/logger';
 import { TelemetryModel } from '../models/telemetry.model';
 import { detectExcursion, TelemetryPoint } from './excursionDetection.service';
@@ -20,7 +21,7 @@ import { detectExcursion, TelemetryPoint } from './excursionDetection.service';
  * - Cache des thresholds en mémoire (TTL 60s) par (orgId, sensorId).
  * - Postgres advisory lock per-equipment pour empêcher la TOCTOU race sur la dédup.
  * - Fast path : si currentTemp <= threshold → exit sans query Mongo.
- * - sendEmail en fire-and-forget (.catch logger.error) — hors path critique.
+ * - Notification owner/admin via notifyOrgAdmins en fire-and-forget — hors path critique.
  */
 
 const WINDOW_MINUTES = 15;
@@ -242,17 +243,6 @@ async function fetchRecentPoints(
   return docs.map((d) => ({ timestamp: d.timestamp, temperature: d.temperature }));
 }
 
-/** Escape HTML pour éviter XSS dans l'inbox admin si un sensorId
- * (ou autre champ injecté) contenait du HTML/JS arbitraire. */
-function escapeHtml(input: string): string {
-  return input
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
 async function notifyAdmins(
   equipmentOrgId: string,
   equipmentId: string,
@@ -261,23 +251,11 @@ async function notifyAdmins(
   peakTemp: number,
   threshold: number
 ): Promise<void> {
-  try {
-    // Defense-in-depth : filtre par equipment.organization_id (re-lu depuis la DB), jamais
-    // par le `activeOrgId` du caller — protège contre une régression future où ces deux
-    // valeurs divergeraient.
-    const recipients = await prisma.member.findMany({
-      where: {
-        organizationId: equipmentOrgId,
-        role: { in: ['owner', 'admin'] },
-      },
-      include: { user: { select: { email: true, name: true } } },
-    });
-
-    const safeSensorId = escapeHtml(sensorId);
-    const safeEquipmentId = escapeHtml(equipmentId);
-    const safeAlertId = escapeHtml(alertId);
-    const subject = `[ALERTE PANIC] Excursion thermique — ${safeSensorId}`;
-    const html = `
+  const safeSensorId = escapeHtml(sensorId);
+  const safeEquipmentId = escapeHtml(equipmentId);
+  const safeAlertId = escapeHtml(alertId);
+  const subject = `[ALERTE PANIC] Excursion thermique — ${safeSensorId}`;
+  const html = `
       <h2>Excursion thermique détectée</h2>
       <p>Capteur : <strong>${safeSensorId}</strong></p>
       <p>Pic de température : <strong>${peakTemp}°C</strong> (seuil ${threshold}°C)</p>
@@ -286,18 +264,7 @@ async function notifyAdmins(
       <p>Connectez-vous à NutriChain pour résoudre l'alerte.</p>
     `;
 
-    // Envoi à chaque admin individuellement, chaque échec capté localement.
-    // L'ensemble est appelé via `void` au call site → vraiment fire-and-forget
-    // (l'alerte est déjà persistée, ne bloque jamais le path critique).
-    await Promise.all(
-      recipients.map((r) =>
-        sendEmail({ to: r.user.email, subject, html }).catch((err) => {
-          logger.error(`[IoT] Email failure to ${r.user.email}: ${(err as Error).message}`);
-        })
-      )
-    );
-  } catch (err) {
-    // Garde-fou pour le `void` au call site — toute erreur de la promise est swallowée.
-    logger.error(`[IoT] notifyAdmins failed: ${(err as Error).message}`);
-  }
+  // Résolution des destinataires (owner/admin de l'org) + envoi délégués au util partagé,
+  // qui encapsule le fire-and-forget et la capture d'erreur par destinataire.
+  await notifyOrgAdmins(equipmentOrgId, { subject, html });
 }

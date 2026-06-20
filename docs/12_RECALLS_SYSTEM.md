@@ -50,7 +50,9 @@ Ce module implémente la capacité critique de NutriChain à identifier et bloqu
 }
 ```
 
-**Workflow client** : l'équipe Qualité utilise `affectedShipments` pour déclencher la notification externe (email/SMS/téléphone) vers chaque `customerContact`. L'envoi automatique des notifications est différé en P3 — pour la v1, le frontend liste les contacts à appeler.
+**Notification interne (automatique)** : dès qu'un rappel est déclenché, un email d'alerte est envoyé automatiquement aux membres `owner`/`admin` de l'organisation (équipe Qualité) via `notifyOrgAdmins`, en fire-and-forget après le commit de la transaction (n'affecte ni ne bloque le rappel). Objectif SMART n°5 « décision → notification < 15 min » couvert côté interne (mesuré en e2e).
+
+**Notification client externe** : l'équipe Qualité utilise `affectedShipments` (renvoyé en HTTP) pour contacter chaque `customerContact` (email/SMS/téléphone). L'envoi automatique vers les clients externes reste différé en P3 — pour la v1, le frontend liste les contacts à joindre.
 
 ## 🛡️ Sécurité & Performance
 
