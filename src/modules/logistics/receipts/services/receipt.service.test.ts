@@ -106,9 +106,14 @@ describe('ReceiptService', () => {
             epcList: ['bat-1'],
             action: 'ADD',
             bizStep: 'urn:epcglobal:cbv:bizstep:receiving',
+            disposition: 'urn:epcglobal:cbv:disp:active',
+            sourceParty: 'supp-1',
           }),
         }),
       });
+
+      // L'event EPCIS et l'audit WORM sont émis dans la même transaction que la réception
+      expect(prisma.audit_Log.create).toHaveBeenCalled();
     });
 
     it('doit échouer si le fournisseur n appartient pas à l organisation', async () => {

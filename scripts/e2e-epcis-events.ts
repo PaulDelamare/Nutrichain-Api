@@ -130,6 +130,8 @@ async function main() {
   let receiptId: string | undefined;
   let batchId: string | undefined;
   let shipmentId: string | undefined;
+  let foreignOrgId: string | undefined;
+  let foreignEventId: string | undefined;
 
   try {
     console.log('Seeding fixtures...');
@@ -207,6 +209,37 @@ async function main() {
       items.every((e) => e.organization_id === API_KEY_ORG_ID),
       'tous les événements restitués appartiennent à l organisation (cloisonnement)'
     );
+
+    console.log('Scénario : un événement d une AUTRE organisation n est jamais restitué (anti-fuite cross-tenant)');
+    foreignOrgId = `org-b-epcis-e2e-${Date.now()}`;
+    await prisma.organization.create({
+      data: { id: foreignOrgId, name: 'Org B EPCIS E2E', slug: foreignOrgId, createdAt: new Date() },
+    });
+    const foreignEvent = await prisma.ePCIS_Event.create({
+      data: {
+        organization_id: foreignOrgId,
+        event_time: new Date(),
+        event_type: 'ObjectEvent',
+        related_entity: 'Shipment',
+        related_id: `foreign-${foreignOrgId}`,
+        payload: { epcList: ['foreign-batch'] },
+      },
+    });
+    foreignEventId = foreignEvent.id;
+
+    const leakRes = await fetch(`${API_BASE}/api/traceability/events?limit=500`, {
+      headers: { ...(API_KEY ? { 'x-api-key': API_KEY } : {}) },
+    });
+    const leakBody = await leakRes.json().catch(() => null);
+    const leakItems = (leakBody?.data?.data ?? []) as Array<Record<string, unknown>>;
+    assert(
+      !leakItems.some((e) => e.id === foreignEventId),
+      'l événement de l org B est ABSENT de la restitution org A (pas de fuite)'
+    );
+    assert(
+      leakItems.every((e) => e.organization_id !== foreignOrgId),
+      'aucun événement restitué n appartient à l org B'
+    );
   } catch (e) {
     failed++;
     console.error('E2E error:', e);
@@ -223,6 +256,8 @@ async function main() {
       await prisma.receipt.deleteMany({ where: { id: receiptId } });
     }
     if (batchId) await prisma.batch.deleteMany({ where: { id: batchId } });
+    if (foreignEventId) await prisma.ePCIS_Event.deleteMany({ where: { id: foreignEventId } });
+    if (foreignOrgId) await prisma.organization.deleteMany({ where: { id: foreignOrgId } });
     console.log('Cleanup done.');
     await prisma.$disconnect();
   }

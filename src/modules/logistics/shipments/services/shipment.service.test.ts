@@ -102,6 +102,55 @@ describe('ShipmentService', () => {
     });
   });
 
+  it('expédition multi-lots : epcList agrège tous les lots et le payload porte SSCC/disposition/action', async () => {
+    const makeBatch = (id: string) => ({
+      id,
+      organization_id: 'org-123',
+      quantite_actuelle: { toNumber: () => 100 },
+      unite_code: 'KG',
+      statut: 'EN_STOCK',
+      date_peremption: new Date(Date.now() + 1000000),
+    });
+
+    vi.mocked(prisma.batch.findFirst)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .mockResolvedValueOnce(makeBatch('batch-1') as any)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .mockResolvedValueOnce(makeBatch('batch-2') as any);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(prisma.shipment.create).mockResolvedValue({ id: 'ship-1' } as any);
+
+    await shipmentService.createShipment({
+      ...mockShipmentData,
+      items: [
+        { id_lot: 'batch-1', quantite: 10 },
+        { id_lot: 'batch-2', quantite: 5 },
+      ],
+    });
+
+    expect(prisma.ePCIS_Event.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        payload: expect.objectContaining({
+          epcList: ['batch-1', 'batch-2'],
+          action: 'OBSERVE',
+          disposition: 'urn:epcglobal:cbv:disp:in_transit',
+          sscc: 'SHIP-001',
+        }),
+      }),
+    });
+  });
+
+  it('cloisonne la recherche de lot par organisation (anti-fuite cross-tenant)', async () => {
+    vi.mocked(prisma.batch.findFirst).mockResolvedValue(null);
+
+    await expect(shipmentService.createShipment(mockShipmentData)).rejects.toMatchObject({
+      status: 404,
+    });
+    expect(prisma.batch.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'batch-1', organization_id: 'org-123' } })
+    );
+  });
+
   it('devrait générer un SSCC automatiquement si shipment_id est AUTO', async () => {
     const mockBatch = {
       id: 'batch-1',
