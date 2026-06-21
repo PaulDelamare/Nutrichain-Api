@@ -6,6 +6,7 @@ import { Batch } from '@prisma/client';
 import { auditService } from '../../../../shared/utils/audit/audit.service';
 import { logger } from '../../../../shared/utils/logger/logger';
 import { notifyOrgAdmins } from '../../../../shared/utils/mailer/notifyOrgAdmins';
+import { notifyRecallCustomers } from './recallNotifications';
 
 vi.mock('../../../../shared/configs/prismaClient.config', () => ({
   prisma: {
@@ -41,6 +42,10 @@ vi.mock('../../../../shared/utils/mailer/notifyOrgAdmins', () => ({
   notifyOrgAdmins: vi.fn(),
 }));
 
+vi.mock('./recallNotifications', () => ({
+  notifyRecallCustomers: vi.fn(),
+}));
+
 const orgId = 'org-123';
 const userId = 'user-123';
 const batchId = 'batch-root';
@@ -55,6 +60,7 @@ const buildLiaison = (
     shipmentRef?: string;
     customerId?: string;
     customerName?: string;
+    customerEmail?: string | null;
     customerNull?: boolean;
     orgId?: string;
     pallet_id?: string;
@@ -81,6 +87,8 @@ const buildLiaison = (
           organization_id: overrides.orgId ?? orgId,
           nom_enseigne: overrides.customerName ?? 'Supermarché Central',
           contact_urgence: '+33612345678',
+          email:
+            overrides.customerEmail === undefined ? 'client@example.com' : overrides.customerEmail,
           adresse_livraison: '50 av Distribution, 75010 Paris',
         },
   },
@@ -171,6 +179,25 @@ describe('RecallService', () => {
     );
     // La notification ne change pas le résultat métier
     expect(result.blockedBatchesCount).toBe(1);
+  });
+
+  it('notifie les clients externes des expéditions impactées (avec leur email propagé)', async () => {
+    vi.mocked(prisma.liaison_Shipment.findMany).mockResolvedValue([
+      buildLiaison({
+        shipmentRef: 'SHIP-A',
+        customerName: 'Magasin A',
+        customerEmail: 'a@x.com',
+      }) as never,
+    ]);
+
+    const result = await recallService.triggerRecall(batchId, orgId, userId, 'Listeria');
+
+    expect(notifyRecallCustomers).toHaveBeenCalledWith(
+      result.affectedShipments,
+      batchId,
+      'Listeria'
+    );
+    expect(result.affectedShipments[0].customerEmail).toBe('a@x.com');
   });
 
   it("n'émet aucune notification si le rappel échoue (lot source introuvable)", async () => {

@@ -66,6 +66,7 @@ async function main() {
       id: CUSTOMER_ID,
       organization_id: usine.id,
       nom_enseigne: 'Supermarché Central',
+      email: 'contact@supermarche-central.example',
       adresse_livraison: '50 avenue de la Distribution, 75010 Paris',
     },
   });

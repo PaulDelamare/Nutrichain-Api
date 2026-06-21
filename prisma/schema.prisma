@@ -466,6 +466,7 @@ model Customer {
   organization      Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
   nom_enseigne      String
   contact_urgence   String?
+  email             String?
   adresse_livraison String
   notes             String?
   expeditions       Shipment[]
