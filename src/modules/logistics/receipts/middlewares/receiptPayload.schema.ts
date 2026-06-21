@@ -1,4 +1,5 @@
 import vine from '@vinejs/vine';
+import type { Infer } from '@vinejs/vine/build/src/types';
 
 /**
  * Champs du payload d'une opération de réception, partagés entre :
@@ -18,3 +19,14 @@ export const receiptPayloadFields = {
 };
 
 export const receiptPayloadSchema = vine.object(receiptPayloadFields);
+
+/**
+ * Schéma complet du flow direct POST /logistics/receipts : champs partagés + `received_by`
+ * (l'opérateur fourni par le payload en M2M direct). Source du type `ReceiptPayload`.
+ */
+export const receiptValidationSchema = vine.object({
+  ...receiptPayloadFields,
+  received_by: vine.string().uuid(),
+});
+
+export type ReceiptPayload = Infer<typeof receiptValidationSchema>;

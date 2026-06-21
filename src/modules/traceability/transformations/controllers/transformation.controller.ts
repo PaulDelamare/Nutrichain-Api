@@ -19,9 +19,18 @@ export const createTransformation = catchAsync(async (req: AuthenticatedRequest,
   }
 
   const validatedTransformation = req.validatedTransformation;
+  if (!validatedTransformation) {
+    throw new APIError(500, {
+      error: [{ field: 'transformation', message: 'Données de transformation non validées.' }],
+    });
+  }
 
   const result = await transformationService.createTransformation({
     ...validatedTransformation,
+    // Validé en string (JSON) mais le service attend une Date — conversion explicite
+    date_peremption: validatedTransformation.date_peremption
+      ? new Date(validatedTransformation.date_peremption)
+      : undefined,
     organization_id: activeOrgId,
     created_by: userId,
   });
