@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { recallService } from './recall.service';
+import { recallService, LIAISON_IN_CHUNK_SIZE } from './recall.service';
 import { MAX_GENEALOGY_DEPTH } from './genealogy.service';
 import { prisma } from '../../../../shared/configs/prismaClient.config';
 import { Batch } from '@prisma/client';
@@ -118,13 +118,14 @@ describe('RecallService', () => {
 
     expect(result.blockedBatchesCount).toBe(3);
     expect(result.impactedBatchIds).toEqual(['batch-root', 'batch-child-1', 'batch-child-2']);
+    expect(result.depthSaturated).toBe(false);
     // Le blocage passe par un UPDATE set-based (plus de updateMany à liste d'ids matérialisée)
     expect(prisma.$queryRaw).toHaveBeenCalled();
     // Hors saturation : une seule alerte (PRODUCT_RECALL), pas d'alerte de saturation
     expect(prisma.alert.create).toHaveBeenCalledTimes(1);
   });
 
-  it('saturation de la garde anti-cycle : alerte CRITIQUE créée, jamais de throw', async () => {
+  it('saturation de la garde anti-cycle : alerte CRITIQUE + flag, jamais de throw', async () => {
     vi.mocked(prisma.$queryRaw).mockResolvedValue([
       { impacted_ids: ['batch-root', 'b1', 'b2'], max_depth: MAX_GENEALOGY_DEPTH },
     ] as never);
@@ -132,12 +133,30 @@ describe('RecallService', () => {
     const result = await recallService.triggerRecall(batchId, orgId, userId, 'Cycle');
 
     expect(result.blockedBatchesCount).toBe(3);
+    expect(result.depthSaturated).toBe(true);
     const alertTypes = vi
       .mocked(prisma.alert.create)
       .mock.calls.map((c) => (c[0] as { data: { type: string } }).data.type);
     expect(alertTypes).toContain('PRODUCT_RECALL');
     expect(alertTypes).toContain('RECALL_DEPTH_SATURATION');
     expect(logger.error).toHaveBeenCalled();
+  });
+
+  it('rappel massif : le join Liaison est découpé sous le plafond 65535 params', async () => {
+    const manyIds = Array.from({ length: LIAISON_IN_CHUNK_SIZE + 1 }, (_, i) => `lot-${i}`);
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([
+      { impacted_ids: manyIds, max_depth: 1 },
+    ] as never);
+
+    const result = await recallService.triggerRecall(batchId, orgId, userId, 'Massive');
+
+    expect(result.blockedBatchesCount).toBe(manyIds.length);
+    // 20001 ids → 2 appels findMany (20000 + 1), aucun appel ne dépasse le plafond
+    expect(prisma.liaison_Shipment.findMany).toHaveBeenCalledTimes(2);
+    const firstChunk = vi.mocked(prisma.liaison_Shipment.findMany).mock.calls[0][0] as {
+      where: { id_lot: { in: string[] } };
+    };
+    expect(firstChunk.where.id_lot.in).toHaveLength(LIAISON_IN_CHUNK_SIZE);
   });
 
   it('notifie les admins de l org après un rappel réussi, avec le motif échappé (anti-XSS)', async () => {

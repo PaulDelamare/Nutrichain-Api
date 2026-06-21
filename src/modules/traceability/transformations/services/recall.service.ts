@@ -50,7 +50,21 @@ export interface RecallResult {
   blockedBatchesCount: number;
   impactedBatchIds: string[];
   affectedShipments: AffectedShipment[];
+  /**
+   * `true` si la garde anti-cycle a été atteinte : la descendance bloquée peut être INCOMPLÈTE
+   * (cycle ou chaîne anormalement profonde). L'appelant doit alors déclencher une vérification
+   * manuelle — une alerte CRITIQUE est aussi créée côté système.
+   */
+  depthSaturated: boolean;
 }
+
+/**
+ * Taille de lot pour le `IN (...)` du join Liaison_Shipment. PostgreSQL plafonne une requête à
+ * 65535 paramètres liés : le blocage étant désormais exhaustif (issue #19), `allImpactedIds` peut
+ * dépasser ce seuil sur un rappel massif. On découpe pour ne jamais lever (un throw ici = rollback
+ * = zéro lot bloqué). Marge confortable sous 65535 (les autres filtres consomment aussi des params).
+ */
+export const LIAISON_IN_CHUNK_SIZE = 20000;
 
 /**
  * Cap volontaire sur le nombre de `shipmentRef` stockés dans l'audit WORM
@@ -121,7 +135,8 @@ export const recallService = {
         // 3. Garde anti-cycle saturée → descendance potentiellement INCOMPLÈTE.
         // Jamais silencieux (issue #19) ET jamais throw : un throw = rollback = ZÉRO lot bloqué,
         // soit la pire issue sanitaire. On bloque ce qu'on a atteint et on signale en CRITIQUE.
-        if (maxDepthReached >= MAX_GENEALOGY_DEPTH) {
+        const depthSaturated = maxDepthReached >= MAX_GENEALOGY_DEPTH;
+        if (depthSaturated) {
           logger.error(
             `[RECALL] Saturation de profondeur (${maxDepthReached}/${MAX_GENEALOGY_DEPTH}) sur le lot ${batchId} — descendance potentiellement incomplète (cycle ou chaîne anormalement profonde).`
           );
@@ -143,16 +158,23 @@ export const recallService = {
         //   on passe par Shipment.
         // - `lot.organization_id` : si `getDownstream` renvoyait un batch hors-org (régression
         //   future), on bloque côté Liaison.
-        const liaisons = await tx.liaison_Shipment.findMany({
-          where: {
-            id_lot: { in: allImpactedIds },
-            expedition: { organization_id: organizationId },
-            lot: { organization_id: organizationId },
-          },
-          include: {
-            expedition: { include: { client: true } },
-          },
-        });
+        // Découpé par lots pour ne jamais dépasser le plafond de 65535 paramètres liés
+        // de PostgreSQL sur un rappel massif (cf. LIAISON_IN_CHUNK_SIZE).
+        const liaisons: LiaisonHydrated[] = [];
+        for (let i = 0; i < allImpactedIds.length; i += LIAISON_IN_CHUNK_SIZE) {
+          const idsChunk = allImpactedIds.slice(i, i + LIAISON_IN_CHUNK_SIZE);
+          const part = await tx.liaison_Shipment.findMany({
+            where: {
+              id_lot: { in: idsChunk },
+              expedition: { organization_id: organizationId },
+              lot: { organization_id: organizationId },
+            },
+            include: {
+              expedition: { include: { client: true } },
+            },
+          });
+          liaisons.push(...part);
+        }
 
         const affectedShipments = aggregateByShipment(liaisons);
 
@@ -201,6 +223,7 @@ export const recallService = {
           blockedBatchesCount: allImpactedIds.length,
           impactedBatchIds: allImpactedIds,
           affectedShipments,
+          depthSaturated,
         };
       },
       {
