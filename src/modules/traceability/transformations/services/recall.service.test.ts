@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { recallService } from './recall.service';
-import { genealogyService } from './genealogy.service';
+import { MAX_GENEALOGY_DEPTH } from './genealogy.service';
 import { prisma } from '../../../../shared/configs/prismaClient.config';
 import { Batch } from '@prisma/client';
 import { auditService } from '../../../../shared/utils/audit/audit.service';
@@ -10,9 +10,9 @@ import { notifyOrgAdmins } from '../../../../shared/utils/mailer/notifyOrgAdmins
 vi.mock('../../../../shared/configs/prismaClient.config', () => ({
   prisma: {
     $transaction: vi.fn(),
+    $queryRaw: vi.fn(),
     batch: {
       findFirst: vi.fn(),
-      updateMany: vi.fn(),
     },
     alert: {
       create: vi.fn(),
@@ -20,12 +20,6 @@ vi.mock('../../../../shared/configs/prismaClient.config', () => ({
     liaison_Shipment: {
       findMany: vi.fn(),
     },
-  },
-}));
-
-vi.mock('./genealogy.service', () => ({
-  genealogyService: {
-    getDownstream: vi.fn(),
   },
 }));
 
@@ -105,34 +99,45 @@ describe('RecallService', () => {
       organization_id: orgId,
       statut: 'EN_STOCK',
     } as unknown as Batch);
-    // Pas de descendants par défaut
-    vi.mocked(genealogyService.getDownstream).mockResolvedValue([]);
+    // Blocage set-based par défaut : seul le lot source impacté, pas de saturation
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([
+      { impacted_ids: [batchId], max_depth: 0 },
+    ] as never);
     // Pas d'expédition par défaut
     vi.mocked(prisma.liaison_Shipment.findMany).mockResolvedValue([]);
     vi.mocked(auditService.logAction).mockResolvedValue({} as never);
   });
 
   // ===== Test existant (régression) =====
-  it('doit bloquer le lot source et tous ses descendants', async () => {
-    vi.mocked(genealogyService.getDownstream).mockResolvedValue([
-      { id: 'batch-child-1', organization_id: orgId } as unknown as Batch,
-      { id: 'batch-child-2', organization_id: orgId } as unknown as Batch,
-    ]);
+  it('doit bloquer le lot source et toute sa descendance (RETURNING exhaustif)', async () => {
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([
+      { impacted_ids: ['batch-root', 'batch-child-1', 'batch-child-2'], max_depth: 1 },
+    ] as never);
 
     const result = await recallService.triggerRecall(batchId, orgId, userId, 'Test Recall');
 
     expect(result.blockedBatchesCount).toBe(3);
-    expect(prisma.batch.updateMany).toHaveBeenCalledWith({
-      where: {
-        id: { in: ['batch-root', 'batch-child-1', 'batch-child-2'] },
-        organization_id: orgId,
-      },
-      data: {
-        statut: 'ALERTE',
-        version: { increment: 1 },
-      },
-    });
-    expect(prisma.alert.create).toHaveBeenCalled();
+    expect(result.impactedBatchIds).toEqual(['batch-root', 'batch-child-1', 'batch-child-2']);
+    // Le blocage passe par un UPDATE set-based (plus de updateMany à liste d'ids matérialisée)
+    expect(prisma.$queryRaw).toHaveBeenCalled();
+    // Hors saturation : une seule alerte (PRODUCT_RECALL), pas d'alerte de saturation
+    expect(prisma.alert.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('saturation de la garde anti-cycle : alerte CRITIQUE créée, jamais de throw', async () => {
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([
+      { impacted_ids: ['batch-root', 'b1', 'b2'], max_depth: MAX_GENEALOGY_DEPTH },
+    ] as never);
+
+    const result = await recallService.triggerRecall(batchId, orgId, userId, 'Cycle');
+
+    expect(result.blockedBatchesCount).toBe(3);
+    const alertTypes = vi
+      .mocked(prisma.alert.create)
+      .mock.calls.map((c) => (c[0] as { data: { type: string } }).data.type);
+    expect(alertTypes).toContain('PRODUCT_RECALL');
+    expect(alertTypes).toContain('RECALL_DEPTH_SATURATION');
+    expect(logger.error).toHaveBeenCalled();
   });
 
   it('notifie les admins de l org après un rappel réussi, avec le motif échappé (anti-XSS)', async () => {
@@ -193,9 +198,9 @@ describe('RecallService', () => {
     });
 
     it('3. une expédition contenant 2 lots impactés → 1 shipment, batchIds dédupliqué et trié', async () => {
-      vi.mocked(genealogyService.getDownstream).mockResolvedValue([
-        { id: 'batch-child', organization_id: orgId } as unknown as Batch,
-      ]);
+      vi.mocked(prisma.$queryRaw).mockResolvedValue([
+        { impacted_ids: ['batch-root', 'batch-child'], max_depth: 1 },
+      ] as never);
       vi.mocked(prisma.liaison_Shipment.findMany).mockResolvedValue([
         // 3 Liaisons : 2 pour le même shipment (lot source + descendant), + 1 doublon (pallet différent)
         buildLiaison({

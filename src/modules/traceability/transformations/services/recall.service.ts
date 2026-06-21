@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../../../shared/configs/prismaClient.config';
-import { genealogyService } from './genealogy.service';
+import { downstreamTraceCte, MAX_GENEALOGY_DEPTH } from './genealogy.service';
 import { APIError } from '../../../../shared/utils/errorHandler/APIError';
 import { logger } from '../../../../shared/utils/logger/logger';
 import { auditService } from '../../../../shared/utils/audit/audit.service';
@@ -59,6 +59,14 @@ export interface RecallResult {
  */
 const AUDIT_SHIPMENT_REFS_CAP = 100;
 
+/**
+ * Cap volontaire sur l'échantillon d'ids de lots stocké dans l'audit WORM.
+ * Le total exact reste dans `impactedCount` ; la liste complète vit dans la réponse HTTP.
+ * Sans le fix #19, `impactedIds` était borné à 1000 par la troncature ; le blocage exhaustif
+ * le rend non borné → on cape ici pour éviter le bloat WORM (coût hash/recompute) sur rappel massif.
+ */
+const AUDIT_IMPACTED_IDS_CAP = 100;
+
 export const recallService = {
   /**
    * Déclenche un rappel produit à partir d'un lot source.
@@ -85,21 +93,49 @@ export const recallService = {
           });
         }
 
-        // 2. Récupérer toute la descendance en passant la transaction active (tx)
-        const descendants = await genealogyService.getDownstream(batchId, organizationId, tx);
-        const allImpactedIds = [batchId, ...descendants.map((b) => b.id)];
+        // 2. Bloquer la descendance de façon EXHAUSTIVE et set-based (issue #19).
+        // Un seul UPDATE piloté par la CTE récursive — SANS plafond, donc plus de troncature
+        // silencieuse — qui renvoie via RETURNING la liste réelle des lots bloqués (source incluse)
+        // et la profondeur max atteinte (pour détecter une saturation de la garde anti-cycle).
+        // Le filtre `organization_id` sur la cible suffit à l'isolation : une transformation est
+        // mono-org (cf. transformation.service), donc la descendance ne franchit jamais le tenant.
+        const [blockResult] = await tx.$queryRaw<
+          { impacted_ids: string[] | null; max_depth: number | null }[]
+        >(Prisma.sql`
+          ${downstreamTraceCte(batchId, MAX_GENEALOGY_DEPTH)},
+          blocked AS (
+            UPDATE "Batch"
+            SET statut = 'ALERTE', version = version + 1
+            WHERE organization_id = ${organizationId}
+              AND (id = ${batchId} OR id IN (SELECT DISTINCT id_lot_enfant FROM downstream_trace))
+            RETURNING id
+          )
+          SELECT
+            (SELECT array_agg(id) FROM blocked) AS impacted_ids,
+            (SELECT MAX(depth) FROM downstream_trace) AS max_depth
+        `);
 
-        // 3. Bloquer les lots (statut ALERTE + invalidation version pour les transactions en vol)
-        await tx.batch.updateMany({
-          where: {
-            id: { in: allImpactedIds },
-            organization_id: organizationId,
-          },
-          data: {
-            statut: 'ALERTE',
-            version: { increment: 1 },
-          },
-        });
+        const allImpactedIds = blockResult?.impacted_ids ?? [batchId];
+        const maxDepthReached = blockResult?.max_depth ?? 0;
+
+        // 3. Garde anti-cycle saturée → descendance potentiellement INCOMPLÈTE.
+        // Jamais silencieux (issue #19) ET jamais throw : un throw = rollback = ZÉRO lot bloqué,
+        // soit la pire issue sanitaire. On bloque ce qu'on a atteint et on signale en CRITIQUE.
+        if (maxDepthReached >= MAX_GENEALOGY_DEPTH) {
+          logger.error(
+            `[RECALL] Saturation de profondeur (${maxDepthReached}/${MAX_GENEALOGY_DEPTH}) sur le lot ${batchId} — descendance potentiellement incomplète (cycle ou chaîne anormalement profonde).`
+          );
+          await tx.alert.create({
+            data: {
+              organization_id: organizationId,
+              type: 'RECALL_DEPTH_SATURATION',
+              niveau_gravite: 'CRITIQUE',
+              message: `Rappel ${batchId} : profondeur de garde atteinte (${MAX_GENEALOGY_DEPTH}). Vérification manuelle requise — la descendance bloquée peut être incomplète.`,
+              related_entity: 'Batch',
+              related_id: batchId,
+            },
+          });
+        }
 
         // 4. Identifier les expéditions impactées (déjà parties) — Objectif 5 cascade.
         // Filtre cross-tenant via les DEUX côtés de la jointure (defense-in-depth) :
@@ -149,7 +185,7 @@ export const recallService = {
               statut: 'ALERTE',
               reason,
               impactedCount: allImpactedIds.length,
-              impactedIds: allImpactedIds,
+              impactedIdsSample: allImpactedIds.slice(0, AUDIT_IMPACTED_IDS_CAP), // capé anti-bloat WORM
               affectedShipmentsCount: affectedShipments.length,
               shipmentRefs, // capé à AUDIT_SHIPMENT_REFS_CAP
             },
