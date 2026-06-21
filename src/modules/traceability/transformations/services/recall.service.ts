@@ -5,6 +5,7 @@ import { APIError } from '../../../../shared/utils/errorHandler/APIError';
 import { logger } from '../../../../shared/utils/logger/logger';
 import { auditService } from '../../../../shared/utils/audit/audit.service';
 import { notifyOrgAdmins, OrgAdminEmail } from '../../../../shared/utils/mailer/notifyOrgAdmins';
+import { notifyRecallCustomers } from './recallNotifications';
 import { escapeHtml } from '../../../../shared/utils/html/escapeHtml';
 
 /**
@@ -24,6 +25,7 @@ interface LiaisonHydrated {
       id: string;
       nom_enseigne: string;
       contact_urgence: string | null;
+      email: string | null;
       adresse_livraison: string;
     } | null;
   };
@@ -39,6 +41,7 @@ export interface AffectedShipment {
   customerId: string;
   customerName: string;
   customerContact: string | null;
+  customerEmail: string | null;
   customerAddress: string;
   dateEnvoi: Date;
   statutLivraison: string;
@@ -232,10 +235,13 @@ export const recallService = {
       }
     );
 
-    // Notification automatique APRÈS commit (Objectif SMART n°5 : décision → notification < 15 min).
+    // Notifications automatiques APRÈS commit (Objectif SMART n°5 : décision → notification < 15 min).
     // Fire-and-forget hors transaction : le rappel est déjà persisté, l'email ne doit ni le bloquer
-    // ni l'annuler. La notification des clients externes reste manuelle (cf. docs/12, P3).
+    // ni l'annuler.
+    // 1) Admins de l'organisation (interne). 2) Clients externes dont une expédition contient un
+    //    lot rappelé — par email si disponible, sinon contact manuel (téléphone/adresse dans le résultat).
     void notifyOrgAdmins(organizationId, buildRecallEmail(batchId, reason, result));
+    void notifyRecallCustomers(result.affectedShipments, batchId, reason);
 
     return result;
   },
@@ -295,6 +301,7 @@ function aggregateByShipment(liaisons: LiaisonHydrated[]): AffectedShipment[] {
           customerId: shipment.client.id,
           customerName: shipment.client.nom_enseigne,
           customerContact: shipment.client.contact_urgence,
+          customerEmail: shipment.client.email,
           customerAddress: shipment.client.adresse_livraison,
           dateEnvoi: shipment.date_envoi,
           statutLivraison: shipment.statut_livraison,

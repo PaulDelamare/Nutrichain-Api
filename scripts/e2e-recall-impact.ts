@@ -72,6 +72,7 @@ async function setup(): Promise<Fixtures> {
       organization_id: ORG_ID!,
       nom_enseigne: `E2E-Customer-${stamp}`,
       contact_urgence: '+33000000000',
+      email: `e2e-customer-${stamp}@example.com`,
       adresse_livraison: 'E2E test address',
     },
   });
@@ -234,6 +235,11 @@ async function main() {
     assert(shipment.customerName === fixtures.customerName, `customerName === ${fixtures.customerName}`);
     assert(shipment.batchIds.includes(fixtures.childBatchId), 'batchIds contient le lot enfant');
     assert(shipment.batchIds.length === 1, 'batchIds.length === 1 (uniquement le child est dans ce shipment)');
+    // #20 : l'email client est propagé (la notification externe part en fire-and-forget via le mailer)
+    assert(
+      !!shipment.customerEmail && /^e2e-customer-\d+@example\.com$/.test(shipment.customerEmail),
+      `customerEmail propagé dans affectedShipments (reçu ${shipment.customerEmail})`
+    );
 
     // 3. Statut DB : les 2 lots sont en ALERTE
     const blockedBatches = await prisma.batch.findMany({
