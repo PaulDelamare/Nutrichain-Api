@@ -469,8 +469,10 @@ model Customer {
   email             String?
   adresse_livraison String
   notes             String?
+  external_ref      String? // identifiant du client dans l'ERP source (clé d'idempotence d'import)
   expeditions       Shipment[]
 
+  @@unique([organization_id, external_ref])
   @@index([organization_id])
 }
 

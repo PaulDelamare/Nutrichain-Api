@@ -10,6 +10,7 @@
  */
 import { prisma } from '../src/shared/configs/prismaClient.config';
 import { productImportService } from '../src/modules/connectors/services/productImport.service';
+import { customerImportService } from '../src/modules/connectors/services/customerImport.service';
 import { eventExportService } from '../src/modules/connectors/services/eventExport.service';
 
 const ORG_ID = process.env.API_KEY_ORG_ID;
@@ -32,6 +33,7 @@ async function main() {
   const unit = await prisma.unit.findFirst();
   if (!unit) throw new Error('aucune unité seedée');
 
+  let customerExternalRef: string | null = null;
   const gtin = `39${Date.now().toString().slice(-11)}`; // 13 chiffres, unique par run
   const header =
     'nom,code_gtin,categorie,duree_conservation_defaut,seuil_alerte_stock,unite_reference';
@@ -59,7 +61,27 @@ async function main() {
     const r3 = await productImportService.importProducts(ORG_ID!, mixed);
     assert(r3.created === 1 && r3.errors === 1, `succès partiel (créés=${r3.created}, err=${r3.errors})`);
 
-    // 4. Export EPCIS → CSV
+    // 4. Import CLIENTS (idempotent par external_ref) — alimente Customer.email pour le rappel (#20)
+    const extRef = `ERP-${Date.now()}`;
+    const custHeader = 'external_ref,nom_enseigne,email,contact_urgence,adresse_livraison,notes';
+    const custCsv = `${custHeader}\n${extRef},E2E-Client,e2e-client@example.com,,1 rue Test,`;
+
+    const c1 = await customerImportService.importCustomers(ORG_ID!, custCsv);
+    assert(c1.created === 1 && c1.errors === 0, `import client → 1 créé (créés=${c1.created})`);
+    const cust = await prisma.customer.findFirst({
+      where: { organization_id: ORG_ID!, external_ref: extRef },
+    });
+    assert(cust?.email === 'e2e-client@example.com', 'client persisté avec email (prêt pour notif rappel)');
+
+    const c2 = await customerImportService.importCustomers(ORG_ID!, custCsv);
+    assert(c2.updated === 1 && c2.created === 0, `ré-import client → update (maj=${c2.updated})`);
+    const custCount = await prisma.customer.count({
+      where: { organization_id: ORG_ID!, external_ref: extRef },
+    });
+    assert(custCount === 1, `pas de doublon client (count=${custCount})`);
+    customerExternalRef = extRef;
+
+    // 5. Export EPCIS → CSV
     const out = await eventExportService.exportEventsCsv(ORG_ID!);
     assert(
       out.split('\n')[0] === 'event_time,event_type,related_entity,related_id,payload',
@@ -72,6 +94,11 @@ async function main() {
     await prisma.product.deleteMany({
       where: { organization_id: ORG_ID!, code_gtin: { in: [gtin, `${gtin}1`] } },
     });
+    if (customerExternalRef) {
+      await prisma.customer.deleteMany({
+        where: { organization_id: ORG_ID!, external_ref: customerExternalRef },
+      });
+    }
     await prisma.$disconnect();
     if (failures.length) {
       console.error(`\n❌ ${failures.length} échec(s)`);

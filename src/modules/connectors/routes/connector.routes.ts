@@ -3,8 +3,14 @@ import express from 'express';
 import { mixedAuth } from '../../../shared/middlewares/mixedAuth';
 import {
   importProductsController,
+  importCustomersController,
   exportEventsController,
 } from '../controllers/connector.controller';
+
+const CSV_BODY = express.text({
+  type: ['text/csv', 'text/plain', 'application/csv'],
+  limit: '5mb',
+});
 
 const router = Router();
 
@@ -14,9 +20,16 @@ const router = Router();
  */
 router.post(
   '/connectors/imports/products',
-  express.text({ type: ['text/csv', 'text/plain', 'application/csv'], limit: '5mb' }),
+  CSV_BODY,
   mixedAuth(['owner', 'admin']),
   importProductsController
+);
+
+router.post(
+  '/connectors/imports/customers',
+  CSV_BODY,
+  mixedAuth(['owner', 'admin']),
+  importCustomersController
 );
 
 router.get(

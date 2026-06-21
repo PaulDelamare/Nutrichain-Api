@@ -2,31 +2,7 @@ import { prisma } from '../../../shared/configs/prismaClient.config';
 import { validateData } from '../../../shared/utils/validateData/validateData';
 import { parseCsv } from '../../../shared/utils/csv/csv';
 import { productImportRowSchema } from '../schemas/productImport.schema';
-
-export interface ImportRowResult {
-  line: number;
-  status: 'created' | 'updated' | 'error';
-  code_gtin?: string;
-  message?: string;
-}
-
-export interface ImportReport {
-  total: number;
-  created: number;
-  updated: number;
-  errors: number;
-  parseErrors: string[];
-  results: ImportRowResult[];
-}
-
-/** Extrait un message lisible d'une erreur de validation VineJS (ou autre). */
-function errorMessage(err: unknown): string {
-  const e = err as { error?: { field: string; message: string }[] };
-  if (Array.isArray(e?.error)) {
-    return e.error.map((d) => `${d.field}: ${d.message}`).join(' ; ');
-  }
-  return (err as Error)?.message ?? 'Erreur inconnue';
-}
+import { ImportReport, ImportRowResult, importErrorMessage } from '../importHelpers';
 
 export const productImportService = {
   /**
@@ -79,7 +55,7 @@ export const productImportService = {
               unite_reference: data.unite_reference,
             },
           });
-          results.push({ line, status: 'updated', code_gtin: data.code_gtin });
+          results.push({ line, status: 'updated', ref: data.code_gtin });
           updated++;
         } else {
           await prisma.product.create({
@@ -93,11 +69,11 @@ export const productImportService = {
               unite_reference: data.unite_reference,
             },
           });
-          results.push({ line, status: 'created', code_gtin: data.code_gtin });
+          results.push({ line, status: 'created', ref: data.code_gtin });
           created++;
         }
       } catch (err) {
-        results.push({ line, status: 'error', message: errorMessage(err) });
+        results.push({ line, status: 'error', message: importErrorMessage(err) });
         errors++;
       }
     }
