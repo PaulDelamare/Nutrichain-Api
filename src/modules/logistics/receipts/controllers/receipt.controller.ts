@@ -9,9 +9,14 @@ import { APIError } from '../../../../shared/utils/errorHandler/APIError';
 export const createReceiptController = catchAsync(
   async (req: AuthenticatedRequest, res: Response) => {
     const activeOrgId = req.activeOrgId as string;
-    
-    // Récupération des données validées par le middleware VineJS
+
+    // Récupération des données validées par le middleware VineJS (garanties par la chaîne de routes)
     const validatedData = req.validatedReceipt;
+    if (!validatedData) {
+      throw new APIError(500, {
+        error: [{ field: 'receipt', message: 'Données de réception non validées.' }],
+      });
+    }
 
     // Détermination de l'auteur de la réception (Sécurité Web vs M2M)
     // Si req.user existe (flux Web), on override l'ID pour éviter l'usurpation
@@ -22,7 +27,7 @@ export const createReceiptController = catchAsync(
       received_by: receivedBy,
       organization_id: activeOrgId,
     });
-    
+
     sendSuccess(res, 201, 'Réception confirmée et Lot généré', result);
   }
 );
