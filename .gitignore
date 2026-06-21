@@ -20,7 +20,7 @@ yarn-debug.log*
 
 # Prisma
 prisma/.devcontainer
-prisma/migrations/
+prisma/_migrations_old_backup/
 prisma/generated/
 prisma/seed.js
 
