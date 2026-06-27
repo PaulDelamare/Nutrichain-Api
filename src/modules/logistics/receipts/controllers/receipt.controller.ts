@@ -79,7 +79,8 @@ export const liftBatchQuarantineController = catchAsync(
   async (req: AuthenticatedRequest, res: Response) => {
     const id = req.params.id as string;
     const activeOrgId = req.activeOrgId as string;
-    const userId = req.user?.id;
+    // requireOrgRole injecte l'utilisateur dans req.auth.user (req.user est l'ancien canal déprécié)
+    const userId = req.auth?.user?.id ?? req.user?.id;
     const motif = req.validatedQuarantineLift?.motif;
 
     if (!userId) {

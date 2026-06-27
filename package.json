@@ -20,6 +20,7 @@
     "e2e:audit-verify": "tsx --env-file=.env scripts/e2e-audit-verify.ts",
     "e2e:epcis": "tsx --env-file=.env scripts/e2e-epcis-events.ts",
     "e2e:connectors": "tsx --env-file=.env scripts/e2e-connectors.ts",
+    "e2e:quarantine": "tsx --env-file=.env scripts/e2e-quarantine.ts",
     "bench:genealogy": "tsx --env-file=.env scripts/bench-genealogy.ts",
     "backup:postgres": "tsx --env-file=.env scripts/backup-postgres.ts",
     "backup:mongo": "tsx --env-file=.env scripts/backup-mongo.ts",

@@ -85,10 +85,10 @@ describe('BatchSharedService', () => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         { id: 'batch-1', organization_id: 'org-1', statut: 'BLOQUE' } as any
       );
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       vi.mocked(prisma.batch.update).mockResolvedValue({
         id: 'batch-1',
         statut: 'EN_STOCK',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any);
 
       const result = await batchService.liftQuarantine(
