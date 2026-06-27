@@ -3,6 +3,7 @@ import { Alert, Batch, Receipt } from '@prisma/client';
 import { SyncScansPayload } from '../../sync/types/sync.types';
 import { EventsQuery } from '../../traceability/events/middlewares/eventsQuery.schema';
 import type { ReceiptPayload } from '../../logistics/receipts/middlewares/receiptPayload.schema';
+import type { QuarantineLiftPayload } from '../../logistics/receipts/middlewares/quarantineLift.schema';
 import type { ShipmentPayload } from '../../logistics/shipments/middlewares/shipmentPayload.schema';
 import type { TransformationPayload } from '../../traceability/transformations/middlewares/transformationPayload.schema';
 
@@ -59,6 +60,8 @@ export interface AuthenticatedRequest extends Request {
   alert?: Alert;
   // Données validées par les middlewares VineJS — typées via Infer du schéma (zéro any)
   validatedReceipt?: ReceiptPayload;
+  // Levée de quarantaine d'un lot (POST /logistics/batches/:id/release)
+  validatedQuarantineLift?: QuarantineLiftPayload;
   validatedShipment?: ShipmentPayload;
   validatedTransformation?: TransformationPayload;
   // Sync mobile offline-first

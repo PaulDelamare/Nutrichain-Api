@@ -1,13 +1,15 @@
 ﻿import { Router } from 'express';
 import {
-createReceiptController,
-getReceiptStatsController,
-getReceiptByIdController,
-getBatchByIdController,
-getBatchLabelController,
-listReceiptsController,
+  createReceiptController,
+  getReceiptStatsController,
+  getReceiptByIdController,
+  getBatchByIdController,
+  getBatchLabelController,
+  listReceiptsController,
+  liftBatchQuarantineController,
 } from '../controllers/receipt.controller';
 import { validateReceiptParams } from '../middlewares/validateReceipt.middleware';
+import { validateQuarantineLift } from '../middlewares/validateQuarantineLift.middleware';
 import { mixedAuth } from '../../../../shared/middlewares/mixedAuth';
 import { verifyReceiptAccess } from '../../middlewares/verifyReceiptAccess.middleware';
 import { verifyBatchAccess } from '../../middlewares/verifyBatchAccess.middleware';
@@ -43,11 +45,7 @@ router.get(
   getReceiptStatsController
 );
 
-router.get(
-  '/logistics/receipts',
-  mixedAuth(LOGISTICS_READ_ROLES),
-  listReceiptsController
-);
+router.get('/logistics/receipts', mixedAuth(LOGISTICS_READ_ROLES), listReceiptsController);
 
 router.get(
   '/logistics/receipts/:id',
@@ -68,6 +66,15 @@ router.get(
   mixedAuth(LOGISTICS_READ_ROLES),
   verifyBatchAccess,
   getBatchLabelController
+);
+
+// Levée de quarantaine : décision qualité réservée au rôle Qualité / Admin / Gérant
+router.post(
+  '/logistics/batches/:id/release',
+  mixedAuth([LOGISTICS_ROLES.QA, LOGISTICS_ROLES.ADMIN, LOGISTICS_ROLES.OWNER]),
+  verifyBatchAccess,
+  validateQuarantineLift,
+  liftBatchQuarantineController
 );
 
 export default router;

@@ -3,6 +3,7 @@ import request from 'supertest';
 import type { Request, Response, NextFunction } from 'express';
 import { app } from '../../../../app';
 import { receiptService } from '../services/receipt.service';
+import { batchService } from '../../shared/services/batch.service';
 import { Receipt, Supplier } from '@prisma/client';
 
 // On définit un type pour la réponse de getReceiptById qui inclut la relation fournisseur
@@ -64,6 +65,13 @@ vi.mock('../services/receipt.service', () => ({
     getReceiptById: vi.fn(),
     getBatchById: vi.fn(),
     listReceipts: vi.fn(),
+  },
+}));
+
+// Mock the Batch Service (levée de quarantaine)
+vi.mock('../../shared/services/batch.service', () => ({
+  batchService: {
+    liftQuarantine: vi.fn(),
   },
 }));
 
@@ -231,6 +239,62 @@ describe('Logistics - Receipts Routes', () => {
       expect(res.status).toBe(200);
       expect(res.body.data.id).toBe('rcpt-1');
       expect(receiptService.getReceiptById).toHaveBeenCalledWith('rcpt-1', 'org_test_123');
+    });
+  });
+
+  describe('POST /api/logistics/batches/:id/release (levée de quarantaine)', () => {
+    // Un lot accessible dans l'org : nécessaire pour passer verifyBatchAccess
+    const mockBatchInOrg = async () => {
+      const { prisma } = await import('../../../../shared/configs/prismaClient.config');
+      vi.mocked(prisma.batch.findFirst).mockResolvedValue({
+        id: 'batch-1',
+        organization_id: 'org_test_123',
+        statut: 'BLOQUE',
+      } as unknown as never);
+    };
+
+    it('doit lever la quarantaine et retourner 200 avec un motif valide', async () => {
+      await mockBatchInOrg();
+      vi.mocked(batchService.liftQuarantine).mockResolvedValue({
+        id: 'batch-1',
+        statut: 'EN_STOCK',
+      } as never);
+
+      const res = await request(app)
+        .post('/api/logistics/batches/batch-1/release')
+        .send({ motif: 'Nouveau contrôle qualité conforme' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.statut).toBe('EN_STOCK');
+      expect(batchService.liftQuarantine).toHaveBeenCalledWith(
+        'batch-1',
+        'org_test_123',
+        'u-123',
+        'Nouveau contrôle qualité conforme'
+      );
+    });
+
+    it('doit refuser (400) si le motif est absent ou trop court', async () => {
+      await mockBatchInOrg();
+
+      const res = await request(app)
+        .post('/api/logistics/batches/batch-1/release')
+        .send({ motif: 'x' });
+
+      expect(res.status).toBe(400);
+      expect(batchService.liftQuarantine).not.toHaveBeenCalled();
+    });
+
+    it('doit refuser (404) un lot hors de l organisation (verifyBatchAccess)', async () => {
+      const { prisma } = await import('../../../../shared/configs/prismaClient.config');
+      vi.mocked(prisma.batch.findFirst).mockResolvedValue(null);
+
+      const res = await request(app)
+        .post('/api/logistics/batches/autre-org/release')
+        .send({ motif: 'Tentative cross-tenant' });
+
+      expect(res.status).toBe(404);
+      expect(batchService.liftQuarantine).not.toHaveBeenCalled();
     });
   });
 });

@@ -2,6 +2,7 @@ import { prisma } from '../../../../shared/configs/prismaClient.config';
 import { APIError } from '../../../../shared/utils/errorHandler/APIError';
 import { Batch, Prisma } from '@prisma/client';
 import { auditService } from '../../../../shared/utils/audit/audit.service';
+import { BATCH_STATUSES, isBatchBlocked } from '../../../logistics/constants/logistics.constants';
 
 export interface TransformationInput {
   organization_id: string;
@@ -63,7 +64,7 @@ export const transformationService = {
         }
 
         // 1.b Validation Qualité et Péremption
-        if (['NON_CONFORME', 'ALERTE'].includes(batch.statut)) {
+        if (isBatchBlocked(batch.statut)) {
           throw new APIError(400, {
             error: [
               {
@@ -99,7 +100,7 @@ export const transformationService = {
           date_peremption: data.date_peremption,
           id_materiel_actuel: data.id_materiel,
           created_by: data.created_by,
-          statut: 'EN_STOCK',
+          statut: BATCH_STATUSES.IN_STOCK,
         },
       });
 
@@ -163,7 +164,7 @@ export const transformationService = {
           },
           data: {
             quantite_actuelle: { decrement: input.quantite_prelevee },
-            statut: isExhausted ? 'EPUISE' : 'EN_STOCK',
+            statut: isExhausted ? BATCH_STATUSES.DEPLETED : BATCH_STATUSES.IN_STOCK,
             version: { increment: 1 }, // Incrément de version à chaque mutation
           },
         });

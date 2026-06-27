@@ -213,29 +213,32 @@ describe('ShipmentService', () => {
     );
   });
 
-  it('devrait échouer si le lot est NON_CONFORME', async () => {
-    const mockBatch = {
-      id: 'batch-1',
-      organization_id: 'org-123',
-      quantite_actuelle: { toNumber: () => 100 },
-      unite_code: 'KG',
-      statut: 'NON_CONFORME',
-    };
+  it.each(['BLOQUE', 'ALERTE'])(
+    'devrait échouer si le lot est en statut bloquant %s (quarantaine / rappel)',
+    async (statut) => {
+      const mockBatch = {
+        id: 'batch-1',
+        organization_id: 'org-123',
+        quantite_actuelle: { toNumber: () => 100 },
+        unite_code: 'KG',
+        statut,
+      };
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    vi.mocked(prisma.batch.findFirst).mockResolvedValue(mockBatch as any);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(prisma.batch.findFirst).mockResolvedValue(mockBatch as any);
 
-    await expect(shipmentService.createShipment(mockShipmentData)).rejects.toThrow(
-      new APIError(400, {
-        error: [
-          {
-            field: 'lots',
-            message: 'Le lot batch-1 est marqué NON_CONFORME et ne peut être expédié.',
-          },
-        ],
-      })
-    );
-  });
+      await expect(shipmentService.createShipment(mockShipmentData)).rejects.toThrow(
+        new APIError(400, {
+          error: [
+            {
+              field: 'lots',
+              message: `Le lot batch-1 est en statut ${statut} et ne peut être expédié.`,
+            },
+          ],
+        })
+      );
+    }
+  );
 
   it('devrait échouer si le lot est périmé', async () => {
     const mockBatch = {

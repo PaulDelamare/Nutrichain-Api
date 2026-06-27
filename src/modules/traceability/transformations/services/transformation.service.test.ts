@@ -172,6 +172,45 @@ describe('TransformationService', () => {
     }
   });
 
+  it('doit échouer si un lot parent est en quarantaine (BLOQUE)', async () => {
+    const mockTx = {
+      batch: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'lot-p1',
+          organization_id: activeOrgId,
+          quantite_actuelle: { toNumber: () => 100 },
+          unite_code: 'KG',
+          statut: 'BLOQUE',
+          version: 1,
+        }),
+      },
+    };
+    vi.mocked(prisma.$transaction).mockImplementation(
+      (callback: (tx: unknown) => Promise<unknown>) => callback(mockTx)
+    );
+
+    const data = {
+      organization_id: activeOrgId,
+      id_produit_fini: 'prod-fini',
+      id_materiel: 'mat-1',
+      quantite_produite: 50,
+      unite_code: 'KG',
+      created_by: userId,
+      inputs: [
+        { id_lot_parent: 'lot-p1', quantite_prelevee: 10, unite: 'KG', lot_parent_epuise: false },
+      ],
+    };
+
+    try {
+      await transformationService.createTransformation(data);
+      expect.fail('Should have thrown');
+    } catch (error: unknown) {
+      const err = error as APIError;
+      expect(err.status).toBe(400);
+      expect(err.body.error[0].message).toContain('BLOQUE');
+    }
+  });
+
   it('doit créer une transformation et un lot enfant avec succès', async () => {
     const mockTx = buildHappyMockTx();
 

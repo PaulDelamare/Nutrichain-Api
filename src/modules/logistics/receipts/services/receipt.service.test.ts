@@ -116,6 +116,39 @@ describe('ReceiptService', () => {
       expect(prisma.audit_Log.create).toHaveBeenCalled();
     });
 
+    // Le statut de contrôle à la réception détermine le statut initial du lot :
+    // NONCONFORME/ALERTE -> quarantaine (BLOQUE), sinon stock normal (EN_STOCK).
+    it.each([
+      ['NONCONFORME', 'BLOQUE'],
+      ['ALERTE', 'BLOQUE'],
+      ['OK', 'EN_STOCK'],
+      ['CONFORME', 'EN_STOCK'],
+    ])('réception %s -> lot créé en %s', async (statut_controle, statutLotAttendu) => {
+      const mockOk = (id: string) => ({ id }) as never;
+      vi.mocked(prisma.supplier.findFirst).mockResolvedValue(mockOk('supp-1'));
+      vi.mocked(prisma.product.findFirst).mockResolvedValue(mockOk('prod-1'));
+      vi.mocked(prisma.user.findUnique).mockResolvedValue(mockOk('user-1'));
+      vi.mocked(prisma.unit.findUnique).mockResolvedValue({ code: 'KG' } as never);
+      vi.mocked(prisma.receipt.create).mockResolvedValue(mockOk('rec-1'));
+      vi.mocked(batchService.createBatch).mockResolvedValue(mockOk('bat-1'));
+
+      await receiptService.createReceipt({
+        organization_id: 'org-1',
+        id_fournisseur: 'supp-1',
+        shipment_id: 'SHIP-001',
+        id_produit: 'prod-1',
+        quantite_actuelle: 500,
+        unite_code: 'KG',
+        statut_controle,
+        received_by: 'user-1',
+      });
+
+      expect(batchService.createBatch).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ statut: statutLotAttendu })
+      );
+    });
+
     it('doit échouer si le fournisseur n appartient pas à l organisation', async () => {
       vi.mocked(prisma.supplier.findFirst).mockResolvedValue(null);
 
