@@ -36,4 +36,16 @@ describe('csv adapter', () => {
     const { rows } = parseCsv(src);
     expect(toCsv(rows, ['nom', 'code'])).toBe(src);
   });
+
+  it.each(['=SUM(A1)', '+1+1', '-2+3', '@cmd'])(
+    'neutralise l injection de formule CSV (cellule dangereuse : %s)',
+    (payload) => {
+      // La valeur est préfixée d'une apostrophe pour être interprétée comme texte.
+      expect(toCsv([{ a: payload }], ['a'])).toBe(`a\r\n'${payload}`);
+    }
+  );
+
+  it('ne modifie pas une valeur texte normale', () => {
+    expect(toCsv([{ a: 'Lait' }], ['a'])).toBe('a\r\nLait');
+  });
 });
