@@ -24,9 +24,24 @@ export function parseCsv(text: string): CsvParseResult {
 }
 
 /**
+ * Neutralise l'injection de formule CSV : une cellule texte commençant par `= + - @`
+ * (ou tab/CR) est interprétée comme une formule par Excel/LibreOffice à l'ouverture.
+ * On la préfixe d'une apostrophe pour forcer son interprétation comme texte (OWASP).
+ */
+function neutralizeFormulaInjection(value: unknown): unknown {
+  if (typeof value === 'string' && /^[=+\-@\t\r]/.test(value)) {
+    return `'${value}`;
+  }
+  return value;
+}
+
+/**
  * Sérialise des lignes objets en CSV (en-tête = `columns`, dans l'ordre fourni).
- * Le quoting est géré par papaparse.
+ * Le quoting est géré par papaparse ; les valeurs sont protégées contre l'injection de formule.
  */
 export function toCsv(rows: Record<string, unknown>[], columns: string[]): string {
-  return Papa.unparse(rows, { columns });
+  const safeRows = rows.map((row) =>
+    Object.fromEntries(Object.entries(row).map(([k, v]) => [k, neutralizeFormulaInjection(v)]))
+  );
+  return Papa.unparse(safeRows, { columns });
 }

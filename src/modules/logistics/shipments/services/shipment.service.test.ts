@@ -20,6 +20,9 @@ vi.mock('../../../../shared/configs/prismaClient.config', () => ({
       create: vi.fn(),
       count: vi.fn().mockResolvedValue(10), // On simule 10 expéditions existantes
     },
+    customer: {
+      findFirst: vi.fn(),
+    },
     ePCIS_Event: {
       create: vi.fn(),
     },
@@ -40,6 +43,20 @@ describe('ShipmentService', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // Par défaut, le client destinataire appartient bien à l'organisation (cas nominal).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(prisma.customer.findFirst).mockResolvedValue({ id: 'client-456' } as any);
+  });
+
+  it('devrait échouer (404) si le client destinataire n appartient pas à l organisation', async () => {
+    vi.mocked(prisma.customer.findFirst).mockResolvedValue(null);
+
+    await expect(shipmentService.createShipment(mockShipmentData)).rejects.toMatchObject({
+      status: 404,
+      body: { error: [{ field: 'id_client' }] },
+    });
+    // La garde tombe avant toute écriture.
+    expect(prisma.shipment.create).not.toHaveBeenCalled();
   });
 
   it('devrait créer une expédition avec succès', async () => {
