@@ -8,11 +8,7 @@ import {
   EPCIS_EVENT_TYPE,
   EPCIS_RELATED_ENTITY,
 } from '../../../../shared/constants/epcis.constants';
-import {
-  BATCH_STATUSES,
-  BLOCKING_BATCH_STATUSES,
-  BatchStatus,
-} from '../../constants/logistics.constants';
+import { BATCH_STATUSES, isBatchBlocked } from '../../constants/logistics.constants';
 
 /**
  * Service pour la gestion des Expéditions (Shipments)
@@ -70,7 +66,7 @@ export const shipmentService = {
         // 3. Validation des règles métier (Qualité & Date)
         // Bloque l'expédition d'un lot en quarantaine (BLOQUE) ou sous rappel/alerte (ALERTE) :
         // un lot rappelé ne doit jamais pouvoir partir.
-        if (BLOCKING_BATCH_STATUSES.includes(batch.statut as BatchStatus)) {
+        if (isBatchBlocked(batch.statut)) {
           throw new APIError(400, {
             error: [
               {

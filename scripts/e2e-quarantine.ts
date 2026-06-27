@@ -37,7 +37,7 @@ function assert(condition: boolean, label: string) {
   }
 }
 
-/** Exécute une promesse censée échouer en APIError 400 et renvoie true si c'est bien rejeté. */
+/** Exécute une promesse censée être rejetée ; renvoie true si elle l'a bien été. */
 async function expectRejected(action: Promise<unknown>): Promise<boolean> {
   try {
     await action;

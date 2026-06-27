@@ -2,11 +2,7 @@ import { prisma } from '../../../../shared/configs/prismaClient.config';
 import { APIError } from '../../../../shared/utils/errorHandler/APIError';
 import { Batch, Prisma } from '@prisma/client';
 import { auditService } from '../../../../shared/utils/audit/audit.service';
-import {
-  BATCH_STATUSES,
-  BLOCKING_BATCH_STATUSES,
-  BatchStatus,
-} from '../../../logistics/constants/logistics.constants';
+import { BATCH_STATUSES, isBatchBlocked } from '../../../logistics/constants/logistics.constants';
 
 export interface TransformationInput {
   organization_id: string;
@@ -68,7 +64,7 @@ export const transformationService = {
         }
 
         // 1.b Validation Qualité et Péremption
-        if (BLOCKING_BATCH_STATUSES.includes(batch.statut as BatchStatus)) {
+        if (isBatchBlocked(batch.statut)) {
           throw new APIError(400, {
             error: [
               {

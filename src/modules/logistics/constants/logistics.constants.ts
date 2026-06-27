@@ -96,12 +96,9 @@ export const ROUTE_ROLE_MATRIX = {
  */
 export const RECEIPT_STATUSES = {
   OK: 'OK',
-  CONFORM: 'CONFORME',
   ALERT: 'ALERTE',
   NON_CONFORM: 'NONCONFORME',
 } as const;
-
-export type ReceiptControlStatus = (typeof RECEIPT_STATUSES)[keyof typeof RECEIPT_STATUSES];
 
 // ========== STATUTS DE LOT ==========
 /**
@@ -134,6 +131,14 @@ export const BLOCKING_BATCH_STATUSES: readonly BatchStatus[] = [
   BATCH_STATUSES.BLOCKED,
   BATCH_STATUSES.ALERT,
 ];
+
+/**
+ * Vrai si un lot dans ce statut ne peut pas quitter le stock (transformation/expédition).
+ * Centralise le test + le cast string->BatchStatus (Batch.statut est un String Prisma brut).
+ */
+export function isBatchBlocked(statut: string): boolean {
+  return (BLOCKING_BATCH_STATUSES as readonly string[]).includes(statut);
+}
 
 /**
  * Contrôles qualité à la réception qui placent immédiatement le lot en quarantaine.
