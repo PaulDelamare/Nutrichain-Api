@@ -58,60 +58,16 @@ const checkDatabase = async (): Promise<HealthCheckResult> => {
 
 const checkMigrations = async (): Promise<HealthCheckResult> => {
   const started = Date.now();
-  const tableName = '_prisma_migrations';
 
   try {
-    const existsRows = await withTimeout(
-      bdd.$queryRawUnsafe<unknown[]>(
-        `SELECT table_name FROM information_schema.tables WHERE table_name = '${tableName}' LIMIT 1;`
-      ),
-      DB_TIMEOUT_MS,
-      'Migrations table existence check'
-    );
-
-    if (!Array.isArray(existsRows) || existsRows.length === 0) {
-      return {
-        name: 'migrations',
-        ok: false,
-        optional: true,
-        durationMs: Date.now() - started,
-        details: { message: 'No migrations table present' },
-      };
-    }
-
-    const cols = await withTimeout(
-      bdd.$queryRaw<
-        unknown[]
-      >`SELECT column_name FROM information_schema.columns WHERE table_name = ${tableName};`,
-      DB_TIMEOUT_MS,
-      'Migrations columns discovery'
-    );
-
-    const columnNames = Array.isArray(cols)
-      ? cols
-          .map((c) => {
-            const row = c as Record<string, unknown>;
-            return String(row.column_name || row.COLUMN_NAME || row.name);
-          })
-          .filter(Boolean)
-      : [];
-
-    // Validate identifier safety to avoid SQL injection via discovered column names
-    const isSafeIdentifier = (s: string) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(s);
-    const preferredRaw =
-      columnNames.find((c: string) => /finished_at|finishedat|finishedAt/i.test(c)) ||
-      columnNames[0] ||
-      null;
-    const preferred = preferredRaw && isSafeIdentifier(preferredRaw) ? preferredRaw : null;
-    const orderClause = preferred ? `ORDER BY "${preferred}" DESC` : '';
-
-    // Only use unsafe dynamic SQL after validation; tableName is a constant but we still validate
-    if (!isSafeIdentifier(tableName)) {
-      throw new Error('Unsafe migrations table name');
-    }
-
+    // `_prisma_migrations` a un schéma fixe géré par Prisma : on lit directement la dernière
+    // migration via ses colonnes connues. Requête constante = aucune surface d'injection (plus
+    // besoin de découverte de colonnes ni de garde d'identifiant). Si la table/colonne est
+    // absente, le catch renvoie ok:false — la probe est optionnelle, la readiness reste verte.
     const rows = await withTimeout(
-      bdd.$queryRawUnsafe<unknown[]>(`SELECT * FROM "${tableName}" ${orderClause} LIMIT 1;`),
+      bdd.$queryRawUnsafe<{ migration_name?: string; finished_at?: Date | string | null }[]>(
+        `SELECT migration_name, finished_at FROM "_prisma_migrations" ORDER BY finished_at DESC NULLS LAST LIMIT 1;`
+      ),
       DB_TIMEOUT_MS,
       'Migrations latest row'
     );
@@ -123,7 +79,7 @@ const checkMigrations = async (): Promise<HealthCheckResult> => {
       ok: Boolean(latest),
       optional: true,
       durationMs: Date.now() - started,
-      details: latest ? (latest as Record<string, unknown>) : { message: 'No migration rows' },
+      details: latest ?? { message: 'No migration rows' },
     };
   } catch (err) {
     return {

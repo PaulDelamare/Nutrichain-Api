@@ -36,9 +36,7 @@ export const createReceiptController = catchAsync(
 export const getReceiptStatsController = catchAsync(
   async (req: AuthenticatedRequest, res: Response) => {
     const activeOrgId = req.activeOrgId as string;
-    // Charger dynamiquement le service pour éviter les problèmes d'import/mock lors des tests
-    const module = await import('../services/receipt.service');
-    const stats = await module.receiptService.getReceiptStats(activeOrgId);
+    const stats = await receiptService.getReceiptStats(activeOrgId);
     sendSuccess(res, 200, 'Statistiques récupérées', stats);
   }
 );

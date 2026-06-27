@@ -22,6 +22,7 @@ export const shipmentService = {
     id_client: string;
     shipment_id: string;
     transporteur: string;
+    destination_adresse?: string;
     date_envoi: Date;
     created_by: string;
     items: Array<{ id_lot: string; quantite: number }>;
@@ -41,6 +42,7 @@ export const shipmentService = {
           id_client: data.id_client,
           shipment_id: finalShipmentId,
           transporteur: data.transporteur,
+          destination_adresse: data.destination_adresse,
           date_envoi: data.date_envoi,
           statut_livraison: 'EN_ROUTE',
           created_by: data.created_by,
