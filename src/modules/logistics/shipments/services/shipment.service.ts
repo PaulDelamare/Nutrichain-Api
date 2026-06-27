@@ -8,6 +8,11 @@ import {
   EPCIS_EVENT_TYPE,
   EPCIS_RELATED_ENTITY,
 } from '../../../../shared/constants/epcis.constants';
+import {
+  BATCH_STATUSES,
+  BLOCKING_BATCH_STATUSES,
+  BatchStatus,
+} from '../../constants/logistics.constants';
 
 /**
  * Service pour la gestion des Expéditions (Shipments)
@@ -63,12 +68,14 @@ export const shipmentService = {
         }
 
         // 3. Validation des règles métier (Qualité & Date)
-        if (batch.statut === 'NON_CONFORME') {
+        // Bloque l'expédition d'un lot en quarantaine (BLOQUE) ou sous rappel/alerte (ALERTE) :
+        // un lot rappelé ne doit jamais pouvoir partir.
+        if (BLOCKING_BATCH_STATUSES.includes(batch.statut as BatchStatus)) {
           throw new APIError(400, {
             error: [
               {
                 field: 'lots',
-                message: `Le lot ${item.id_lot} est marqué NON_CONFORME et ne peut être expédié.`,
+                message: `Le lot ${item.id_lot} est en statut ${batch.statut} et ne peut être expédié.`,
               },
             ],
           });
@@ -91,7 +98,10 @@ export const shipmentService = {
           where: { id: item.id_lot },
           data: {
             quantite_actuelle: { decrement: item.quantite },
-            statut: batch.quantite_actuelle.toNumber() === item.quantite ? 'EXPEDIE' : 'EN_STOCK',
+            statut:
+              batch.quantite_actuelle.toNumber() === item.quantite
+                ? BATCH_STATUSES.SHIPPED
+                : BATCH_STATUSES.IN_STOCK,
           },
         });
 

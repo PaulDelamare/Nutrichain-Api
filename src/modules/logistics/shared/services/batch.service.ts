@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../../../shared/configs/prismaClient.config';
 import { APIError } from '../../../../shared/utils/errorHandler/APIError';
+import { BATCH_STATUSES, BatchStatus } from '../../constants/logistics.constants';
 
 export interface CreateBatchInput {
   organization_id: string;
@@ -9,6 +10,8 @@ export interface CreateBatchInput {
   unite_code: string;
   created_by: string;
   date_peremption?: Date;
+  /** Statut initial du lot. Défaut EN_STOCK ; BLOQUE pour une réception non-conforme. */
+  statut?: BatchStatus;
 }
 
 /**
@@ -30,7 +33,7 @@ export const batchService = {
         unite_code: data.unite_code,
         created_by: data.created_by,
         date_peremption: data.date_peremption,
-        statut: 'EN_STOCK',
+        statut: data.statut ?? BATCH_STATUSES.IN_STOCK,
       },
     });
   },

@@ -10,6 +10,7 @@ import {
   EPCIS_EVENT_TYPE,
   EPCIS_RELATED_ENTITY,
 } from '../../../../shared/constants/epcis.constants';
+import { BATCH_STATUSES, QUARANTINE_RECEIPT_CONTROLS } from '../../constants/logistics.constants';
 
 /**
  * Interface pour les données de création d'une réception.
@@ -74,12 +75,18 @@ async function createReceiptInTx(tx: Prisma.TransactionClient, data: CreateRecei
     },
   });
 
+  // Sûreté sanitaire HACCP : un lot reçu non-conforme (ou en alerte) est créé en
+  // quarantaine (BLOQUE), ce qui interdit sa transformation et son expédition tant
+  // qu'une décision qualité ne l'a pas levé. Sinon il entre en stock normalement.
+  const isQuarantined = QUARANTINE_RECEIPT_CONTROLS.includes(data.statut_controle);
+
   const batch = await batchService.createBatch(tx, {
     organization_id: data.organization_id,
     id_produit: data.id_produit,
     quantite_actuelle: data.quantite_actuelle,
     unite_code: data.unite_code,
     created_by: data.received_by,
+    statut: isQuarantined ? BATCH_STATUSES.BLOCKED : BATCH_STATUSES.IN_STOCK,
   });
 
   // Événement EPCIS ObjectEvent : entrée du lot dans la chaîne lors de la réception (interopérabilité GS1)

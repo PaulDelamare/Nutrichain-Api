@@ -116,6 +116,78 @@ describe('ReceiptService', () => {
       expect(prisma.audit_Log.create).toHaveBeenCalled();
     });
 
+    it.each(['NONCONFORME', 'ALERTE'])(
+      'doit créer le lot en quarantaine (BLOQUE) si le contrôle qualité est %s',
+      async (statut_controle) => {
+        const payload = {
+          organization_id: 'org-1',
+          id_fournisseur: 'supp-1',
+          shipment_id: 'SHIP-001',
+          id_produit: 'prod-1',
+          quantite_actuelle: 500,
+          unite_code: 'KG',
+          statut_controle,
+          received_by: 'user-1',
+        };
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        vi.mocked(prisma.supplier.findFirst).mockResolvedValue({ id: 'supp-1' } as any);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        vi.mocked(prisma.product.findFirst).mockResolvedValue({ id: 'prod-1' } as any);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        vi.mocked(prisma.user.findUnique).mockResolvedValue({ id: 'user-1' } as any);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        vi.mocked(prisma.unit.findUnique).mockResolvedValue({ code: 'KG' } as any);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        vi.mocked(prisma.receipt.create).mockResolvedValue({ id: 'rec-1' } as any);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        vi.mocked(batchService.createBatch).mockResolvedValue({ id: 'bat-1' } as any);
+
+        await receiptService.createReceipt(payload);
+
+        expect(batchService.createBatch).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({ statut: 'BLOQUE' })
+        );
+      }
+    );
+
+    it.each(['OK', 'CONFORME'])(
+      'doit créer le lot en stock (EN_STOCK) si le contrôle qualité est %s',
+      async (statut_controle) => {
+        const payload = {
+          organization_id: 'org-1',
+          id_fournisseur: 'supp-1',
+          shipment_id: 'SHIP-001',
+          id_produit: 'prod-1',
+          quantite_actuelle: 500,
+          unite_code: 'KG',
+          statut_controle,
+          received_by: 'user-1',
+        };
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        vi.mocked(prisma.supplier.findFirst).mockResolvedValue({ id: 'supp-1' } as any);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        vi.mocked(prisma.product.findFirst).mockResolvedValue({ id: 'prod-1' } as any);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        vi.mocked(prisma.user.findUnique).mockResolvedValue({ id: 'user-1' } as any);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        vi.mocked(prisma.unit.findUnique).mockResolvedValue({ code: 'KG' } as any);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        vi.mocked(prisma.receipt.create).mockResolvedValue({ id: 'rec-1' } as any);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        vi.mocked(batchService.createBatch).mockResolvedValue({ id: 'bat-1' } as any);
+
+        await receiptService.createReceipt(payload);
+
+        expect(batchService.createBatch).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({ statut: 'EN_STOCK' })
+        );
+      }
+    );
+
     it('doit échouer si le fournisseur n appartient pas à l organisation', async () => {
       vi.mocked(prisma.supplier.findFirst).mockResolvedValue(null);
 

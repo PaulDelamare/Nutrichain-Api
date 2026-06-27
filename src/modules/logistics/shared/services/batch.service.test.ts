@@ -44,5 +44,29 @@ describe('BatchSharedService', () => {
       });
       expect(result.id).toBe('batch-123');
     });
+
+    it('doit créer le lot avec le statut initial fourni (quarantaine BLOQUE)', async () => {
+      const mockTx = {
+        batch: {
+          create: vi.fn().mockResolvedValue({ id: 'batch-456' }),
+        },
+      };
+
+      const data = {
+        organization_id: 'org-1',
+        id_produit: 'prod-1',
+        quantite_actuelle: 100,
+        unite_code: 'KG',
+        created_by: 'user-1',
+        statut: 'BLOQUE' as const,
+      };
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await batchService.createBatch(mockTx as any, data);
+
+      expect(mockTx.batch.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ statut: 'BLOQUE' }),
+      });
+    });
   });
 });
