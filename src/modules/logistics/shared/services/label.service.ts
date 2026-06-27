@@ -3,7 +3,7 @@ import { APIError } from '../../../../shared/utils/errorHandler/APIError';
 
 /**
  * Service dédié à la génération d'étiquettes GS1 Digital Link
- * Supporte la génération d'URI standards et le rendu en images (QR/DataMatrix)
+ * Supporte la génération d'URI standards et le rendu en image (QR Code)
  */
 export const labelService = {
   /**
@@ -37,34 +37,6 @@ export const labelService = {
             reject(
               new APIError(500, {
                 error: [{ field: 'qrcode', message: 'Erreur lors de la génération du QR Code' }],
-              })
-            );
-          } else {
-            resolve(png);
-          }
-        }
-      );
-    });
-  },
-
-  /**
-   * Génère un DataMatrix GS1 (Standard industriel compact)
-   */
-  async generateDataMatrix(text: string): Promise<Buffer> {
-    return new Promise((resolve, reject) => {
-      bwipjs.toBuffer(
-        {
-          bcid: 'gs1datamatrix',
-          text: text,
-          scale: 3,
-          includetext: true,
-          alttext: text.length > 20 ? text.substring(0, 20) + '...' : text,
-        },
-        (err, png) => {
-          if (err) {
-            reject(
-              new APIError(500, {
-                error: [{ field: 'datamatrix', message: 'Erreur lors de la génération du DataMatrix' }],
               })
             );
           } else {

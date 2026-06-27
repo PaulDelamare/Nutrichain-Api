@@ -16,5 +16,5 @@ export const SYNC_WRITE_ROLES: string[] = [
  * Durée de vie des clés d'idempotency : 7 jours.
  * Compromis entre robustesse du retry mobile et volume DB.
  */
-export const IDEMPOTENCY_TTL_DAYS = 7;
+const IDEMPOTENCY_TTL_DAYS = 7;
 export const IDEMPOTENCY_TTL_MS = IDEMPOTENCY_TTL_DAYS * 24 * 60 * 60 * 1000;

@@ -13,8 +13,8 @@ import { auditVerifyService } from '../services/auditVerify.service';
  * - WORM-safe : aucun `auditService.logAction`. Lecture Audit_Log + écriture Audit_Checkpoint
  *   uniquement (table dédiée, mutable par design).
  */
-export const PER_ORG_BUDGET_MS = 60_000;
-export const ADVISORY_LOCK_KEY = 9_999_117; // arbitraire, exporté pour les tests
+const PER_ORG_BUDGET_MS = 60_000;
+const ADVISORY_LOCK_KEY = 9_999_117; // arbitraire, single-instance lock
 
 export async function runAuditChainVerifyOnce(): Promise<void> {
   const lockRes = await prisma.$queryRawUnsafe<{ locked: boolean }[]>(

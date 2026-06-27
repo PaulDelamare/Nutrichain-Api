@@ -21,9 +21,6 @@ export const EPCIS_RELATED_ENTITIES = [
   EPCIS_RELATED_ENTITY.shipment,
 ] as const;
 
-export type EpcisEventType = (typeof EPCIS_EVENT_TYPES)[number];
-export type EpcisRelatedEntity = (typeof EPCIS_RELATED_ENTITIES)[number];
-
 export const EPCIS_BIZSTEP = {
   receiving: 'urn:epcglobal:cbv:bizstep:receiving',
   shipping: 'urn:epcglobal:cbv:bizstep:shipping',
