@@ -28,7 +28,20 @@ export const shipmentService = {
     items: Array<{ id_lot: string; quantite: number }>;
   }) {
     return await prisma.$transaction(async (tx) => {
-      // 0. Génération automatique de l'identifiant si demandé (Standard SSCC)
+      // 0.a Le client destinataire doit appartenir à l'organisation (anti-référence cross-tenant).
+      // Symétrique au contrôle du fournisseur à la réception : sans cette garde, un id_client
+      // d'une autre org serait accepté (et notifié lors d'un rappel).
+      const customer = await tx.customer.findFirst({
+        where: { id: data.id_client, organization_id: data.organization_id },
+        select: { id: true },
+      });
+      if (!customer) {
+        throw new APIError(404, {
+          error: [{ field: 'id_client', message: 'Client introuvable ou accès refusé.' }],
+        });
+      }
+
+      // 0.b Génération automatique de l'identifiant si demandé (Standard SSCC)
       let finalShipmentId = data.shipment_id;
       if (finalShipmentId === 'AUTO' || !finalShipmentId) {
         const count = await tx.shipment.count({ where: { organization_id: data.organization_id } });
