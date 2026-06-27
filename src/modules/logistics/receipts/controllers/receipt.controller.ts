@@ -1,5 +1,6 @@
 import { Response } from 'express';
 import { receiptService } from '../services/receipt.service';
+import { batchService } from '../../shared/services/batch.service';
 import { labelService } from '../../shared/services/label.service';
 import { sendSuccess } from '../../../../shared/utils/returnSuccess/returnSuccess';
 import { catchAsync } from '../../../../shared/utils/errorHandler/catchAsync';
@@ -68,6 +69,32 @@ export const listReceiptsController = catchAsync(
 
     const result = await receiptService.listReceipts(activeOrgId, page, limit);
     sendSuccess(res, 200, 'Réceptions récupérées', result);
+  }
+);
+
+/**
+ * Lève la quarantaine d'un lot (BLOQUE -> EN_STOCK) après décision qualité.
+ */
+export const liftBatchQuarantineController = catchAsync(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const id = req.params.id as string;
+    const activeOrgId = req.activeOrgId as string;
+    const userId = req.user?.id;
+    const motif = req.validatedQuarantineLift?.motif;
+
+    if (!userId) {
+      throw new APIError(401, {
+        error: [{ field: 'user', message: 'Utilisateur requis pour lever une quarantaine.' }],
+      });
+    }
+    if (!motif) {
+      throw new APIError(400, {
+        error: [{ field: 'motif', message: 'Motif de levée de quarantaine manquant.' }],
+      });
+    }
+
+    const batch = await batchService.liftQuarantine(id, activeOrgId, userId, motif);
+    sendSuccess(res, 200, 'Quarantaine levée, lot remis en stock', batch);
   }
 );
 
