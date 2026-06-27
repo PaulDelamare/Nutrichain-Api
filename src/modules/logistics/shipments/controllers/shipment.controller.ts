@@ -16,7 +16,8 @@ export const createShipmentController = catchAsync(
         error: [{ field: 'shipment', message: "Données d'expédition non validées." }],
       });
     }
-    const { id_client, shipment_id, transporteur, lots, created_by } = validatedShipment;
+    const { id_client, shipment_id, transporteur, destination_adresse, lots, created_by } =
+      validatedShipment;
     const activeOrgId = req.activeOrgId as string;
 
     // Détermination de l'auteur : Priorité à la session (req.user), fallback sur le payload (M2M)
@@ -33,6 +34,7 @@ export const createShipmentController = catchAsync(
       id_client,
       shipment_id,
       transporteur,
+      destination_adresse,
       date_envoi: new Date(),
       created_by: userId,
       items: lots.map((l: { id_lot: string; quantite_expediee: number }) => ({
