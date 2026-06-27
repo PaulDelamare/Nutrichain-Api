@@ -32,6 +32,7 @@ describe('ShipmentService', () => {
     id_client: 'client-456',
     shipment_id: 'SHIP-001',
     transporteur: 'DHL',
+    destination_adresse: '12 rue de la Livraison, Paris',
     date_envoi: new Date(),
     created_by: 'user-789',
     items: [{ id_lot: 'batch-1', quantite: 10 }],
@@ -58,7 +59,10 @@ describe('ShipmentService', () => {
 
     const result = await shipmentService.createShipment(mockShipmentData);
 
-    expect(prisma.shipment.create).toHaveBeenCalled();
+    // L'adresse de destination fournie est bien persistée (et non plus jetée).
+    expect(prisma.shipment.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ destination_adresse: '12 rue de la Livraison, Paris' }),
+    });
     expect(prisma.batch.update).toHaveBeenCalledWith({
       where: { id: 'batch-1' },
       data: expect.objectContaining({

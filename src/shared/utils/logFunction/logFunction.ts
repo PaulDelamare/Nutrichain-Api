@@ -59,15 +59,3 @@ export const rotateLog = async (): Promise<void> => {
     console.error('Error rotating log file:', err);
   }
 };
-
-/**
- * Initializes the log directory by creating it if it does not exist.
- * @returns - A promise that resolves when the log directory is initialized.
- */
-export const initLogDir = async (): Promise<void> => {
-  try {
-    await fs.mkdir(getLogDir(), { recursive: true });
-  } catch (err) {
-    console.error('Error creating log directory:', err);
-  }
-};

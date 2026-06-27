@@ -1,8 +1,7 @@
 ﻿import { Prisma } from '@prisma/client';
-import { Request, Response } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import { formatDate } from '../formatDateError/formatDateError';
 import { logger } from '../logger/logger';
-import { APIError } from './APIError';
 
 /**
  * Converts a Prisma error into a consistent error object containing a status code and an appropriate error message.
@@ -39,39 +38,6 @@ const getPrismaErrorMessage = (
 };
 
 /**
- * Formats validation errors into a consistent structure.
- */
-const formatValidationErrors = (
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  error: any
-): { status: number; error: { field: string; message: string }[] } => {
-  // Détection robuste des objets de type APIError (avec .body.error) ou objets simples (avec .error)
-  if (error && error.body && Array.isArray(error.body.error)) {
-    return { status: error.status || 500, error: error.body.error };
-  }
-
-  if (error && Array.isArray(error.error)) {
-    return { status: error.status || 400, error: error.error };
-  }
-
-  return { status: error.status || 500, error: [] };
-};
-
-/**
- * Sends an error response to the client.
- */
-const sendErrorResponse = (
-  res: Response,
-  status: number,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  error: any
-): void => {
-  // Toujours renvoyer un tableau pour la propriété error
-  const errorArray = Array.isArray(error) ? error : [{ field: 'server', message: String(error) }];
-  res.status(status).json({ status, error: errorArray });
-};
-
-/**
  * Handles an error by logging it and sending an appropriate error response.
  */
 export const handleError = (error: unknown, req: Request, res: Response): void => {
@@ -88,8 +54,12 @@ export const handleError = (error: unknown, req: Request, res: Response): void =
     typeof error === 'object' &&
     ('status' in error || (error as { name?: string }).name === 'APIError')
   ) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const errObj = error as any;
+    const errObj = error as {
+      status?: number;
+      body?: { error?: { field: string; message: string }[] };
+      error?: { field: string; message: string }[];
+      message?: string;
+    };
     status = errObj.status || 400;
 
     // Détection du format de l'erreur (APIError vs objet de validation simple)
@@ -118,11 +88,6 @@ export const handleError = (error: unknown, req: Request, res: Response): void =
   res.status(status).json({ status, error: errors });
 };
 
-// Suppression du unused APIError car utilisé dynamiquement via (error as any).name === 'APIError'
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const _dontRemove = { formatValidationErrors, sendErrorResponse };
-
-import { NextFunction } from 'express';
 export const globalErrorHandler = (
   err: unknown,
   req: Request,

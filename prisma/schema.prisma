@@ -482,11 +482,12 @@ model Shipment {
   organization     Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
   id_client        String
   client           Customer     @relation(fields: [id_client], references: [id])
-  shipment_id      String       @unique
-  date_envoi       DateTime
-  transporteur     String
-  statut_livraison String
-  created_by       String
+  shipment_id        String   @unique
+  date_envoi         DateTime
+  transporteur       String
+  destination_adresse String?
+  statut_livraison   String
+  created_by         String
   user             User         @relation(fields: [created_by], references: [id])
 
   liaisons   Liaison_Shipment[]

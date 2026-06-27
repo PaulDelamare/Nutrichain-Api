@@ -28,8 +28,5 @@ export function parseCsv(text: string): CsvParseResult {
  * Le quoting est géré par papaparse.
  */
 export function toCsv(rows: Record<string, unknown>[], columns: string[]): string {
-  return Papa.unparse(
-    rows.map((r) => r),
-    { columns }
-  );
+  return Papa.unparse(rows, { columns });
 }
