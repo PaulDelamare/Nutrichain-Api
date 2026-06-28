@@ -7,9 +7,15 @@ import healthRoutes from './modules/core/health/health.routes';
 import telemetryRoutes from './modules/iot/routes/telemetry.routes';
 import authRoutes from './modules/identity/routes/auth.routes';
 import catalogRoutes from './modules/traceability/catalog/routes/catalog.routes';
+import transformationRoutes from './modules/traceability/transformations/routes/transformation.routes';
+import eventRoutes from './modules/traceability/events/routes/event.routes';
 import receiptRoutes from './modules/logistics/receipts/routes/receipt.routes';
 import shipmentRoutes from './modules/logistics/shipments/routes/shipment.routes';
 import organizationRoutes from './modules/organization/routes/organization.routes';
+import syncRoutes from './modules/sync/routes/sync.routes';
+import alertRoutes from './modules/alerts/routes/alert.routes';
+import auditRoutes from './modules/auditIntegrity/routes/audit.routes';
+import connectorRoutes from './modules/connectors/routes/connector.routes';
 import configureMiddleware from './shared/configs/apiConfigMiddleware.config';
 import { globalErrorHandler } from './shared/utils/errorHandler/errorHandler';
 
@@ -28,12 +34,18 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 // ! Routes
 app.use('/api', authRoutes);
 app.use('/api', catalogRoutes);
+app.use('/api', transformationRoutes);
+app.use('/api', eventRoutes);
 app.use('/api', receiptRoutes);
 app.use('/api', shipmentRoutes);
+app.use('/api', syncRoutes);
 app.use('/api', helloRoutes);
 app.use('/api', healthRoutes);
 app.use('/api', telemetryRoutes);
 app.use('/api', organizationRoutes);
+app.use('/api', alertRoutes);
+app.use('/api', auditRoutes);
+app.use('/api', connectorRoutes);
 
 // ! Global Error Handler (Doit être le dernier middleware)
 app.use(globalErrorHandler);

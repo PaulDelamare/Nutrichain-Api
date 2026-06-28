@@ -44,12 +44,12 @@ const localizeErrorMessages = (
  */
 export const validateData = async <T extends SchemaTypes>(
   schema: T,
-  data: Infer<T>
+  data: unknown
 ): Promise<Infer<T>> => {
   try {
     return await vine.validate({
       schema,
-      data,
+      data: data as Infer<T>,
     });
   } catch (error) {
     localizeErrorMessages(error);

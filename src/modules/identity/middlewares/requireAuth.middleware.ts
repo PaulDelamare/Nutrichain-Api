@@ -6,6 +6,9 @@ import { AuthenticatedRequest, AuthUser, AuthSession } from '../types/auth.types
 export type { AuthenticatedRequest, AuthUser, AuthSession } from '../types/auth.types';
 import { catchAsync } from '../../../shared/utils/errorHandler/catchAsync';
 
+// Ré-export pour les controllers qui importent le type depuis le middleware
+export type { AuthenticatedRequest } from '../types/auth.types';
+
 /**
  * Middleware qui intercepte la requête, vérifie si l'utilisateur est authentifié via `better-auth`.
  * Si oui, ajoute l'utilisateur (user) et sa session dans `req.auth`.

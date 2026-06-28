@@ -1,93 +1,1070 @@
-﻿{
+{
   "name": "Nutrichain",
   "version": "1",
   "items": [
     {
-      "name": "Logistics",
+      "type": "folder",
+      "name": "Core",
       "items": [
         {
-          "name": "Receipts",
-          "items": [
-            {
-              "name": "Créer une Réception",
-              "request": {
-                "method": "POST",
-                "url": "{{API_URL}}/api/logistics/receipts",
-                "headers": [
-                  { "name": "Content-Type", "value": "application/json" },
-                  { "name": "x-api-key", "value": "{{M2M_API_KEY}}" }
-                ],
-                "body": {
-                  "mode": "json",
-                  "json": "{\n  \"id_fournisseur\": \"uuid-du-fournisseur\",\n  \"shipment_id\": \"EXP-TRUCK-001\",\n  \"id_produit\": \"uuid-du-produit\",\n  \"quantite_actuelle\": 500,\n  \"unite_code\": \"KG\",\n  \"statut_controle\": \"OK\"\n}"
-                }
-              }
+          "type": "http",
+          "name": "Hello",
+          "seq": 1,
+          "request": {
+            "url": "{{url}}hello",
+            "method": "GET",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "none",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
             },
-            {
-              "name": "Lister les Réceptions",
-              "request": {
-                "method": "GET",
-                "url": "{{API_URL}}/api/logistics/receipts",
-                "headers": [
-                  { "name": "x-api-key", "value": "{{M2M_API_KEY}}" }
-                ]
-              }
-            },
-            {
-              "name": "Détails Réception",
-              "request": {
-                "method": "GET",
-                "url": "{{API_URL}}/api/logistics/receipts/:id",
-                "params": [
-                  { "name": "id", "value": "" }
-                ],
-                "headers": [
-                  { "name": "x-api-key", "value": "{{M2M_API_KEY}}" }
-                ]
-              }
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Route de test publique.",
+            "auth": {
+              "mode": "none"
             }
-          ]
+          }
         },
         {
-          "name": "Batches",
-          "items": [
-            {
-              "name": "Détails Lot (Batch)",
-              "request": {
-                "method": "GET",
-                "url": "{{API_URL}}/api/logistics/batches/:id",
-                "params": [
-                  { "name": "id", "value": "" }
-                ],
-                "headers": [
-                  { "name": "x-api-key", "value": "{{M2M_API_KEY}}" }
-                ]
-              }
+          "type": "http",
+          "name": "Service",
+          "seq": 2,
+          "request": {
+            "url": "{{url}}service",
+            "method": "POST",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "none",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
             },
-            {
-              "name": "Générer Label QR (Digital Link)",
-              "request": {
-                "method": "GET",
-                "url": "{{API_URL}}/api/logistics/batches/:id/label",
-                "params": [
-                  { "name": "id", "value": "" }
-                ]
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Exemple de route protegee par cle API.",
+            "auth": {
+              "mode": "none"
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "Error",
+          "seq": 3,
+          "request": {
+            "url": "{{url}}error",
+            "method": "POST",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "none",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Declenche une erreur pour tester le globalErrorHandler.",
+            "auth": {
+              "mode": "none"
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "Health Live",
+          "seq": 4,
+          "request": {
+            "url": "{{url}}health",
+            "method": "GET",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "none",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Liveness probe.",
+            "auth": {
+              "mode": "none"
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "Health Ready",
+          "seq": 5,
+          "request": {
+            "url": "{{url}}health/ready",
+            "method": "GET",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "none",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Readiness probe.",
+            "auth": {
+              "mode": "none"
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "Me",
+          "seq": 6,
+          "request": {
+            "url": "{{url}}me",
+            "method": "GET",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "none",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Renvoie l'utilisateur, la session et l'org active. Bearer requis.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
               }
             }
-          ]
+          }
+        }
+      ]
+    },
+    {
+      "type": "folder",
+      "name": "Auth",
+      "items": [
+        {
+          "type": "http",
+          "name": "Sign Up",
+          "seq": 1,
+          "request": {
+            "url": "{{url}}auth/sign-up/email",
+            "method": "POST",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "json",
+              "json": "{\n  \"email\": \"first.admin@nutrichain.local\",\n  \"password\": \"StrongPassw0rd!123\",\n  \"name\": \"First Admin\"\n}",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Inscription. Bloquee (403) sauf si email invite ou premier utilisateur.",
+            "auth": {
+              "mode": "none"
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "Sign In",
+          "seq": 2,
+          "request": {
+            "url": "{{url}}auth/sign-in/email",
+            "method": "POST",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "json",
+              "json": "{\n  \"email\": \"first.admin@nutrichain.local\",\n  \"password\": \"StrongPassw0rd!123\"\n}",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {
+              "res": [
+                {
+                  "name": "token",
+                  "value": "res.body.token",
+                  "enabled": true,
+                  "local": false
+                }
+              ]
+            },
+            "assertions": [],
+            "tests": "",
+            "docs": "Connexion. Stocke le token dans la variable {{token}}. Ajustez le chemin si Better-Auth renvoie ailleurs.",
+            "auth": {
+              "mode": "none"
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "Sign Out",
+          "seq": 3,
+          "request": {
+            "url": "{{url}}auth/sign-out",
+            "method": "POST",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "none",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Deconnexion.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "Get Session",
+          "seq": 4,
+          "request": {
+            "url": "{{url}}auth/get-session",
+            "method": "GET",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "none",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Recupere la session courante.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "Organization Create",
+          "seq": 5,
+          "request": {
+            "url": "{{url}}auth/organization/create",
+            "method": "POST",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "json",
+              "json": "{\n  \"name\": \"Usine du Nord\",\n  \"slug\": \"usine-nord\"\n}",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Cree une organisation via le plugin Better-Auth organization.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "Organization Set Active",
+          "seq": 6,
+          "request": {
+            "url": "{{url}}auth/organization/set-active",
+            "method": "POST",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "json",
+              "json": "{\n  \"organizationId\": \"{{org_id}}\"\n}",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Selectionne l'organisation active pour la session.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "Two Factor Enable",
+          "seq": 7,
+          "request": {
+            "url": "{{url}}auth/two-factor/enable",
+            "method": "POST",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "json",
+              "json": "{\n  \"password\": \"StrongPassw0rd!123\"\n}",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Active la MFA pour l'utilisateur connecte. Retourne un QR code TOTP.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "folder",
+      "name": "Identity",
+      "items": [
+        {
+          "type": "http",
+          "name": "Create Invitation",
+          "seq": 1,
+          "request": {
+            "url": "{{url}}identity/invitations",
+            "method": "POST",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "json",
+              "json": "{\n  \"email\": \"new.operator@nutrichain.local\",\n  \"role\": \"operator\",\n  \"organizationId\": \"{{org_id}}\"\n}",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Genere une invitation et envoie un email. Reserve owner/admin.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "folder",
+      "name": "IoT",
+      "items": [
+        {
+          "type": "http",
+          "name": "Telemetry Ping",
+          "seq": 1,
+          "request": {
+            "url": "{{url}}telemetry/ping",
+            "method": "POST",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "json",
+              "json": "{\n  \"sensor_id\": \"sensor-frigo-01\",\n  \"temperature\": 4.2,\n  \"humidity\": 65,\n  \"battery_level\": 92\n}",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Ingestion d'une trame capteur. L'org est resolue cote serveur via API_KEY_ORG_ID.",
+            "auth": {
+              "mode": "none"
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "Telemetry History",
+          "seq": 2,
+          "request": {
+            "url": "{{url}}telemetry/sensor-frigo-01/history",
+            "method": "GET",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "none",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Historique d'un capteur. x-api-key + session + role.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "folder",
+      "name": "Alerts",
+      "items": [
+        {
+          "type": "http",
+          "name": "Resolve Alert",
+          "seq": 1,
+          "request": {
+            "url": "{{url}}alerts/{{alert_id}}/resolve",
+            "method": "PATCH",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "json",
+              "json": "{\n  \"note\": \"Nettoyage capteur effectué — fausse alerte porte ouverte 2min.\"\n}",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Résout une Alert (transition ACTIVE → RESOLVED). Idempotent. Owner/admin uniquement. 404 anti-enum cross-org. PRODUCT_RECALL : message contextuel — ne ferme pas le Recall.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "folder",
+      "name": "Audit",
+      "items": [
+        {
+          "type": "http",
+          "name": "Verify Chain",
+          "seq": 1,
+          "request": {
+            "url": "{{url}}audit/verify",
+            "method": "GET",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "none",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Vérifie l'intégrité de la chaîne WORM Audit_Log de l'org active (recompute SHA256 + prev_hash + truncation via checkpoint). 200 même si valid:false. Cache-Control: no-store. Owner/admin uniquement. Voir docs/18.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "folder",
+      "name": "Logistics - Receipts",
+      "items": [
+        {
+          "type": "http",
+          "name": "Create Receipt",
+          "seq": 1,
+          "request": {
+            "url": "{{url}}logistics/receipts",
+            "method": "POST",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "json",
+              "json": "{\n  \"id_fournisseur\": \"{{supplier_id}}\",\n  \"shipment_id\": \"EXP-TRUCK-001\",\n  \"id_produit\": \"{{product_id}}\",\n  \"quantite_actuelle\": 500,\n  \"unite_code\": \"KG\",\n  \"statut_controle\": \"OK\",\n  \"received_by\": \"{{user_id}}\"\n}",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Cree une reception et genere automatiquement le lot associe.",
+            "auth": {
+              "mode": "none"
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "List Receipts",
+          "seq": 2,
+          "request": {
+            "url": "{{url}}logistics/receipts",
+            "method": "GET",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "none",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Liste les receptions de l'organisation active.",
+            "auth": {
+              "mode": "none"
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "Receipt Stats",
+          "seq": 3,
+          "request": {
+            "url": "{{url}}logistics/receipts/stats",
+            "method": "GET",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "none",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Statistiques agregees de reception (admin/owner).",
+            "auth": {
+              "mode": "none"
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "Get Receipt by ID",
+          "seq": 4,
+          "request": {
+            "url": "{{url}}logistics/receipts/{{receipt_id}}",
+            "method": "GET",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "none",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Detail d'une reception. Filtree par organization_id.",
+            "auth": {
+              "mode": "none"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "folder",
+      "name": "Logistics - Batches",
+      "items": [
+        {
+          "type": "http",
+          "name": "Get Batch by ID",
+          "seq": 1,
+          "request": {
+            "url": "{{url}}logistics/batches/{{batch_id}}",
+            "method": "GET",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "none",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Detail d'un lot. Filtree par organization_id.",
+            "auth": {
+              "mode": "none"
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "Generate QR Label",
+          "seq": 2,
+          "request": {
+            "url": "{{url}}logistics/batches/{{batch_id}}/label",
+            "method": "GET",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "none",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Genere l'etiquette QR GS1 Digital Link du lot.",
+            "auth": {
+              "mode": "none"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "folder",
+      "name": "Logistics - Shipments",
+      "items": [
+        {
+          "type": "http",
+          "name": "Create Shipment",
+          "seq": 1,
+          "request": {
+            "url": "{{url}}logistics/shipments",
+            "method": "POST",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "json",
+              "json": "{\n  \"id_client\": \"{{customer_id}}\",\n  \"transporteur\": \"Transports Nutri\",\n  \"destination_adresse\": \"12 rue de la Fromagerie, Paris\",\n  \"created_by\": \"{{user_id}}\",\n  \"date_expedition\": \"2026-05-27T10:00:00.000Z\",\n  \"shipment_id\": \"AUTO\",\n  \"lots\": [\n    { \"id_lot\": \"{{batch_id}}\", \"quantite_expediee\": 30 }\n  ]\n}",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Cree une expedition multi-lots. shipment_id='AUTO' genere un SSCC GS1.",
+            "auth": {
+              "mode": "none"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "folder",
+      "name": "Sync - Mobile",
+      "items": [
+        {
+          "type": "http",
+          "name": "Sync Scans (Bulk)",
+          "seq": 1,
+          "request": {
+            "url": "{{url}}sync/scans",
+            "method": "POST",
+            "headers": [
+              {
+                "name": "x-api-key",
+                "value": "{{api_key}}",
+                "enabled": true
+              }
+            ],
+            "params": [],
+            "body": {
+              "mode": "json",
+              "json": "{\n  \"items\": [\n    {\n      \"clientOpId\": \"550e8400-e29b-41d4-a716-446655440000\",\n      \"type\": \"receipt\",\n      \"payload\": {\n        \"id_fournisseur\": \"{{supplier_id}}\",\n        \"shipment_id\": \"SHIP-SYNC-001\",\n        \"id_produit\": \"{{product_id}}\",\n        \"quantite_actuelle\": 100,\n        \"unite_code\": \"KG\",\n        \"statut_controle\": \"OK\"\n      }\n    },\n    {\n      \"clientOpId\": \"550e8400-e29b-41d4-a716-446655440001\",\n      \"type\": \"receipt\",\n      \"payload\": {\n        \"id_fournisseur\": \"{{supplier_id}}\",\n        \"shipment_id\": \"SHIP-SYNC-002\",\n        \"id_produit\": \"{{product_id}}\",\n        \"quantite_actuelle\": 250,\n        \"unite_code\": \"KG\",\n        \"statut_controle\": \"OK\"\n      }\n    }\n  ],\n  \"actorUserId\": \"{{user_id}}\"\n}",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Bulk sync mobile offline-first. Idempotency par clientOpId, reponse 207 Multi-Status. Mode M2M (x-api-key) : actorUserId requis. Mode session (Bearer / Cookie) : actorUserId ignore, l'utilisateur est resolu depuis req.auth. Voir docs/14_sync_mobile_offline.md.",
+            "auth": {
+              "mode": "apikey",
+              "apikey": {
+                "key": "x-api-key",
+                "value": "{{api_key}}",
+                "placement": "header"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "folder",
+      "name": "Traceability - Catalog",
+      "items": [
+        {
+          "type": "http",
+          "name": "List Products",
+          "seq": 1,
+          "request": {
+            "url": "{{url}}traceability/products",
+            "method": "GET",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "none",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Liste des produits du catalogue de l'organisation active.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "List Batches",
+          "seq": 2,
+          "request": {
+            "url": "{{url}}traceability/batches",
+            "method": "GET",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "none",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Liste des lots actifs de l'organisation.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "folder",
+      "name": "Traceability - Transformations",
+      "items": [
+        {
+          "type": "http",
+          "name": "Create Transformation",
+          "seq": 1,
+          "request": {
+            "url": "{{url}}traceability/transformations",
+            "method": "POST",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "json",
+              "json": "{\n  \"id_produit_fini\": \"{{product_id}}\",\n  \"id_materiel\": \"{{equipment_id}}\",\n  \"quantite_produite\": 50,\n  \"unite_code\": \"KG\",\n  \"date_peremption\": \"2026-12-31T00:00:00.000Z\",\n  \"inputs\": [\n    {\n      \"id_lot_parent\": \"{{batch_id}}\",\n      \"quantite_prelevee\": 30,\n      \"unite\": \"KG\",\n      \"lot_parent_epuise\": false\n    }\n  ]\n}",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Enregistre une transformation : consomme des parents, cree un enfant. Transaction atomique + audit WORM.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "Get Batch Genealogy",
+          "seq": 2,
+          "request": {
+            "url": "{{url}}traceability/batches/{{batch_id}}/genealogy",
+            "method": "GET",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "none",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Arbre genealogique d'un lot (upstream + downstream) via CTE recursive.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "Trigger Recall",
+          "seq": 3,
+          "request": {
+            "url": "{{url}}traceability/batches/{{batch_id}}/recall",
+            "method": "POST",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "json",
+              "json": "{\n  \"reason\": \"Contamination detectee\"\n}",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Declenche un rappel : bloque le lot et sa descendance en une transaction. Owner/admin uniquement.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "folder",
+      "name": "Traceability - Public",
+      "items": [
+        {
+          "type": "http",
+          "name": "Public Scan",
+          "seq": 1,
+          "request": {
+            "url": "{{url}}public/scan/{{batch_id}}",
+            "method": "GET",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "none",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Scan public consommateur. 404 si le lot n'est pas EXPEDIE ou ALERTE. Rate-limite 100/15min/IP.",
+            "auth": {
+              "mode": "none"
+            }
+          }
         }
       ]
     }
   ],
+  "activeEnvironmentUid": "Nx7QvHcdusM4HiggLq3I4",
   "environments": [
     {
       "name": "Local",
       "variables": [
-        { "name": "API_URL", "value": "http://localhost:3000" },
-        { "name": "M2M_API_KEY", "value": "votre-api-key-ici" }
+        {
+          "name": "url",
+          "value": "http://localhost:3000/api/",
+          "enabled": true,
+          "secret": false,
+          "type": "text"
+        },
+        {
+          "name": "api_key",
+          "value": "remplacez-par-API_KEY-de-votre-.env",
+          "enabled": true,
+          "secret": true,
+          "type": "text"
+        },
+        {
+          "name": "token",
+          "value": "",
+          "enabled": true,
+          "secret": true,
+          "type": "text"
+        },
+        {
+          "name": "org_id",
+          "value": "",
+          "enabled": true,
+          "secret": false,
+          "type": "text"
+        },
+        {
+          "name": "user_id",
+          "value": "",
+          "enabled": true,
+          "secret": false,
+          "type": "text"
+        },
+        {
+          "name": "supplier_id",
+          "value": "",
+          "enabled": true,
+          "secret": false,
+          "type": "text"
+        },
+        {
+          "name": "customer_id",
+          "value": "",
+          "enabled": true,
+          "secret": false,
+          "type": "text"
+        },
+        {
+          "name": "product_id",
+          "value": "",
+          "enabled": true,
+          "secret": false,
+          "type": "text"
+        },
+        {
+          "name": "equipment_id",
+          "value": "",
+          "enabled": true,
+          "secret": false,
+          "type": "text"
+        },
+        {
+          "name": "batch_id",
+          "value": "",
+          "enabled": true,
+          "secret": false,
+          "type": "text"
+        },
+        {
+          "name": "receipt_id",
+          "value": "",
+          "enabled": true,
+          "secret": false,
+          "type": "text"
+        }
       ]
     }
   ],
+  "root": {
+    "request": {
+      "auth": {
+        "mode": "none"
+      },
+      "headers": [
+        {
+          "name": "x-api-key",
+          "value": "{{api_key}}",
+          "enabled": true,
+          "uid": "Mc8RFy42Ti1LgzoJNpWy3"
+        },
+        {
+          "name": "Origin",
+          "value": "http://localhost:3000",
+          "enabled": true,
+          "uid": "Or9GHy53Uj2MhaaKOqXz4"
+        }
+      ]
+    }
+  },
   "brunoConfig": {
     "version": "1",
     "name": "Nutrichain",

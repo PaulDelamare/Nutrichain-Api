@@ -12,20 +12,18 @@ import { catchAsync } from '../../../shared/utils/errorHandler/catchAsync';
  * - Vérifier que l'utilisateur Web peut accéder à ce lot (multi-tenant)
  * - Rejeter les tentatives de cross-organization access
  */
-import { catchAsync } from '../../../shared/utils/errorHandler/catchAsync';
 import { resolveActiveOrgId } from '../../identity/utils/resolveActiveOrgId';
 
 export const verifyBatchAccess = catchAsync(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     const batchId = req.params.id as string;
 
-    const apiKey = req.header('x-api-key');
-    if (apiKey) return next();
+    let activeOrgId = req.activeOrgId;
+    if (!activeOrgId) {
+      activeOrgId = await resolveActiveOrgId(req);
+      req.activeOrgId = activeOrgId;
+    }
 
-    const activeOrgId = req.activeOrgId ?? (await resolveActiveOrgId(req));
-    req.activeOrgId = activeOrgId;
-
-    // ===== ÉTAPE 1: Récupérer le lot =====
     const batch = await prisma.batch.findFirst({
       where: {
         id: batchId,
@@ -37,14 +35,12 @@ export const verifyBatchAccess = catchAsync(
       },
     });
 
-    // ===== ÉTAPE 2: Vérifier existence et isolation =====
     if (!batch) {
       throw new APIError(404, {
         error: [{ field: 'batch', message: 'Lot introuvable dans votre organisation.' }],
       });
     }
 
-    // ✅ SUCCESS: Accès autorisé - Attacher le lot au contexte
     req.batch = batch;
 
     next();

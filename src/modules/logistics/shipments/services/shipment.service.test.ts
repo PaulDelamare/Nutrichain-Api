@@ -20,6 +20,12 @@ vi.mock('../../../../shared/configs/prismaClient.config', () => ({
       create: vi.fn(),
       count: vi.fn().mockResolvedValue(10), // On simule 10 expéditions existantes
     },
+    customer: {
+      findFirst: vi.fn(),
+    },
+    ePCIS_Event: {
+      create: vi.fn(),
+    },
   },
 }));
 
@@ -29,6 +35,7 @@ describe('ShipmentService', () => {
     id_client: 'client-456',
     shipment_id: 'SHIP-001',
     transporteur: 'DHL',
+    destination_adresse: '12 rue de la Livraison, Paris',
     date_envoi: new Date(),
     created_by: 'user-789',
     items: [{ id_lot: 'batch-1', quantite: 10 }],
@@ -36,6 +43,20 @@ describe('ShipmentService', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // Par défaut, le client destinataire appartient bien à l'organisation (cas nominal).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(prisma.customer.findFirst).mockResolvedValue({ id: 'client-456' } as any);
+  });
+
+  it('devrait échouer (404) si le client destinataire n appartient pas à l organisation', async () => {
+    vi.mocked(prisma.customer.findFirst).mockResolvedValue(null);
+
+    await expect(shipmentService.createShipment(mockShipmentData)).rejects.toMatchObject({
+      status: 404,
+      body: { error: [{ field: 'id_client' }] },
+    });
+    // La garde tombe avant toute écriture.
+    expect(prisma.shipment.create).not.toHaveBeenCalled();
   });
 
   it('devrait créer une expédition avec succès', async () => {
@@ -55,7 +76,10 @@ describe('ShipmentService', () => {
 
     const result = await shipmentService.createShipment(mockShipmentData);
 
-    expect(prisma.shipment.create).toHaveBeenCalled();
+    // L'adresse de destination fournie est bien persistée (et non plus jetée).
+    expect(prisma.shipment.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ destination_adresse: '12 rue de la Livraison, Paris' }),
+    });
     expect(prisma.batch.update).toHaveBeenCalledWith({
       where: { id: 'batch-1' },
       data: expect.objectContaining({
@@ -65,6 +89,87 @@ describe('ShipmentService', () => {
     expect(prisma.liaison_Shipment.create).toHaveBeenCalled();
     expect(prisma.batch_Mouvement.create).toHaveBeenCalled();
     expect(result).toBeDefined();
+  });
+
+  it('devrait émettre un ObjectEvent EPCIS cloisonné par organisation lors de l expédition', async () => {
+    const mockBatch = {
+      id: 'batch-1',
+      organization_id: 'org-123',
+      quantite_actuelle: { toNumber: () => 100 },
+      unite_code: 'KG',
+      statut: 'EN_STOCK',
+      date_peremption: new Date(Date.now() + 1000000),
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(prisma.batch.findFirst).mockResolvedValue(mockBatch as any);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(prisma.shipment.create).mockResolvedValue({ id: 'ship-1' } as any);
+
+    await shipmentService.createShipment(mockShipmentData);
+
+    expect(prisma.ePCIS_Event.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        organization_id: 'org-123',
+        event_type: 'ObjectEvent',
+        related_entity: 'Shipment',
+        related_id: 'ship-1',
+        payload: expect.objectContaining({
+          epcList: ['batch-1'],
+          bizStep: 'urn:epcglobal:cbv:bizstep:shipping',
+          destinationParty: 'client-456',
+        }),
+      }),
+    });
+  });
+
+  it('expédition multi-lots : epcList agrège tous les lots et le payload porte SSCC/disposition/action', async () => {
+    const makeBatch = (id: string) => ({
+      id,
+      organization_id: 'org-123',
+      quantite_actuelle: { toNumber: () => 100 },
+      unite_code: 'KG',
+      statut: 'EN_STOCK',
+      date_peremption: new Date(Date.now() + 1000000),
+    });
+
+    vi.mocked(prisma.batch.findFirst)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .mockResolvedValueOnce(makeBatch('batch-1') as any)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .mockResolvedValueOnce(makeBatch('batch-2') as any);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(prisma.shipment.create).mockResolvedValue({ id: 'ship-1' } as any);
+
+    await shipmentService.createShipment({
+      ...mockShipmentData,
+      items: [
+        { id_lot: 'batch-1', quantite: 10 },
+        { id_lot: 'batch-2', quantite: 5 },
+      ],
+    });
+
+    expect(prisma.ePCIS_Event.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        payload: expect.objectContaining({
+          epcList: ['batch-1', 'batch-2'],
+          action: 'OBSERVE',
+          disposition: 'urn:epcglobal:cbv:disp:in_transit',
+          sscc: 'SHIP-001',
+        }),
+      }),
+    });
+  });
+
+  it('cloisonne la recherche de lot par organisation (anti-fuite cross-tenant)', async () => {
+    vi.mocked(prisma.batch.findFirst).mockResolvedValue(null);
+
+    await expect(shipmentService.createShipment(mockShipmentData)).rejects.toMatchObject({
+      status: 404,
+    });
+    expect(prisma.batch.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'batch-1', organization_id: 'org-123' } })
+    );
   });
 
   it('devrait générer un SSCC automatiquement si shipment_id est AUTO', async () => {
@@ -129,29 +234,32 @@ describe('ShipmentService', () => {
     );
   });
 
-  it('devrait échouer si le lot est NON_CONFORME', async () => {
-    const mockBatch = {
-      id: 'batch-1',
-      organization_id: 'org-123',
-      quantite_actuelle: { toNumber: () => 100 },
-      unite_code: 'KG',
-      statut: 'NON_CONFORME',
-    };
+  it.each(['BLOQUE', 'ALERTE'])(
+    'devrait échouer si le lot est en statut bloquant %s (quarantaine / rappel)',
+    async (statut) => {
+      const mockBatch = {
+        id: 'batch-1',
+        organization_id: 'org-123',
+        quantite_actuelle: { toNumber: () => 100 },
+        unite_code: 'KG',
+        statut,
+      };
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    vi.mocked(prisma.batch.findFirst).mockResolvedValue(mockBatch as any);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(prisma.batch.findFirst).mockResolvedValue(mockBatch as any);
 
-    await expect(shipmentService.createShipment(mockShipmentData)).rejects.toThrow(
-      new APIError(400, {
-        error: [
-          {
-            field: 'lots',
-            message: 'Le lot batch-1 est marqué NON_CONFORME et ne peut être expédié.',
-          },
-        ],
-      })
-    );
-  });
+      await expect(shipmentService.createShipment(mockShipmentData)).rejects.toThrow(
+        new APIError(400, {
+          error: [
+            {
+              field: 'lots',
+              message: `Le lot batch-1 est en statut ${statut} et ne peut être expédié.`,
+            },
+          ],
+        })
+      );
+    }
+  );
 
   it('devrait échouer si le lot est périmé', async () => {
     const mockBatch = {

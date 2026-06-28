@@ -1,6 +1,8 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../../../shared/configs/prismaClient.config';
 import { APIError } from '../../../../shared/utils/errorHandler/APIError';
+import { auditService } from '../../../../shared/utils/audit/audit.service';
+import { BATCH_STATUSES, BatchStatus } from '../../constants/logistics.constants';
 
 export interface CreateBatchInput {
   organization_id: string;
@@ -9,6 +11,8 @@ export interface CreateBatchInput {
   unite_code: string;
   created_by: string;
   date_peremption?: Date;
+  /** Statut initial du lot. Défaut EN_STOCK ; BLOQUE pour une réception non-conforme. */
+  statut?: BatchStatus;
 }
 
 /**
@@ -30,7 +34,7 @@ export const batchService = {
         unite_code: data.unite_code,
         created_by: data.created_by,
         date_peremption: data.date_peremption,
-        statut: 'EN_STOCK',
+        statut: data.statut ?? BATCH_STATUSES.IN_STOCK,
       },
     });
   },
@@ -64,5 +68,62 @@ export const batchService = {
     }
 
     return batch;
+  },
+
+  /**
+   * Lève la quarantaine d'un lot (BLOQUE -> EN_STOCK) suite à une décision qualité.
+   * Action HACCP délibérée : tracée dans l'audit WORM avec le motif. Seul un lot
+   * réellement en quarantaine peut être levé (refus 409 sinon) — on ne « débloque »
+   * pas un lot sous rappel/alerte par ce canal.
+   */
+  async liftQuarantine(id: string, activeOrgId: string, userId: string, motif: string) {
+    return prisma.$transaction(
+      async (tx) => {
+        const batch = await tx.batch.findFirst({
+          where: { id, organization_id: activeOrgId },
+        });
+
+        if (!batch) {
+          throw new APIError(404, {
+            error: [{ field: 'batch', message: 'Lot introuvable dans cette organisation' }],
+          });
+        }
+
+        if (batch.statut !== BATCH_STATUSES.BLOCKED) {
+          throw new APIError(409, {
+            error: [
+              {
+                field: 'statut',
+                message: `Seul un lot en quarantaine (BLOQUE) peut être levé. Statut actuel : ${batch.statut}.`,
+              },
+            ],
+          });
+        }
+
+        const updated = await tx.batch.update({
+          where: { id },
+          data: {
+            statut: BATCH_STATUSES.IN_STOCK,
+            version: { increment: 1 },
+          },
+        });
+
+        await auditService.logAction(
+          {
+            organizationId: activeOrgId,
+            userId,
+            action: 'LIFT_BATCH_QUARANTINE',
+            entity: 'Batch',
+            entityId: id,
+            oldValue: { statut: batch.statut },
+            newValue: { statut: BATCH_STATUSES.IN_STOCK, motif },
+          },
+          tx
+        );
+
+        return updated;
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+    );
   },
 };

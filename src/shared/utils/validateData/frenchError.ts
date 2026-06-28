@@ -7,7 +7,10 @@ export const frenchErrorMessages = {
   date: 'Ce champ doit être une date.',
   minLength: (meta: { data: number }) => `La valeur doit être supérieure ou égale à ${meta.data}.`,
   min: (meta: { data: number }) => `La valeur doit être supérieure ou égale à ${meta.data}.`,
-  MaxLength: (meta: { data: number }) => `La valeur doit être inférieure ou égale à ${meta.data}.`,
+  max: (meta: { data: number }) => `La valeur doit être inférieure ou égale à ${meta.data}.`,
+  enum: 'La valeur sélectionnée est invalide.',
+  maxLength: (meta: { data: number }) => `La valeur doit être inférieure ou égale à ${meta.data}.`,
+  positive: 'La valeur doit être un nombre positif.',
   uuid: 'Ce champ doit être un UUID.',
   'date.after': (_meta: { data: string }) =>
     `Ce champ doit avoir une date superieure ou égale à aujourd'hui.`,

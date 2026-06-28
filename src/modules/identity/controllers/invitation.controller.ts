@@ -46,7 +46,7 @@ export const generateInvitation = catchAsync(async (req: AuthenticatedRequest, r
 
   // Nettoyer d'éventuelles anciennes invitations 'pending' pour cet email
   await bdd.invitation.deleteMany({
-    where: { email, status: 'pending' },
+    where: { email, status: 'pending', organizationId: activeOrgId },
   });
 
   // 1. Créer l'invitation dans la base de données
@@ -67,7 +67,6 @@ export const generateInvitation = catchAsync(async (req: AuthenticatedRequest, r
     },
   });
 
-  // 2. Générer l'URL et le template Mail
   const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
   const invitationLink = `${frontendUrl}/inscription?token=${invitation.id}`;
 

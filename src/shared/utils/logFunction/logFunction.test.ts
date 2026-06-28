@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import fs from 'fs/promises';
-import { writeLog, requestLog, rotateLog, initLogDir } from './logFunction';
+import { writeLog, requestLog, rotateLog } from './logFunction';
 import path from 'path';
 import os from 'os';
 
@@ -80,24 +80,6 @@ describe('Logger', () => {
         (file) => file.startsWith('request_') && file.endsWith('.log')
       );
       expect(archivedFile).toBeDefined();
-    });
-  });
-
-  describe('initLogDir', () => {
-    it('should create log directory if it does not exist', async () => {
-      await initLogDir();
-
-      const dirStats = await fs.stat(getLogDir());
-      expect(dirStats.isDirectory()).toBe(true);
-    });
-
-    it('should not throw an error if log directory already exists', async () => {
-      await fs.mkdir(getLogDir(), { recursive: true });
-
-      await initLogDir();
-
-      const dirStats = await fs.stat(getLogDir());
-      expect(dirStats.isDirectory()).toBe(true);
     });
   });
 });

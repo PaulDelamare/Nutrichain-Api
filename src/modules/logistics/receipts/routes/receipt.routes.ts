@@ -6,8 +6,10 @@ import {
   getBatchByIdController,
   getBatchLabelController,
   listReceiptsController,
+  liftBatchQuarantineController,
 } from '../controllers/receipt.controller';
 import { validateReceiptParams } from '../middlewares/validateReceipt.middleware';
+import { validateQuarantineLift } from '../middlewares/validateQuarantineLift.middleware';
 import { mixedAuth } from '../../../../shared/middlewares/mixedAuth';
 import { verifyReceiptAccess } from '../../middlewares/verifyReceiptAccess.middleware';
 import { verifyBatchAccess } from '../../middlewares/verifyBatchAccess.middleware';
@@ -75,6 +77,15 @@ router.get(
   mixedAuth(BATCH_READ_ROLES),
   verifyBatchAccess,
   getBatchLabelController
+);
+
+// Levée de quarantaine : décision qualité réservée au rôle Qualité / Admin / Gérant
+router.post(
+  '/logistics/batches/:id/release',
+  mixedAuth([LOGISTICS_ROLES.QA, LOGISTICS_ROLES.ADMIN, LOGISTICS_ROLES.OWNER]),
+  verifyBatchAccess,
+  validateQuarantineLift,
+  liftBatchQuarantineController
 );
 
 export default router;

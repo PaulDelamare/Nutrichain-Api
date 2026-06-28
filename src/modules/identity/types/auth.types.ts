@@ -1,5 +1,11 @@
 import { Request } from 'express';
-import { Batch, Receipt } from '@prisma/client';
+import { Alert, Batch, Receipt } from '@prisma/client';
+import { SyncScansPayload } from '../../sync/types/sync.types';
+import { EventsQuery } from '../../traceability/events/middlewares/eventsQuery.schema';
+import type { ReceiptPayload } from '../../logistics/receipts/middlewares/receiptPayload.schema';
+import type { QuarantineLiftPayload } from '../../logistics/receipts/middlewares/quarantineLift.schema';
+import type { ShipmentPayload } from '../../logistics/shipments/middlewares/shipmentPayload.schema';
+import type { TransformationPayload } from '../../traceability/transformations/middlewares/transformationPayload.schema';
 
 /**
  * Interface standard pour un utilisateur Better-Auth
@@ -51,10 +57,17 @@ export interface AuthenticatedRequest extends Request {
   // Champs optionnels injectés par les middlewares métiers (Logistique, etc.)
   batch?: Batch;
   receipt?: Receipt;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  validatedReceipt?: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  validatedBatch?: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  validatedShipment?: any;
+  alert?: Alert;
+  // Données validées par les middlewares VineJS — typées via Infer du schéma (zéro any)
+  validatedReceipt?: ReceiptPayload;
+  // Levée de quarantaine d'un lot (POST /logistics/batches/:id/release)
+  validatedQuarantineLift?: QuarantineLiftPayload;
+  validatedShipment?: ShipmentPayload;
+  validatedTransformation?: TransformationPayload;
+  // Sync mobile offline-first
+  validatedSyncScans?: SyncScansPayload;
+  // Alert resolve endpoint (PATCH /api/alerts/:id/resolve) — typé proprement
+  validatedResolveAlert?: { note?: string };
+  // Query params validés de GET /api/traceability/events — typé via Infer du schéma VineJS
+  validatedEventsQuery?: EventsQuery;
 }

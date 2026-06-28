@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import crypto from 'crypto';
 import { auditService } from './audit.service';
-import { prisma } from '../../../../shared/configs/prismaClient.config';
 
 vi.mock('../../../../shared/configs/prismaClient.config', () => ({
   prisma: {
@@ -68,5 +68,92 @@ describe('AuditService (WORM - Write Once Read Many)', () => {
     expect(result.prev_hash).toBe(
       '0000000000000000000000000000000000000000000000000000000000000000'
     );
+  });
+
+  it('doit produire un hash recalculable depuis les champs persistés (WORM A)', async () => {
+    const createSpy = vi.fn().mockImplementation(({ data }) => Promise.resolve({ id: 1, ...data }));
+    const mockTx = {
+      $queryRaw: vi.fn().mockResolvedValue([{ signature_hash: 'PREV_HASH_XYZ' }]),
+      audit_Log: { create: createSpy },
+    };
+
+    const result = await auditService.logAction(
+      {
+        organizationId: 'org-1',
+        userId: 'user-1',
+        action: 'UPDATE',
+        entity: 'BATCH',
+        entityId: 'batch-1',
+        oldValue: { quantite: 100, statut: 'EN_STOCK' },
+        newValue: { quantite: 80, statut: 'EN_STOCK' },
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      mockTx as any
+    );
+
+    const persistedData = createSpy.mock.calls[0][0].data;
+
+    expect(persistedData.horodatage).toBeInstanceOf(Date);
+
+    const recomputed = crypto
+      .createHash('sha256')
+      .update(
+        JSON.stringify({
+          organizationId: persistedData.organization_id,
+          userId: persistedData.id_user || 'system',
+          action: persistedData.action,
+          entity: persistedData.entity,
+          entityId: persistedData.entity_id,
+          oldValue: persistedData.ancienne_valeur,
+          newValue: persistedData.nouvelle_valeur,
+          prevHash: persistedData.prev_hash,
+          timestamp: persistedData.horodatage.toISOString(),
+        })
+      )
+      .digest('hex');
+
+    expect(result.signature_hash).toBe(recomputed);
+  });
+
+  it('doit détecter une altération du newValue par recalcul du hash', async () => {
+    const createSpy = vi.fn().mockImplementation(({ data }) => Promise.resolve({ id: 1, ...data }));
+    const mockTx = {
+      $queryRaw: vi.fn().mockResolvedValue([{ signature_hash: 'PREV' }]),
+      audit_Log: { create: createSpy },
+    };
+
+    const result = await auditService.logAction(
+      {
+        organizationId: 'org-1',
+        userId: 'user-1',
+        action: 'UPDATE',
+        entity: 'BATCH',
+        entityId: 'batch-1',
+        newValue: { quantite: 80 },
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      mockTx as any
+    );
+
+    const persistedData = createSpy.mock.calls[0][0].data;
+
+    const tampered = crypto
+      .createHash('sha256')
+      .update(
+        JSON.stringify({
+          organizationId: persistedData.organization_id,
+          userId: persistedData.id_user || 'system',
+          action: persistedData.action,
+          entity: persistedData.entity,
+          entityId: persistedData.entity_id,
+          oldValue: persistedData.ancienne_valeur,
+          newValue: { quantite: 999 },
+          prevHash: persistedData.prev_hash,
+          timestamp: persistedData.horodatage.toISOString(),
+        })
+      )
+      .digest('hex');
+
+    expect(tampered).not.toBe(result.signature_hash);
   });
 });

@@ -1,80 +1,114 @@
-# NutriChain API — Surveillance de la chaîne du froid ❄️
+# NutriChain API
 
-## 🔎 Présentation
-**NutriChain** est une REST API dédiée à la traçabilité complète des lots et à la surveillance de la chaîne du froid en temps réel. Elle ingère des événements EPCIS (standards GS1), collecte les mesures des capteurs IoT (température) et alerte automatiquement en cas d'excursion thermique.
+API REST B2B/B2C de **traçabilité agroalimentaire « de la ferme au rayon »**, conforme aux standards **GS1/EPCIS**, avec **surveillance de la chaîne du froid** (IoT) et **rappel produit rapide** (< 15 min décision → notification).
 
-> Objectif : garantir la sécurité sanitaire, l'auditabilité et la rapidité d'intervention (ingest→alerte p95 cible < 30s).
+> Projet fil rouge 4e année. Monolithe modulaire hexagonal, multi-tenant (SaaS), orienté conformité réglementaire (HACCP / ISO 22000) et intégrité d'audit (WORM).
 
-## 🎯 Objectifs principaux (résumé)
+**État** : `develop` — build TypeScript strict ✅ · ESLint ✅ · **361 tests verts** (Vitest) · migrations Prisma versionnées.
 
-- Traçabilité EPCIS conforme GS1 pour 100% des lots du MVP.
-- Alerte froide en < 30s (p95).
-- Authentification OIDC + MFA + autorisation ABAC.
-- Latence de scan < 500 ms et disponibilité mobile > 99,5%.
-- Processus de rappel complet < 15 minutes.
+---
 
-## ⚙️ Prérequis
+## Sommaire
 
-- Node.js (version LTS recommandée)
-- npm ou yarn
-- PostgreSQL (base de données configurée)
+- [Le projet](#le-projet)
+- [Objectifs SMART & statut](#objectifs-smart--statut)
+- [Architecture](#architecture)
+- [Démarrage rapide](#démarrage-rapide)
+- [Tests](#tests)
+- [Sécurité & conformité](#sécurité--conformité)
+- [Limitations connues](#limitations-connues)
+- [Documentation détaillée](#documentation-détaillée)
 
-## 🔽 Récupération du projet
+---
 
-Cloner et installer :
+## Le projet
+
+NutriChain répond à trois besoins critiques du secteur agroalimentaire :
+
+1. **Traçabilité complète des lots** — réception → transformation → expédition, avec généalogie ascendante/descendante (recursive CTE Postgres) et événements **EPCIS** (interopérabilité GS1).
+2. **Chaîne du froid en temps réel** — ingestion de télémétrie IoT, détection d'excursion de température sur fenêtre glissante, alertes.
+3. **Rappel produit rapide** — blocage atomique d'un lot **et de toute sa descendance**, notification automatique des clients impactés (objectif < 15 min ; mesuré ~21 ms sur 4645 nœuds).
+
+Le tout est **cloisonné par organisation** (multi-tenancy strict) et **auditable** (journal WORM chaîné par hash).
+
+---
+
+## Objectifs SMART & statut
+
+| Échéance | Objectif | Statut | Où |
+|---|---|---|---|
+| 01/03 | Sécurisation : auth + MFA + contrôle d'accès | ✅ Better-Auth (sessions, **MFA TwoFactor**, organisations) ; RBAC opérationnel — ⚠️ *ABAC reporté* | `modules/identity` |
+| 10/03 | CI/CD industrielle | ✅ Pipelines GitHub Actions | `.github/workflows/` |
+| 15/03 | Alerte chaîne du froid < 30 s p95 | ✅ Détection d'excursion + alertes | `modules/iot`, `modules/alerts` |
+| 10/06 | Mobile : scan rapide, mode offline | ✅ Sync offline-first idempotente | `modules/sync` |
+| 20/06 | Traçabilité EPCIS conforme GS1 (MVP) | ✅ ObjectEvents réception/expédition + endpoint `/events` | `modules/traceability` |
+| 22/06 | Rappel produit complet < 15 min | ✅ Blocage descendance set-based + notif clients | `modules/traceability/.../recall.service.ts` |
+| 30/09 | Connecteurs ERP/WMS + auditabilité WORM | ✅ Import CSV produits/clients + export EPCIS ; audit WORM hash-chain | `modules/connectors`, `shared/utils/audit` |
+
+---
+
+## Architecture
+
+**Monolithe modulaire hexagonal** : un module par domaine métier, séparation stricte des couches.
+
+- **Routes** : URLs + méthodes HTTP uniquement.
+- **Controllers** : ultra-minimalistes (extraire → appeler le service → répondre).
+- **Services** : 100 % de la logique métier, agnostiques HTTP.
+
+### Modules (`src/modules/`)
+
+| Module | Rôle |
+|---|---|
+| `identity` | Authentification (Better-Auth), organisations, invitations, rôles |
+| `logistics` | Réceptions, lots (batches), expéditions, étiquettes GS1 |
+| `traceability` | Transformations, généalogie, rappels, catalogue, événements EPCIS |
+| `iot` | Ingestion télémétrie, détection d'excursion de température |
+| `alerts` | Cycle de vie des alertes (création, résolution) |
+| `sync` | Synchronisation mobile offline-first (idempotente) |
+| `connectors` | Connecteurs ERP/WMS : import CSV, export EPCIS |
+| `auditIntegrity` | Vérification de la chaîne d'audit WORM (job planifié) |
+| `core` | Health checks, endpoints utilitaires |
+
+Le code transverse (utilitaires, middlewares, configs, constantes, types) vit dans `src/shared/`.
+
+### Stack
+
+- **Runtime** : Node.js + TypeScript (mode strict, `tsx`)
+- **HTTP** : Express 4, Helmet, CORS, compression, rate-limit
+- **Données** : PostgreSQL via **Prisma** (relationnel) + MongoDB via **Mongoose** (logs/télémétrie)
+- **Auth** : **Better-Auth** (sessions, MFA, multi-organisations)
+- **Validation** : **VineJS** (messages en français)
+- **Tests** : **Vitest** + Supertest
+- **Observabilité** : Winston (logs rotatifs)
+
+---
+
+## Démarrage rapide
+
+### Prérequis
+
+- Node.js ≥ 20, npm
+- PostgreSQL (base `nutrichain`)
+- MongoDB (logs applicatifs)
+
+### Installation
 
 ```bash
-git clone https://github.com/PaulDelamare/Nutrichain-Api.git
-cd nutrichain-api
 npm install
+cp .env.example .env      # puis renseigner les variables ci-dessous
 ```
 
-## 📁 Structure du projet
+Variables d'environnement requises (validées au démarrage — *fail-fast*) :
 
-Extrait de l'arborescence :
-
-```
-logs/
-node_modules/
-prisma/
-src/
-  ├── Configs/
-  ├── Controllers/
-  ├── Routes/
-  ├── Services/
-  ├── Middlewares/
-  ├── Utils/
-  ├── app.ts
-  ├── server.ts
-```
-
-## 🧾 Migrations / Prisma
-
-- Définir les modèles dans `prisma/schema.prisma`.
-- Générer le client Prisma : `npx prisma generate`.
-- Appliquer les migrations : `npm run migrate` (ou `npx prisma migrate dev`).
-
-Exemple de modèle :
-
-```prisma
-model User {
-  id    Int     @id @default(autoincrement())
-  name  String
-  email String  @unique
-}
-```
-
-## 💡 Remarques
-
-Ce dépôt contient une implémentation API pour NutriChain. Le code est organisé pour faciliter l'évolution (tests, validation, logging). Veille à ne **jamais** committer de secrets (`.env`) et à maintenir une couverture de tests pour le code critique.
-
-## 🔧 Démarrage
-
-### Installer les dépendances
-
-```bash
-npm install
-```
+| Variable | Description |
+|---|---|
+| `DATABASE_URL` | Chaîne de connexion PostgreSQL |
+| `MONGO_URI` | Chaîne de connexion MongoDB (logs) |
+| `BETTER_AUTH_SECRET` | Secret Better-Auth (≥ 32 caractères) |
+| `API_KEY` | Clé API pour le mode machine-à-machine (M2M : IoT, scripts) |
+| `API_KEY_ORG_ID` | `Organization.id` lié à la clé API (mode M2M) |
+| `API_URL` | URL publique de l'API |
+| `FRONTEND_URL` | URL du frontend (liens cliquables dans les emails) |
 
 ### Base de données (Docker)
 
@@ -95,43 +129,69 @@ Compte démo créé par le seed :
 
 > Postgres écoute sur le **port 5433** pour éviter les conflits avec une instance locale.
 
-### Appliquer les migrations
+### Base de données & seed
 
 ```bash
-npm run migrate
-# ou : npx prisma migrate dev
+npx prisma migrate deploy   # applique les migrations versionnées (non destructif)
+npx prisma db seed          # jeu de données de démo (org, produits, lots, clients…)
 ```
 
-### Lancer l'application en développement
+> ⚠️ Les migrations sont **versionnées** (`prisma/migrations/`). Toute évolution de schéma passe par une nouvelle migration — **jamais `db push`**.
+
+### Lancer
 
 ```bash
-npm run dev
+npm run dev      # serveur de développement (tsx watch)
+npm run build    # compilation TypeScript (tsc)
+npm run lint     # ESLint
 ```
 
-### Lancer en production
+---
+
+## Tests
 
 ```bash
-npm start
+npm run unit:test            # suite unitaire + intégration (Vitest)
 ```
 
-### Tests
+Scénarios end-to-end contre une base réelle (nécessitent PostgreSQL + seed) :
 
 ```bash
-npm run unit:test
+npm run e2e:quarantine       # quarantaine HACCP d'un lot non-conforme (réception → blocage → levée)
+npm run e2e:recall           # rappel produit + expéditions impactées (< 15 min)
+npm run e2e:epcis            # événements EPCIS réception/expédition
+npm run e2e:iot-alert        # alerte chaîne du froid
+npm run e2e:connectors       # import/export connecteurs ERP
+npm run e2e:security         # garde-fous multi-tenant
 ```
 
-## 🔐 Variables d'environnement
+---
 
-Créer un fichier `.env` à la racine et renseigner les variables nécessaires (ex. `DATABASE_URL`, `PORT`, `LOG_DIR`, variables OIDC). Exemple :
+## Sécurité & conformité
 
-```env
-DATABASE_URL="postgresql://user:pass@localhost:5432/nutrichain"
-PORT=3000
-LOG_DIR=logs
-NODE_ENV=development
-# OIDC_*, MFA_* etc. selon la configuration d'authentification
-```
+- **Multi-tenancy strict (defense-in-depth)** : chaque requête Prisma filtre par `organization_id` ; garde centralisée dans `mixedAuth` / `requireOrgRole` (rejet si aucune organisation active).
+- **Audit WORM** : journal chaîné par hash (`signature_hash` ← `prev_hash`), recomputable et vérifié par un job planifié — intégrité de la piste d'audit (HACCP / ISO 22000).
+- **Sûreté sanitaire (quarantaine HACCP)** : un lot reçu non-conforme est mis en `BLOQUE` — impossible à transformer ou expédier ; levée auditée (décision qualité tracée).
+- **Intégrité concurrente** : transactions Serializable, optimistic locking (`Batch.version`), advisory locks Postgres.
+- **Durcissement entrées/sorties** : validation VineJS systématique, anti-XSS sur les emails, neutralisation d'injection de formule CSV à l'export, sanitization CRLF des en-têtes.
+- **Configuration fail-fast** : les variables d'environnement critiques sont validées au démarrage.
 
-## 🙋 Contribuer
+---
 
-Les contributions sont les bienvenues : fork → branche feature → PR avec description. Merci d'ajouter des tests et d'indiquer les changements techniques majeurs dans la PR.
+## Limitations connues
+
+- **RBAC partiel** : le modèle de rôles est en cours de construction. Deux taxonomies coexistent — rôles d'organisation (`owner`/`admin`/`member`, Better-Auth) et rôles métier (`logistics_*`) — non encore réconciliées ; l'authentification des routes logistiques en session web est de fait limitée (le mode M2M par clé API est pleinement fonctionnel). L'**ABAC** prévu par l'objectif sécurité est reporté. À traiter dans une itération dédiée.
+- **EPCIS « maison »** : les `epcList` portent l'UUID interne du lot, pas une URN SGTIN stricte (`urn:epc:id:sgtin:…`). Conforme aux specs du projet (traçabilité fonctionnelle), pas au standard EPCIS le plus strict ; le crochet d'infrastructure existe déjà (`Organization.gs1_company_prefix`).
+
+---
+
+## Documentation détaillée
+
+Les documents techniques par domaine sont dans [`docs/`](docs/) :
+
+- [`00_contexte_projet.md`](docs/00_contexte_projet.md) — contexte et cadrage
+- [`04_tracabilite_et_lots.md`](docs/04_tracabilite_et_lots.md), [`11_TECH_TRANSFORMATIONS_GENEALOGY.md`](docs/11_TECH_TRANSFORMATIONS_GENEALOGY.md) — traçabilité & généalogie
+- [`12_RECALLS_SYSTEM.md`](docs/12_RECALLS_SYSTEM.md) — système de rappel
+- [`15_iot_cold_chain_alerts.md`](docs/15_iot_cold_chain_alerts.md) — chaîne du froid IoT
+- [`06_standards_techniques.md`](docs/06_standards_techniques.md), [`05_bonnes_pratiques_api.md`](docs/05_bonnes_pratiques_api.md) — standards & conventions
+- [`README_SECURITY.md`](docs/README_SECURITY.md), [`09_SECURITY_DECISION_MATRIX.md`](docs/09_SECURITY_DECISION_MATRIX.md) — sécurité

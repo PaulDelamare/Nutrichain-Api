@@ -14,7 +14,8 @@ export const getProducts = catchAsync(async (req: AuthenticatedRequest, res: Res
 
 export const getBatches = catchAsync(async (req: AuthenticatedRequest, res: Response) => {
   const activeOrgId = await resolveActiveOrgId(req);
+  const { q } = req.query;
 
-  const batches = await catalogService.getAllBatches(activeOrgId);
+  const batches = await catalogService.getAllBatches(activeOrgId, q as string);
   sendSuccess(res, 200, 'Lots récupérés avec succès', batches);
 });

@@ -18,6 +18,7 @@ vi.mock('../../../../shared/configs/prismaClient.config', () => ({
     receipt: { create: vi.fn(), count: vi.fn(), findMany: vi.fn(), findFirst: vi.fn() },
     batch: { findFirst: vi.fn() },
     audit_Log: { findFirst: vi.fn(), create: vi.fn() },
+    ePCIS_Event: { create: vi.fn() },
   },
 }));
 
@@ -68,6 +69,86 @@ describe('ReceiptService', () => {
       expect(result.batchId).toBe('bat-1');
     });
 
+    it('doit émettre un ObjectEvent EPCIS cloisonné par organisation lors de la réception', async () => {
+      const payload = {
+        organization_id: 'org-1',
+        id_fournisseur: 'supp-1',
+        shipment_id: 'SHIP-001',
+        id_produit: 'prod-1',
+        quantite_actuelle: 500,
+        unite_code: 'KG',
+        statut_controle: 'OK',
+        received_by: 'user-1',
+      };
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(prisma.supplier.findFirst).mockResolvedValue({ id: 'supp-1' } as any);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(prisma.product.findFirst).mockResolvedValue({ id: 'prod-1' } as any);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(prisma.user.findUnique).mockResolvedValue({ id: 'user-1' } as any);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(prisma.unit.findUnique).mockResolvedValue({ code: 'KG' } as any);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(prisma.receipt.create).mockResolvedValue({ id: 'rec-1' } as any);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(batchService.createBatch).mockResolvedValue({ id: 'bat-1' } as any);
+
+      await receiptService.createReceipt(payload);
+
+      expect(prisma.ePCIS_Event.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          organization_id: 'org-1',
+          event_type: 'ObjectEvent',
+          related_entity: 'Receipt',
+          related_id: 'rec-1',
+          payload: expect.objectContaining({
+            epcList: ['bat-1'],
+            action: 'ADD',
+            bizStep: 'urn:epcglobal:cbv:bizstep:receiving',
+            disposition: 'urn:epcglobal:cbv:disp:active',
+            sourceParty: 'supp-1',
+          }),
+        }),
+      });
+
+      // L'event EPCIS et l'audit WORM sont émis dans la même transaction que la réception
+      expect(prisma.audit_Log.create).toHaveBeenCalled();
+    });
+
+    // Le statut de contrôle à la réception détermine le statut initial du lot :
+    // NONCONFORME/ALERTE -> quarantaine (BLOQUE), sinon stock normal (EN_STOCK).
+    it.each([
+      ['NONCONFORME', 'BLOQUE'],
+      ['ALERTE', 'BLOQUE'],
+      ['OK', 'EN_STOCK'],
+      ['CONFORME', 'EN_STOCK'],
+    ])('réception %s -> lot créé en %s', async (statut_controle, statutLotAttendu) => {
+      const mockOk = (id: string) => ({ id }) as never;
+      vi.mocked(prisma.supplier.findFirst).mockResolvedValue(mockOk('supp-1'));
+      vi.mocked(prisma.product.findFirst).mockResolvedValue(mockOk('prod-1'));
+      vi.mocked(prisma.user.findUnique).mockResolvedValue(mockOk('user-1'));
+      vi.mocked(prisma.unit.findUnique).mockResolvedValue({ code: 'KG' } as never);
+      vi.mocked(prisma.receipt.create).mockResolvedValue(mockOk('rec-1'));
+      vi.mocked(batchService.createBatch).mockResolvedValue(mockOk('bat-1'));
+
+      await receiptService.createReceipt({
+        organization_id: 'org-1',
+        id_fournisseur: 'supp-1',
+        shipment_id: 'SHIP-001',
+        id_produit: 'prod-1',
+        quantite_actuelle: 500,
+        unite_code: 'KG',
+        statut_controle,
+        received_by: 'user-1',
+      });
+
+      expect(batchService.createBatch).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ statut: statutLotAttendu })
+      );
+    });
+
     it('doit échouer si le fournisseur n appartient pas à l organisation', async () => {
       vi.mocked(prisma.supplier.findFirst).mockResolvedValue(null);
 
@@ -81,7 +162,7 @@ describe('ReceiptService', () => {
       await expect(action).rejects.toThrow(APIError);
       await expect(action).rejects.toMatchObject({
         status: 404,
-        body: { error: [{ field: 'id_fournisseur' }] }
+        body: { error: [{ field: 'id_fournisseur' }] },
       });
     });
 
@@ -102,7 +183,7 @@ describe('ReceiptService', () => {
       await expect(action).rejects.toThrow(APIError);
       await expect(action).rejects.toMatchObject({
         status: 404,
-        body: { error: [{ field: 'id_produit', message: 'Produit introuvable ou accès refusé' }] }
+        body: { error: [{ field: 'id_produit', message: 'Produit introuvable ou accès refusé' }] },
       });
 
       // Vérifier que where inclut bien organization_id

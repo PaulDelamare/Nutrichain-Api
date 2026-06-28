@@ -7,14 +7,12 @@ import { requireOrgRole } from '../../../identity/middlewares/requireOrgRole.mid
 const router = Router();
 
 // ==========================================
-// SÉCURITÉ
-// ==========================================
-// Accès autorisé uniquement via l'API Key (B2B) ET une session utilisateur valide
-router.use('/traceability/*', checkApiKey(), requireAuth);
-
-// ==========================================
 // ROUTES LECTURE SEULE (Pour le frontend)
 // ==========================================
+
+// Accès autorisé uniquement via une session utilisateur valide (Frontend)
+router.use('/traceability/products', requireAuth);
+router.use('/traceability/batches', requireAuth);
 
 /**
  * @swagger

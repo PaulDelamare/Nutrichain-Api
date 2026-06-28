@@ -1,8 +1,7 @@
-import { PrismaClient, Prisma } from '@prisma/client';
-import crypto from 'crypto';
+import { Prisma } from '@prisma/client';
 import { logger } from '../logger/logger';
-
-const prismaClient = new PrismaClient();
+import { prisma as prismaClient } from '../../configs/prismaClient.config';
+import { computeAuditHash, GENESIS_PREV_HASH } from './auditHash.util';
 
 export interface AuditLogParams {
   organizationId: string;
@@ -31,33 +30,39 @@ export const auditService = {
   async logAction(params: AuditLogParams, tx?: Prisma.TransactionClient) {
     const db = tx || prismaClient;
     try {
-      // 1. Récupérer le dernier log de l'ORGANISATION avec un verrou
       const lastLogs = await db.$queryRaw<AuditLogRecord[]>(
         Prisma.sql`SELECT signature_hash FROM "Audit_Log" WHERE organization_id = ${params.organizationId} ORDER BY id DESC LIMIT 1 FOR UPDATE`
       );
       const lastLog = lastLogs.length > 0 ? lastLogs[0] : null;
 
-      const prevHash = lastLog ? lastLog.signature_hash : '0000000000000000000000000000000000000000000000000000000000000000';
+      const prevHash = lastLog ? lastLog.signature_hash : GENESIS_PREV_HASH;
 
-      // 2. Préparer les données pour le hash (incluant l'organizationId pour le chaînage)
-      const dataToHash = JSON.stringify({
+      // Source unique pour le hash ET la persistence — garantit la recompute exacte
+      const horodatage = new Date();
+
+      // Normalisation `?? null` : Postgres persiste `undefined` comme `NULL`, et la
+      // relecture retourne `null`. Sans normalisation à l'écriture, le hash calculé
+      // côté write (avec `undefined` qui drop dans JSON.stringify) divergerait du
+      // recompute côté verify (qui voit `null` depuis Postgres). Verrouillage du
+      // contrat avant persistence.
+      const oldValueNormalized = params.oldValue ?? null;
+      const newValueNormalized = params.newValue ?? null;
+
+      const signatureHash = computeAuditHash({
         organizationId: params.organizationId,
-        userId: params.userId || 'system',
+        userId: params.userId,
         action: params.action,
         entity: params.entity,
         entityId: params.entityId,
-        oldValue: params.oldValue,
-        newValue: params.newValue,
-        prevHash: prevHash,
+        oldValue: oldValueNormalized,
+        newValue: newValueNormalized,
+        prevHash,
+        timestamp: horodatage.toISOString(),
       });
 
-      // 3. Calculer le signature_hash
-      const signatureHash = crypto
-        .createHash('sha256')
-        .update(dataToHash)
-        .digest('hex');
-
-      // 4. Créer l'entrée
+      // Persist les MÊMES valeurs que celles hashées — verrouille l'invariant
+      // "hash inputs === stored values" (sans ça, un futur changement du hash mais
+      // pas du create pourrait à nouveau diverger).
       const log = await db.audit_Log.create({
         data: {
           organization_id: params.organizationId,
@@ -65,10 +70,11 @@ export const auditService = {
           action: params.action,
           entity: params.entity,
           entity_id: params.entityId,
-          ancienne_valeur: params.oldValue as Prisma.InputJsonValue,
-          nouvelle_valeur: params.newValue as Prisma.InputJsonValue,
+          ancienne_valeur: oldValueNormalized as Prisma.InputJsonValue,
+          nouvelle_valeur: newValueNormalized as Prisma.InputJsonValue,
           prev_hash: prevHash,
           signature_hash: signatureHash,
+          horodatage,
         },
       });
 

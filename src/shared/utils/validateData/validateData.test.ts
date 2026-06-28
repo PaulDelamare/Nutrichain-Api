@@ -95,4 +95,31 @@ describe('validateData multiple errors', () => {
       );
     }
   });
+
+  // ===== #23 : clés frenchError alignées sur les noms de règles VineJS (case-sensitive) =====
+  it('traduit en FR la règle "maxLength" (clé corrigée de MaxLength)', async () => {
+    const lenSchema = vine.object({ code: vine.string().maxLength(3) });
+
+    await expect(validateData(lenSchema, { code: 'trop-long' })).rejects.toMatchObject({
+      status: 400,
+      error: expect.arrayContaining([
+        {
+          field: 'code',
+          rule: 'maxLength',
+          message: 'La valeur doit être inférieure ou égale à 3.',
+        },
+      ]),
+    });
+  });
+
+  it('traduit en FR la règle "positive"', async () => {
+    const posSchema = vine.object({ qty: vine.number().positive() });
+
+    await expect(validateData(posSchema, { qty: -5 })).rejects.toMatchObject({
+      status: 400,
+      error: expect.arrayContaining([
+        { field: 'qty', rule: 'positive', message: 'La valeur doit être un nombre positif.' },
+      ]),
+    });
+  });
 });

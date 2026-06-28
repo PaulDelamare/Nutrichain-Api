@@ -29,6 +29,7 @@ model User {
   receptions       Receipt[]
   expeditions      Shipment[]
   mouvements       Batch_Mouvement[]
+  idempotencyKeys  IdempotencyKey[]
 
   @@map("user")
 }
@@ -83,7 +84,7 @@ model Verification {
 }
 
 model Organization {
-  id                 String       @id
+  id                 String            @id
   name               String
   slug               String
   logo               String?
@@ -99,12 +100,15 @@ model Organization {
   Location           Location[]
   Equipment          Equipment[]
   Audit_Log          Audit_Log[]
+  Audit_Checkpoint   Audit_Checkpoint?
   Alert              Alert[]
   ScrapRecord        ScrapRecord[]
   QualityControl     QualityControl[]
   Maintenance        Maintenance[]
   Customer           Customer[]
   Shipment           Shipment[]
+  IdempotencyKey     IdempotencyKey[]
+  EPCIS_Event        EPCIS_Event[]
 
   @@unique([slug])
   @@map("organization")
@@ -163,12 +167,18 @@ model Unit {
 }
 
 model EPCIS_Event {
-  id             String   @id @default(uuid())
-  event_time     DateTime
-  event_type     String
-  related_entity String
-  related_id     String
-  payload        Json
+  id              String       @id @default(uuid())
+  organization_id String
+  organization    Organization @relation(fields: [organization_id], references: [id], onDelete: Restrict)
+  event_time      DateTime
+  event_type      String
+  related_entity  String
+  related_id      String
+  payload         Json
+
+  @@index([organization_id])
+  @@index([related_entity, related_id])
+  @@index([event_time])
 }
 
 model EPCIS_Aggregation_Event {
@@ -196,22 +206,24 @@ model Location {
 }
 
 model Equipment {
-  id              String       @id @default(uuid())
+  id              String           @id @default(uuid())
   organization_id String
-  organization    Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  organization    Organization     @relation(fields: [organization_id], references: [id], onDelete: Cascade)
   nom             String
   type            String
   id_lieu         String
-  lieu            Location     @relation(fields: [id_lieu], references: [id])
-  statut          String       @default("PRET")
+  lieu            Location         @relation(fields: [id_lieu], references: [id])
+  statut          String           @default("PRET")
   temp_actuelle   Decimal?
   temp_seuil_max  Decimal?
   qr_code_id      String?
+  sensor_id       String? // Identifiant du capteur IoT lié (mapping vers TelemetryModel.metadata.sensor_id)
   last_cleaned_at DateTime?
   lots            Batch[]
   transformations Transformation[]
   Maintenance     Maintenance[]
 
+  @@unique([organization_id, sensor_id]) // composite : permet à 2 orgs d'utiliser le même sensor_id sans collision, empêche enumeration cross-tenant
   @@index([organization_id])
 }
 
@@ -221,7 +233,7 @@ model Product {
   organization_id           String
   organization              Organization        @relation(fields: [organization_id], references: [id], onDelete: Cascade)
   nom                       String
-  code_gtin                 String?
+  code_gtin                 String
   categorie                 String
   duree_conservation_defaut Int
   seuil_alerte_stock        Decimal
@@ -281,6 +293,8 @@ model Transformation {
 
   compositions TransformationComposition[]
   mouvements   Batch_Mouvement[]
+
+  @@index([id_lot_enfant])
 }
 
 model TransformationComposition {
@@ -294,6 +308,7 @@ model TransformationComposition {
   note              String?
 
   @@id([id_transformation, id_lot_parent])
+  @@index([id_lot_parent])
 }
 
 // --- ALERTE & AUDIT WORM ---
@@ -318,7 +333,7 @@ model Alert {
 model Audit_Log {
   id              Int          @id @default(autoincrement())
   organization_id String
-  organization    Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  organization    Organization @relation(fields: [organization_id], references: [id], onDelete: Restrict)
   id_user         String?
   action          String
   entity          String
@@ -335,6 +350,19 @@ model Audit_Log {
   @@index([horodatage])
   @@index([action])
   @@index([signature_hash])
+}
+
+// --- INTEGRITE AUDIT (PCA/PRA) ---
+// High-water mark per-org : permet de détecter une troncature silencieuse
+// de la fin de la hash chain (rows supprimés post-restore ou tampering).
+// Le cron `auditChainVerify` upsert cette ligne après chaque verify OK.
+model Audit_Checkpoint {
+  organization_id     String       @id
+  organization        Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  last_id             Int
+  last_signature_hash String       @db.Char(64)
+  last_row_count      Int
+  verified_at         DateTime     @default(now())
 }
 
 // --- GESTION DES REJETS/QUALITE ---
@@ -438,10 +466,13 @@ model Customer {
   organization      Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
   nom_enseigne      String
   contact_urgence   String?
+  email             String?
   adresse_livraison String
   notes             String?
+  external_ref      String? // identifiant du client dans l'ERP source (clé d'idempotence d'import)
   expeditions       Shipment[]
 
+  @@unique([organization_id, external_ref])
   @@index([organization_id])
 }
 
@@ -451,11 +482,12 @@ model Shipment {
   organization     Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
   id_client        String
   client           Customer     @relation(fields: [id_client], references: [id])
-  shipment_id      String       @unique
-  date_envoi       DateTime
-  transporteur     String
-  statut_livraison String
-  created_by       String
+  shipment_id        String   @unique
+  date_envoi         DateTime
+  transporteur       String
+  destination_adresse String?
+  statut_livraison   String
+  created_by         String
   user             User         @relation(fields: [created_by], references: [id])
 
   liaisons   Liaison_Shipment[]
@@ -500,4 +532,26 @@ model PerformanceStat {
   valeur        Decimal
   id_reference  String?
   horodatage    DateTime @default(now())
+}
+
+// --- SYNC MOBILE OFFLINE-FIRST ---
+// Stocke les clés d'idempotency pour POST /api/sync/scans.
+// Permet aux clients (React Native offline) de rejouer un bulk sans créer de doublons.
+// TTL ~7j géré par cleanupIdempotencyKeys.job.
+model IdempotencyKey {
+  id               String       @id @default(uuid())
+  organization_id  String
+  organization     Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  client_op_id     String
+  user_id          String
+  user             User         @relation(fields: [user_id], references: [id])
+  request_hash     String       @db.Char(64) // SHA256 hex du payload normalisé
+  response_status  String // 'pending' (placeholder pendant l'exécution) → 'ok' (finalisée). Les conflits/erreurs ne persistent pas (rollback de la transaction atomique).
+  response_payload Json
+  created_at       DateTime     @default(now())
+  expires_at       DateTime
+
+  @@unique([organization_id, client_op_id])
+  @@index([organization_id])
+  @@index([expires_at])
 }

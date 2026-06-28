@@ -1,5 +1,7 @@
 # Standards Techniques (Nutrichain API)
 
+> **Note 2026-05-27** : les sections §2 (Request ID) et §3 (validation env fail-fast) sont **implémentées** depuis la session de durcissement — voir `13_SESSION_HARDENING_2026-05-27.md`. Ce document décrit toujours la cible, mais l'état réel est désormais aligné.
+
 Au-delà de l'architecture "Clean Code", l'API respecte les piliers suivants pour garantir qu'elle est "Prête pour la Production" (Production-ready).
 
 ## 1. Documentation Automatique (Swagger / OpenAPI)
@@ -22,7 +24,7 @@ La journalisation des logs utilise l'utilitaire interne (basé sur `winston` et 
 ## 4. Standardisation des Listes (Collections)
 
 Toutes les routes retournant des listes (Utilisateurs, Lots, Produits) doivent respecter un format universel adapté aux volumes industriels :
-- **Pagination systématique** (`?page=1&limit=500`). Vu la volumétrie (millions de lots, palettes entières), la limite par défaut/minimale est calibrée à 500 pour éviter d'inonder le réseau avec des milliers de petites requêtes.
+- **Pagination systématique** (`?page=1&limit=...`). Vu la volumétrie (millions de lots, palettes entières), le **plafond** de `limit` est calibré à **500** pour les imports/exports massifs. Le **défaut** est laissé à l'appréciation de l'endpoint : **20** pour les restitutions consultées à l'écran (ex: `GET /api/traceability/events`, `listReceipts`), 500 pour les flux bulk. Toute valeur `limit` est bornée à `[1, 500]` et validée côté entrée (VineJS).
 - **Structure JSON retournée** standardisée au travers d'un utilitaire (ex: `returnPaginatedSuccess`), qui retourne à la fois les données et les "méta" (total de pages, nombre d'éléments restants).
 
 ## 5. CI/CD et Processus Git

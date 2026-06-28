@@ -1,5 +1,6 @@
 import { Response } from 'express';
 import { receiptService } from '../services/receipt.service';
+import { batchService } from '../../shared/services/batch.service';
 import { labelService } from '../../shared/services/label.service';
 import { sendSuccess } from '../../../../shared/utils/returnSuccess/returnSuccess';
 import { catchAsync } from '../../../../shared/utils/errorHandler/catchAsync';
@@ -9,9 +10,14 @@ import { APIError } from '../../../../shared/utils/errorHandler/APIError';
 export const createReceiptController = catchAsync(
   async (req: AuthenticatedRequest, res: Response) => {
     const activeOrgId = req.activeOrgId as string;
-    
-    // Récupération des données validées par le middleware VineJS
+
+    // Récupération des données validées par le middleware VineJS (garanties par la chaîne de routes)
     const validatedData = req.validatedReceipt;
+    if (!validatedData) {
+      throw new APIError(500, {
+        error: [{ field: 'receipt', message: 'Données de réception non validées.' }],
+      });
+    }
 
     // Détermination de l'auteur de la réception (Sécurité Web vs M2M)
     // Si req.user existe (flux Web), on override l'ID pour éviter l'usurpation
@@ -22,7 +28,7 @@ export const createReceiptController = catchAsync(
       received_by: receivedBy,
       organization_id: activeOrgId,
     });
-    
+
     sendSuccess(res, 201, 'Réception confirmée et Lot généré', result);
   }
 );
@@ -30,9 +36,7 @@ export const createReceiptController = catchAsync(
 export const getReceiptStatsController = catchAsync(
   async (req: AuthenticatedRequest, res: Response) => {
     const activeOrgId = req.activeOrgId as string;
-    // Charger dynamiquement le service pour éviter les problèmes d'import/mock lors des tests
-    const module = await import('../services/receipt.service');
-    const stats = await module.receiptService.getReceiptStats(activeOrgId);
+    const stats = await receiptService.getReceiptStats(activeOrgId);
     sendSuccess(res, 200, 'Statistiques récupérées', stats);
   }
 );
@@ -63,6 +67,33 @@ export const listReceiptsController = catchAsync(
 
     const result = await receiptService.listReceipts(activeOrgId, page, limit);
     sendSuccess(res, 200, 'Réceptions récupérées', result);
+  }
+);
+
+/**
+ * Lève la quarantaine d'un lot (BLOQUE -> EN_STOCK) après décision qualité.
+ */
+export const liftBatchQuarantineController = catchAsync(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const id = req.params.id as string;
+    const activeOrgId = req.activeOrgId as string;
+    // requireOrgRole injecte l'utilisateur dans req.auth.user (req.user est l'ancien canal déprécié)
+    const userId = req.auth?.user?.id ?? req.user?.id;
+    const motif = req.validatedQuarantineLift?.motif;
+
+    if (!userId) {
+      throw new APIError(401, {
+        error: [{ field: 'user', message: 'Utilisateur requis pour lever une quarantaine.' }],
+      });
+    }
+    if (!motif) {
+      throw new APIError(400, {
+        error: [{ field: 'motif', message: 'Motif de levée de quarantaine manquant.' }],
+      });
+    }
+
+    const batch = await batchService.liftQuarantine(id, activeOrgId, userId, motif);
+    sendSuccess(res, 200, 'Quarantaine levée, lot remis en stock', batch);
   }
 );
 

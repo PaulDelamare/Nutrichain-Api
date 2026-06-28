@@ -1,9 +1,21 @@
+import 'dotenv/config';
+import { assertEnv } from './shared/configs/env.validator';
+
+try {
+  assertEnv();
+} catch (error) {
+  console.error(`[CRIT] ${(error as Error).message}`);
+  process.exit(1);
+}
+
 import { logger } from './shared/utils/logger/logger';
 // ! IMPORTS
 import { app } from './app';
 import { bdd } from './shared/configs/prismaClient.config';
 import { connectMongoDB, disconnectMongoDB } from './shared/configs/mongoClient.config';
 import { startCleanupJob } from './modules/identity/jobs/cleanupInvitations.job';
+import { startCleanupIdempotencyKeysJob } from './modules/sync/jobs/cleanupIdempotencyKeys.job';
+import { startAuditChainVerifyJob } from './modules/auditIntegrity/jobs/auditChainVerify.job';
 
 // ! CONFIG
 const PORT = process.env.PORT || 3000;
@@ -17,6 +29,8 @@ connectMongoDB()
 
       // Lancement des tÃ¢ches rÃ©currentes (Cron, Background Jobs)
       startCleanupJob();
+      startCleanupIdempotencyKeysJob();
+      startAuditChainVerifyJob();
     });
 
     // ! FERMETURE

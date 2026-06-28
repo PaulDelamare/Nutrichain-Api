@@ -1,6 +1,14 @@
 import { prisma } from '../../../../shared/configs/prismaClient.config';
 import { APIError } from '../../../../shared/utils/errorHandler/APIError';
 import { gs1Utils } from '../../shared/utils/gs1.utils';
+import {
+  EPCIS_ACTION,
+  EPCIS_BIZSTEP,
+  EPCIS_DISPOSITION,
+  EPCIS_EVENT_TYPE,
+  EPCIS_RELATED_ENTITY,
+} from '../../../../shared/constants/epcis.constants';
+import { BATCH_STATUSES, isBatchBlocked } from '../../constants/logistics.constants';
 
 /**
  * Service pour la gestion des Expéditions (Shipments)
@@ -14,12 +22,26 @@ export const shipmentService = {
     id_client: string;
     shipment_id: string;
     transporteur: string;
+    destination_adresse?: string;
     date_envoi: Date;
     created_by: string;
     items: Array<{ id_lot: string; quantite: number }>;
   }) {
     return await prisma.$transaction(async (tx) => {
-      // 0. Génération automatique de l'identifiant si demandé (Standard SSCC)
+      // 0.a Le client destinataire doit appartenir à l'organisation (anti-référence cross-tenant).
+      // Symétrique au contrôle du fournisseur à la réception : sans cette garde, un id_client
+      // d'une autre org serait accepté (et notifié lors d'un rappel).
+      const customer = await tx.customer.findFirst({
+        where: { id: data.id_client, organization_id: data.organization_id },
+        select: { id: true },
+      });
+      if (!customer) {
+        throw new APIError(404, {
+          error: [{ field: 'id_client', message: 'Client introuvable ou accès refusé.' }],
+        });
+      }
+
+      // 0.b Génération automatique de l'identifiant si demandé (Standard SSCC)
       let finalShipmentId = data.shipment_id;
       if (finalShipmentId === 'AUTO' || !finalShipmentId) {
         const count = await tx.shipment.count({ where: { organization_id: data.organization_id } });
@@ -33,6 +55,7 @@ export const shipmentService = {
           id_client: data.id_client,
           shipment_id: finalShipmentId,
           transporteur: data.transporteur,
+          destination_adresse: data.destination_adresse,
           date_envoi: data.date_envoi,
           statut_livraison: 'EN_ROUTE',
           created_by: data.created_by,
@@ -40,6 +63,7 @@ export const shipmentService = {
       });
 
       // 2. Traiter chaque lot (Déduction de stock + Liaison)
+      const shippedLots: string[] = [];
       for (const item of data.items) {
         const batch = await tx.batch.findFirst({
           where: {
@@ -55,12 +79,14 @@ export const shipmentService = {
         }
 
         // 3. Validation des règles métier (Qualité & Date)
-        if (batch.statut === 'NON_CONFORME') {
+        // Bloque l'expédition d'un lot en quarantaine (BLOQUE) ou sous rappel/alerte (ALERTE) :
+        // un lot rappelé ne doit jamais pouvoir partir.
+        if (isBatchBlocked(batch.statut)) {
           throw new APIError(400, {
             error: [
               {
                 field: 'lots',
-                message: `Le lot ${item.id_lot} est marqué NON_CONFORME et ne peut être expédié.`,
+                message: `Le lot ${item.id_lot} est en statut ${batch.statut} et ne peut être expédié.`,
               },
             ],
           });
@@ -83,7 +109,10 @@ export const shipmentService = {
           where: { id: item.id_lot },
           data: {
             quantite_actuelle: { decrement: item.quantite },
-            statut: batch.quantite_actuelle.toNumber() === item.quantite ? 'EXPEDIE' : 'EN_STOCK',
+            statut:
+              batch.quantite_actuelle.toNumber() === item.quantite
+                ? BATCH_STATUSES.SHIPPED
+                : BATCH_STATUSES.IN_STOCK,
           },
         });
 
@@ -108,7 +137,28 @@ export const shipmentService = {
             id_user: data.created_by,
           },
         });
+
+        shippedLots.push(item.id_lot);
       }
+
+      // 7. Événement EPCIS ObjectEvent : sortie des lots de la chaîne lors de l'expédition (interopérabilité GS1)
+      await tx.ePCIS_Event.create({
+        data: {
+          organization_id: data.organization_id,
+          event_time: new Date(),
+          event_type: EPCIS_EVENT_TYPE.object,
+          related_entity: EPCIS_RELATED_ENTITY.shipment,
+          related_id: shipment.id,
+          payload: {
+            epcList: shippedLots,
+            action: EPCIS_ACTION.observe,
+            bizStep: EPCIS_BIZSTEP.shipping,
+            disposition: EPCIS_DISPOSITION.inTransit,
+            destinationParty: data.id_client,
+            sscc: finalShipmentId,
+          },
+        },
+      });
 
       return shipment;
     });
