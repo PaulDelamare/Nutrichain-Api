@@ -2,6 +2,8 @@ import { router } from '../../shared/configs/router.config';
 import { HelloController } from './hello.controller';
 import { checkApiKey } from '../../shared/utils/checkApiKey/checkApiKey';
 import { requireAuth } from '../identity/middlewares/requireAuth.middleware';
+import { resolveActiveOrgId } from '../identity/utils/resolveActiveOrgId';
+import { catchAsync } from '../../shared/utils/errorHandler/catchAsync';
 import { Response } from 'express';
 import { sendSuccess } from '../../shared/utils/returnSuccess/returnSuccess';
 import { AuthenticatedRequest } from '../identity/types/auth.types';
@@ -35,13 +37,19 @@ router.get('/hello', HelloController.helloWorld);
  *         description: Non authentifié
  */
 // Route de test protégée par Better-Auth !
-router.get('/me', requireAuth, (req: AuthenticatedRequest, res: Response) => {
-  sendSuccess(res, 200, 'Authentification réussie !', {
-    user: req.auth?.user,
-    session: req.auth?.session,
-    activeOrgId: req.activeOrgId
-  });
-});
+router.get(
+  '/me',
+  requireAuth,
+  catchAsync(async (req: AuthenticatedRequest, res: Response) => {
+    const activeOrgId = await resolveActiveOrgId(req);
+
+    sendSuccess(res, 200, 'Authentification réussie !', {
+      user: req.auth?.user,
+      session: req.auth?.session,
+      activeOrgId,
+    });
+  })
+);
 
 /**
  * @swagger

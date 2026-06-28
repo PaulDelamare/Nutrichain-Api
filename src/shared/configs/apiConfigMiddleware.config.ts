@@ -55,7 +55,10 @@ const configureMiddleware = (app: express.Application) => {
 
   app.set('trust proxy', ['loopback', 'linklocal', 'uniquelocal']);
 
-  const limiter = createRateLimiter(15, 100);
+  const windowMinutes = Number(process.env.RATE_LIMIT_WINDOW_MINUTES) || 15;
+  const maxRequests =
+    Number(process.env.RATE_LIMIT_MAX) || (process.env.NODE_ENV === 'production' ? 100 : 2000);
+  const limiter = createRateLimiter(windowMinutes, maxRequests);
   app.use(limiter);
 
   app.use(sanitizeRequestData);

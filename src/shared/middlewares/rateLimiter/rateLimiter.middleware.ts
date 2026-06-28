@@ -12,10 +12,20 @@ import rateLimit from 'express-rate-limit';
  * @returns {RequestHandler} - The Express middleware.
  */
 function createRateLimiter(minutes: number, maxRequests: number) {
+  const isDev = process.env.NODE_ENV === 'development';
+
   return rateLimit({
     windowMs: minutes * 60 * 1000,
 
     max: maxRequests,
+
+    standardHeaders: true,
+    legacyHeaders: false,
+
+    skip: (req) => {
+      if (isDev) return true;
+      return req.path === '/health' || req.path === '/api/health';
+    },
 
     /**
      * Function to handle requests that exceed the rate limit.

@@ -1,4 +1,4 @@
-import { Response } from 'express';
+import { Response, Request } from 'express';
 import crypto from 'crypto';
 import { bdd } from '../../../shared/configs/prismaClient.config';
 import { sendEmail } from '../../../shared/utils/mailer/mailer';
@@ -68,7 +68,8 @@ export const generateInvitation = catchAsync(async (req: AuthenticatedRequest, r
   });
 
   // 2. Générer l'URL et le template Mail
-  const invitationLink = `${process.env.API_URL || 'http://localhost:3000'}/register?token=${invitation.id}`;
+  const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
+  const invitationLink = `${frontendUrl}/inscription?token=${invitation.id}`;
 
   const htmlBody = await render(
     React.createElement(InvitationEmail, {
@@ -90,4 +91,21 @@ export const generateInvitation = catchAsync(async (req: AuthenticatedRequest, r
     invitationId: invitation.id,
     expiresAt,
   });
+});
+
+export const previewInvitation = catchAsync(async (req: Request, res: Response) => {
+  const { id } = req.params;
+
+  const invitation = await bdd.invitation.findUnique({
+    where: { id },
+    select: { email: true, role: true, status: true, expiresAt: true },
+  });
+
+  if (!invitation || invitation.status !== 'pending' || invitation.expiresAt <= new Date()) {
+    throw new APIError(404, {
+      error: [{ field: 'token', message: 'Invitation invalide ou expirée.' }],
+    });
+  }
+
+  sendSuccess(res, 200, 'Invitation valide.', invitation);
 });
