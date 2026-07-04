@@ -4,7 +4,7 @@ API REST B2B/B2C de **traçabilité agroalimentaire « de la ferme au rayon »**
 
 > Projet fil rouge 4e année. Monolithe modulaire hexagonal, multi-tenant (SaaS), orienté conformité réglementaire (HACCP / ISO 22000) et intégrité d'audit (WORM).
 
-**État** : `develop` — build TypeScript strict ✅ · ESLint ✅ · **361 tests verts** (Vitest) · migrations Prisma versionnées.
+**État** : `develop` — build TypeScript strict ✅ · ESLint ✅ · **378 tests verts** (Vitest) · migrations Prisma versionnées.
 
 ---
 
@@ -41,7 +41,7 @@ Le tout est **cloisonné par organisation** (multi-tenancy strict) et **auditabl
 | 10/03 | CI/CD industrielle | ✅ Pipelines GitHub Actions | `.github/workflows/` |
 | 15/03 | Alerte chaîne du froid < 30 s p95 | ✅ Détection d'excursion + alertes | `modules/iot`, `modules/alerts` |
 | 10/06 | Mobile : scan rapide, mode offline | ✅ Sync offline-first idempotente | `modules/sync` |
-| 20/06 | Traçabilité EPCIS conforme GS1 (MVP) | ✅ ObjectEvents réception/expédition + endpoint `/events` | `modules/traceability` |
+| 20/06 | Traçabilité EPCIS conforme GS1 (MVP) | ✅ Object/Transformation/AggregationEvents en URN LGTIN/SSCC + endpoint `/events` | `modules/traceability` |
 | 22/06 | Rappel produit complet < 15 min | ✅ Blocage descendance set-based + notif clients | `modules/traceability/.../recall.service.ts` |
 | 30/09 | Connecteurs ERP/WMS + auditabilité WORM | ✅ Import CSV produits/clients + export EPCIS ; audit WORM hash-chain | `modules/connectors`, `shared/utils/audit` |
 
@@ -144,6 +144,9 @@ npm run e2e:epcis            # événements EPCIS réception/expédition
 npm run e2e:iot-alert        # alerte chaîne du froid
 npm run e2e:connectors       # import/export connecteurs ERP
 npm run e2e:security         # garde-fous multi-tenant
+npm run e2e:sync             # synchronisation mobile offline idempotente
+npm run e2e:alert-resolve    # cycle de vie des alertes
+npm run e2e:audit-verify     # intégrité de la chaîne d'audit WORM
 ```
 
 ---
