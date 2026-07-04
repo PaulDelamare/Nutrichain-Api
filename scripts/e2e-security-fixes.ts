@@ -68,7 +68,9 @@ async function setup(): Promise<Fixtures> {
     },
   });
 
-  const supplierId = 'e2e-sec-supplier';
+  // UUID stables : la validation VineJS des réceptions exige des UUID (id_fournisseur,
+  // id_produit, received_by) — des ids libres provoquent un 400 avant la logique testée.
+  const supplierId = '33333333-3333-4333-8333-333333333333';
   await prisma.supplier.upsert({
     where: { id: supplierId },
     update: {},
@@ -80,7 +82,7 @@ async function setup(): Promise<Fixtures> {
     },
   });
 
-  const productId = 'e2e-sec-product';
+  const productId = '44444444-4444-4444-8444-444444444444';
   await prisma.product.upsert({
     where: { id: productId },
     update: {},
@@ -96,12 +98,16 @@ async function setup(): Promise<Fixtures> {
     },
   });
 
-  const userId = 'e2e-sec-user';
-  await prisma.user.upsert({
-    where: { id: userId },
+  const secUser = await prisma.user.upsert({
+    where: { email: 'e2e-sec-uuid@nutrichain.local' },
     update: {},
-    create: { id: userId, email: 'e2e-sec@nutrichain.local', name: 'E2E Sec' },
+    create: {
+      id: '55555555-5555-4555-8555-555555555555',
+      email: 'e2e-sec-uuid@nutrichain.local',
+      name: 'E2E Sec',
+    },
   });
+  const userId = secUser.id;
 
   const foreignOrgId = 'e2e-sec-foreign-org';
   await prisma.organization.upsert({
@@ -147,6 +153,7 @@ async function setup(): Promise<Fixtures> {
     update: {},
     create: {
       id: foreignBatchId,
+      lot_number: foreignBatchId,
       organization_id: foreignOrgId,
       id_produit: 'e2e-sec-foreign-product',
       unite_code: 'KG',
@@ -218,6 +225,7 @@ async function scenario3_publicScanFilter(ctx: Fixtures) {
   await prisma.batch.create({
     data: {
       id: batchId,
+      lot_number: batchId,
       organization_id: ORG_ID!,
       id_produit: ctx.productId,
       unite_code: 'KG',
@@ -409,6 +417,7 @@ async function scenario6_genealogyCte(ctx: Fixtures) {
     await prisma.batch.create({
       data: {
         id: batchAId,
+        lot_number: batchAId,
         organization_id: ORG_ID!,
         id_produit: productMilkId,
         unite_code: 'KG',
@@ -423,6 +432,7 @@ async function scenario6_genealogyCte(ctx: Fixtures) {
       await prisma.batch.create({
         data: {
           id,
+          lot_number: id,
           organization_id: ORG_ID!,
           id_produit: productId,
           unite_code: 'KG',
