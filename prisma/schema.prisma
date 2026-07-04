@@ -181,17 +181,6 @@ model EPCIS_Event {
   @@index([event_time])
 }
 
-model EPCIS_Aggregation_Event {
-  id            String   @id @default(uuid())
-  sscc          String   @unique
-  id_lot_enfant String
-  id_lot_parent String
-  event_time    DateTime @default(now())
-
-  @@index([id_lot_enfant])
-  @@index([id_lot_parent])
-}
-
 // --- LIEUX ET MATERIEL ---
 model Location {
   id              String       @id @default(uuid())
@@ -250,6 +239,8 @@ model Batch {
   id                 String       @id @default(uuid())
   organization_id    String
   organization       Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  /// Numéro de lot court GS1 (AI 10, max 20 caractères) — porté par les URN LGTIN et le Digital Link.
+  lot_number         String
   id_produit         String
   produit            Product      @relation(fields: [id_produit], references: [id])
   quantite_actuelle  Decimal
@@ -272,6 +263,7 @@ model Batch {
   liaisons                Liaison_Shipment[]
   mouvements              Batch_Mouvement[]
 
+  @@unique([organization_id, lot_number])
   @@index([organization_id])
 }
 

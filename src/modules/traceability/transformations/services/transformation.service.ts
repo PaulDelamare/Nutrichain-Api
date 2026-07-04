@@ -2,6 +2,7 @@ import { prisma } from '../../../../shared/configs/prismaClient.config';
 import { APIError } from '../../../../shared/utils/errorHandler/APIError';
 import { Batch, Prisma } from '@prisma/client';
 import { auditService } from '../../../../shared/utils/audit/audit.service';
+import { gs1Utils } from '../../../../shared/utils/gs1/gs1.utils';
 import { BATCH_STATUSES, isBatchBlocked } from '../../../logistics/constants/logistics.constants';
 
 export interface TransformationInput {
@@ -93,6 +94,7 @@ export const transformationService = {
       const lotEnfant = await tx.batch.create({
         data: {
           organization_id: data.organization_id,
+          lot_number: gs1Utils.generateLotNumber(),
           id_produit: data.id_produit_fini,
           quantite_actuelle: data.quantite_produite,
           quantite_base: data.quantite_produite,
