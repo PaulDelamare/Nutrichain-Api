@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { logger } from '../src/shared/utils/logger/logger';
+import { DEFAULT_GS1_COMPANY_PREFIX, gs1Utils } from '../src/shared/utils/gs1/gs1.utils';
 
 const prisma = new PrismaClient();
 
@@ -9,12 +10,14 @@ async function main() {
   // 1. Création d'organisations fictives (Si Better-Auth ou les données l'exigent plus tard)
   const usine = await prisma.organization.upsert({
     where: { slug: 'usine-laitiere-paris' },
-    update: {},
+    // update aussi : les bases déjà seedées récupèrent le préfixe GS1 au re-seed.
+    update: { gs1_company_prefix: DEFAULT_GS1_COMPANY_PREFIX },
     create: {
       id: 'usine-laitiere-paris',
       name: 'Usine Laitière de Paris',
       slug: 'usine-laitiere-paris',
       createdAt: new Date(),
+      gs1_company_prefix: DEFAULT_GS1_COMPANY_PREFIX,
     },
   });
 
@@ -110,6 +113,7 @@ async function main() {
   await prisma.batch.create({
     data: {
       organization_id: usine.id,
+      lot_number: gs1Utils.generateLotNumber(),
       id_produit: milk.id,
       quantite_actuelle: 1000,
       unite_code: 'L',
@@ -123,6 +127,7 @@ async function main() {
   await prisma.batch.create({
     data: {
       organization_id: usine.id,
+      lot_number: gs1Utils.generateLotNumber(),
       id_produit: butter.id,
       quantite_actuelle: 400, // represente 100kg (400*250g)
       unite_code: 'kg',

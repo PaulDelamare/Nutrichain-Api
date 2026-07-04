@@ -160,10 +160,18 @@ async function main() {
       );
       const payload = event.payload as Record<string, unknown>;
       assert(payload?.bizStep === 'urn:epcglobal:cbv:bizstep:receiving', 'bizStep GS1 receiving');
+
+      const createdBatch = await prisma.batch.findUnique({ where: { id: batchId } });
+      assert(Boolean(createdBatch?.lot_number), 'le lot créé porte un lot_number court GS1');
+      const quantityList = payload?.quantityList as Array<Record<string, unknown>> | undefined;
       assert(
-        Array.isArray(payload?.epcList) && (payload.epcList as unknown[])[0] === batchId,
-        'epcList contient le lot créé'
+        Array.isArray(quantityList) &&
+          typeof quantityList[0]?.epcClass === 'string' &&
+          (quantityList[0].epcClass as string).startsWith('urn:epc:class:lgtin:') &&
+          (quantityList[0].epcClass as string).endsWith(`.${createdBatch?.lot_number}`),
+        'quantityList porte une URN LGTIN terminée par le lot_number'
       );
+      assert(quantityList?.[0]?.quantity === 42, 'quantityList porte la quantité reçue');
     }
 
     console.log('Scénario : une expédition émet un ObjectEvent EPCIS shipping cloisonné par organisation');
@@ -175,20 +183,41 @@ async function main() {
     const shipEvents = await prisma.ePCIS_Event.findMany({
       where: { related_entity: 'Shipment', related_id: shipmentId },
     });
-    assert(shipEvents.length === 1, 'exactement 1 EPCIS_Event lié à l expédition');
-    const shipEvent = shipEvents[0];
+    assert(shipEvents.length === 2, '2 EPCIS_Events liés à l expédition (ObjectEvent + AggregationEvent)');
+    const shipEvent = shipEvents.find((e) => e.event_type === 'ObjectEvent');
+    const aggEvent = shipEvents.find((e) => e.event_type === 'AggregationEvent');
 
+    assert(Boolean(shipEvent), "un ObjectEvent d'expédition est émis");
     if (shipEvent) {
-      assert(shipEvent.event_type === 'ObjectEvent', "event_type expédition === 'ObjectEvent'");
       assert(
         shipEvent.organization_id === API_KEY_ORG_ID,
         'organization_id de l événement expédition === org de la clé API'
       );
       const shipPayload = shipEvent.payload as Record<string, unknown>;
       assert(shipPayload?.bizStep === 'urn:epcglobal:cbv:bizstep:shipping', 'bizStep GS1 shipping');
+      const shipQuantityList = shipPayload?.quantityList as Array<Record<string, unknown>> | undefined;
       assert(
-        Array.isArray(shipPayload?.epcList) && (shipPayload.epcList as unknown[]).includes(batchId),
-        'epcList expédition contient le lot'
+        Array.isArray(shipQuantityList) &&
+          shipQuantityList.some(
+            (q) =>
+              typeof q.epcClass === 'string' && (q.epcClass as string).startsWith('urn:epc:class:lgtin:')
+          ),
+        'quantityList expédition porte les URN LGTIN des lots'
+      );
+    }
+
+    assert(Boolean(aggEvent), 'un AggregationEvent SSCC → lots est émis');
+    if (aggEvent) {
+      const aggPayload = aggEvent.payload as Record<string, unknown>;
+      assert(
+        typeof aggPayload?.parentID === 'string' &&
+          (aggPayload.parentID as string).startsWith('urn:epc:id:sscc:'),
+        'parentID de l AggregationEvent est une URN SSCC (shipment_id AUTO)'
+      );
+      assert(
+        Array.isArray(aggPayload?.childQuantityList) &&
+          (aggPayload.childQuantityList as unknown[]).length === 1,
+        'childQuantityList agrège le lot expédié'
       );
     }
 

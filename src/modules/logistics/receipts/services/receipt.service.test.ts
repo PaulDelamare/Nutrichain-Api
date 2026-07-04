@@ -13,6 +13,7 @@ vi.mock('../../../../shared/configs/prismaClient.config', () => ({
     $queryRaw: vi.fn().mockResolvedValue([]),
     supplier: { findFirst: vi.fn() },
     product: { findFirst: vi.fn() },
+    organization: { findUnique: vi.fn() },
     user: { findUnique: vi.fn() },
     unit: { findUnique: vi.fn() },
     receipt: { create: vi.fn(), count: vi.fn(), findMany: vi.fn(), findFirst: vi.fn() },
@@ -49,16 +50,22 @@ describe('ReceiptService', () => {
       // Mocks
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       vi.mocked(prisma.supplier.findFirst).mockResolvedValue({ id: 'supp-1' } as any);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      vi.mocked(prisma.product.findFirst).mockResolvedValue({ id: 'prod-1' } as any);
+      vi.mocked(prisma.product.findFirst).mockResolvedValue({
+        id: 'prod-1',
+        code_gtin: '3456789012345',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       vi.mocked(prisma.user.findUnique).mockResolvedValue({ id: 'user-1' } as any);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       vi.mocked(prisma.unit.findUnique).mockResolvedValue({ code: 'KG' } as any);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       vi.mocked(prisma.receipt.create).mockResolvedValue({ id: 'rec-1' } as any);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      vi.mocked(batchService.createBatch).mockResolvedValue({ id: 'bat-1' } as any);
+      vi.mocked(batchService.createBatch).mockResolvedValue({
+        id: 'bat-1',
+        lot_number: '260704-ABC123',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
 
       const result = await receiptService.createReceipt(payload);
 
@@ -69,7 +76,7 @@ describe('ReceiptService', () => {
       expect(result.batchId).toBe('bat-1');
     });
 
-    it('doit émettre un ObjectEvent EPCIS cloisonné par organisation lors de la réception', async () => {
+    it('doit émettre un ObjectEvent EPCIS avec URN LGTIN (préfixe GS1 de l organisation)', async () => {
       const payload = {
         organization_id: 'org-1',
         id_fournisseur: 'supp-1',
@@ -83,16 +90,26 @@ describe('ReceiptService', () => {
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       vi.mocked(prisma.supplier.findFirst).mockResolvedValue({ id: 'supp-1' } as any);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      vi.mocked(prisma.product.findFirst).mockResolvedValue({ id: 'prod-1' } as any);
+      vi.mocked(prisma.product.findFirst).mockResolvedValue({
+        id: 'prod-1',
+        code_gtin: '3456789012345',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+      vi.mocked(prisma.organization.findUnique).mockResolvedValue({
+        gs1_company_prefix: '0614141',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       vi.mocked(prisma.user.findUnique).mockResolvedValue({ id: 'user-1' } as any);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       vi.mocked(prisma.unit.findUnique).mockResolvedValue({ code: 'KG' } as any);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       vi.mocked(prisma.receipt.create).mockResolvedValue({ id: 'rec-1' } as any);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      vi.mocked(batchService.createBatch).mockResolvedValue({ id: 'bat-1' } as any);
+      vi.mocked(batchService.createBatch).mockResolvedValue({
+        id: 'bat-1',
+        lot_number: '260704-ABC123',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
 
       await receiptService.createReceipt(payload);
 
@@ -103,7 +120,13 @@ describe('ReceiptService', () => {
           related_entity: 'Receipt',
           related_id: 'rec-1',
           payload: expect.objectContaining({
-            epcList: ['bat-1'],
+            quantityList: [
+              {
+                epcClass: 'urn:epc:class:lgtin:0614141.001234.260704-ABC123',
+                quantity: 500,
+                uom: 'KG',
+              },
+            ],
             action: 'ADD',
             bizStep: 'urn:epcglobal:cbv:bizstep:receiving',
             disposition: 'urn:epcglobal:cbv:disp:active',
@@ -116,6 +139,55 @@ describe('ReceiptService', () => {
       expect(prisma.audit_Log.create).toHaveBeenCalled();
     });
 
+    it('doit utiliser le préfixe GS1 de repli si l organisation n en a pas', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(prisma.supplier.findFirst).mockResolvedValue({ id: 'supp-1' } as any);
+      vi.mocked(prisma.product.findFirst).mockResolvedValue({
+        id: 'prod-1',
+        code_gtin: '3456789012345',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+
+      vi.mocked(prisma.organization.findUnique).mockResolvedValue({
+        gs1_company_prefix: null,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(prisma.user.findUnique).mockResolvedValue({ id: 'user-1' } as any);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(prisma.unit.findUnique).mockResolvedValue({ code: 'KG' } as any);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(prisma.receipt.create).mockResolvedValue({ id: 'rec-1' } as any);
+      vi.mocked(batchService.createBatch).mockResolvedValue({
+        id: 'bat-1',
+        lot_number: '260704-ABC123',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+
+      await receiptService.createReceipt({
+        organization_id: 'org-1',
+        id_fournisseur: 'supp-1',
+        shipment_id: 'SHIP-001',
+        id_produit: 'prod-1',
+        quantite_actuelle: 500,
+        unite_code: 'KG',
+        statut_controle: 'OK',
+        received_by: 'user-1',
+      });
+
+      expect(prisma.ePCIS_Event.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          payload: expect.objectContaining({
+            quantityList: [
+              expect.objectContaining({
+                epcClass: 'urn:epc:class:lgtin:3456789.001234.260704-ABC123',
+              }),
+            ],
+          }),
+        }),
+      });
+    });
+
     // Le statut de contrôle à la réception détermine le statut initial du lot :
     // NONCONFORME/ALERTE -> quarantaine (BLOQUE), sinon stock normal (EN_STOCK).
     it.each([
@@ -126,11 +198,17 @@ describe('ReceiptService', () => {
     ])('réception %s -> lot créé en %s', async (statut_controle, statutLotAttendu) => {
       const mockOk = (id: string) => ({ id }) as never;
       vi.mocked(prisma.supplier.findFirst).mockResolvedValue(mockOk('supp-1'));
-      vi.mocked(prisma.product.findFirst).mockResolvedValue(mockOk('prod-1'));
+      vi.mocked(prisma.product.findFirst).mockResolvedValue({
+        id: 'prod-1',
+        code_gtin: '3456789012345',
+      } as never);
       vi.mocked(prisma.user.findUnique).mockResolvedValue(mockOk('user-1'));
       vi.mocked(prisma.unit.findUnique).mockResolvedValue({ code: 'KG' } as never);
       vi.mocked(prisma.receipt.create).mockResolvedValue(mockOk('rec-1'));
-      vi.mocked(batchService.createBatch).mockResolvedValue(mockOk('bat-1'));
+      vi.mocked(batchService.createBatch).mockResolvedValue({
+        id: 'bat-1',
+        lot_number: '260704-ABC123',
+      } as never);
 
       await receiptService.createReceipt({
         organization_id: 'org-1',

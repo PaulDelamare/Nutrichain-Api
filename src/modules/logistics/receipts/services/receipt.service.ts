@@ -10,6 +10,8 @@ import {
   EPCIS_EVENT_TYPE,
   EPCIS_RELATED_ENTITY,
 } from '../../../../shared/constants/epcis.constants';
+import { gs1Utils } from '../../../../shared/utils/gs1/gs1.utils';
+import { resolveGs1Prefix } from '../../../../shared/utils/gs1/gs1Prefix';
 import { BATCH_STATUSES, QUARANTINE_RECEIPT_CONTROLS } from '../../constants/logistics.constants';
 
 /**
@@ -50,6 +52,8 @@ async function createReceiptInTx(tx: Prisma.TransactionClient, data: CreateRecei
     });
   }
 
+  const gs1Prefix = await resolveGs1Prefix(tx, data.organization_id);
+
   const user = await tx.user.findUnique({ where: { id: data.received_by } });
   if (!user) {
     throw new APIError(404, {
@@ -89,7 +93,9 @@ async function createReceiptInTx(tx: Prisma.TransactionClient, data: CreateRecei
     statut: isQuarantined ? BATCH_STATUSES.BLOCKED : BATCH_STATUSES.IN_STOCK,
   });
 
-  // Événement EPCIS ObjectEvent : entrée du lot dans la chaîne lors de la réception (interopérabilité GS1)
+  // Événement EPCIS ObjectEvent : entrée du lot dans la chaîne lors de la réception.
+  // Identification GS1 de niveau classe (URN LGTIN) : un lot n'est pas une instance
+  // sérialisée, il est donc porté dans quantityList avec sa quantité.
   await tx.ePCIS_Event.create({
     data: {
       organization_id: data.organization_id,
@@ -98,7 +104,13 @@ async function createReceiptInTx(tx: Prisma.TransactionClient, data: CreateRecei
       related_entity: EPCIS_RELATED_ENTITY.receipt,
       related_id: receipt.id,
       payload: {
-        epcList: [batch.id],
+        quantityList: [
+          {
+            epcClass: gs1Utils.buildLgtinUrn(gs1Prefix, product.code_gtin, batch.lot_number),
+            quantity: data.quantite_actuelle,
+            uom: data.unite_code,
+          },
+        ],
         action: EPCIS_ACTION.add,
         bizStep: EPCIS_BIZSTEP.receiving,
         disposition: EPCIS_DISPOSITION.active,

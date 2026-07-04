@@ -2,6 +2,14 @@ import { prisma } from '../../../../shared/configs/prismaClient.config';
 import { APIError } from '../../../../shared/utils/errorHandler/APIError';
 import { Batch, Prisma } from '@prisma/client';
 import { auditService } from '../../../../shared/utils/audit/audit.service';
+import { gs1Utils } from '../../../../shared/utils/gs1/gs1.utils';
+import { resolveGs1Prefix } from '../../../../shared/utils/gs1/gs1Prefix';
+import {
+  EPCIS_BIZSTEP,
+  EPCIS_DISPOSITION,
+  EPCIS_EVENT_TYPE,
+  EPCIS_RELATED_ENTITY,
+} from '../../../../shared/constants/epcis.constants';
 import { BATCH_STATUSES, isBatchBlocked } from '../../../logistics/constants/logistics.constants';
 
 export interface TransformationInput {
@@ -31,14 +39,31 @@ export const transformationService = {
    */
   async createTransformation(data: TransformationInput) {
     return await prisma.$transaction(async (tx) => {
+      // 0. Le produit fini doit appartenir à l'organisation (anti-référence cross-tenant,
+      // symétrique aux contrôles fournisseur/client) — son GTIN sert aussi à l'URN LGTIN.
+      const produitFini = await tx.product.findFirst({
+        where: { id: data.id_produit_fini, organization_id: data.organization_id },
+        select: { code_gtin: true },
+      });
+      if (!produitFini) {
+        throw new APIError(404, {
+          error: [
+            { field: 'id_produit_fini', message: 'Produit fini introuvable ou accès refusé.' },
+          ],
+        });
+      }
+
+      const gs1Prefix = await resolveGs1Prefix(tx, data.organization_id);
+
       // 1. Validation des lots parents
-      const parents: Batch[] = [];
+      const parents: Array<Batch & { produit: { code_gtin: string } }> = [];
       for (const input of data.inputs) {
         const batch = await tx.batch.findFirst({
           where: {
             id: input.id_lot_parent,
             organization_id: data.organization_id,
           },
+          include: { produit: { select: { code_gtin: true } } },
         });
 
         if (!batch) {
@@ -93,6 +118,7 @@ export const transformationService = {
       const lotEnfant = await tx.batch.create({
         data: {
           organization_id: data.organization_id,
+          lot_number: gs1Utils.generateLotNumber(),
           id_produit: data.id_produit_fini,
           quantite_actuelle: data.quantite_produite,
           quantite_base: data.quantite_produite,
@@ -226,20 +252,39 @@ export const transformationService = {
         },
       });
 
-      // 6. ENREGISTREMENT EVENEMENT EPCIS GS1 (Interopérabilité Internationale)
+      // 6. Événement EPCIS TransformationEvent : lots identifiés au niveau classe
+      // (URN LGTIN) dans les quantityList, comme à la réception et à l'expédition.
       await tx.ePCIS_Event.create({
         data: {
           organization_id: data.organization_id,
           event_time: new Date(),
-          event_type: 'TransformationEvent',
-          related_entity: 'Transformation',
+          event_type: EPCIS_EVENT_TYPE.transformation,
+          related_entity: EPCIS_RELATED_ENTITY.transformation,
           related_id: transformation.id,
           payload: {
             transformationID: transformation.id,
-            inputEPCList: data.inputs.map((i) => i.id_lot_parent),
-            outputEPCList: [lotEnfant.id],
-            bizStep: 'urn:epcglobal:cbv:bizstep:transforming',
-            disposition: 'urn:epcglobal:cbv:disp:in_progress',
+            inputQuantityList: data.inputs.map((input, index) => ({
+              epcClass: gs1Utils.buildLgtinUrn(
+                gs1Prefix,
+                parents[index].produit.code_gtin,
+                parents[index].lot_number
+              ),
+              quantity: input.quantite_prelevee,
+              uom: input.unite,
+            })),
+            outputQuantityList: [
+              {
+                epcClass: gs1Utils.buildLgtinUrn(
+                  gs1Prefix,
+                  produitFini.code_gtin,
+                  lotEnfant.lot_number
+                ),
+                quantity: data.quantite_produite,
+                uom: data.unite_code,
+              },
+            ],
+            bizStep: EPCIS_BIZSTEP.transforming,
+            disposition: EPCIS_DISPOSITION.inProgress,
             readPoint: data.id_materiel,
           },
         },

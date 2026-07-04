@@ -84,7 +84,7 @@ async function main() {
     // 5. Export EPCIS → CSV
     const out = await eventExportService.exportEventsCsv(ORG_ID!);
     assert(
-      out.split('\n')[0] === 'event_time,event_type,related_entity,related_id,payload',
+      out.split(/\r?\n/)[0] === 'event_time,event_type,related_entity,related_id,payload',
       'export EPCIS → CSV avec en-tête exact'
     );
   } catch (err) {

@@ -251,6 +251,7 @@ async function main(): Promise<void> {
     const recallBatch = await prisma.batch.create({
       data: {
         organization_id: ORG_ID!,
+        lot_number: `e2e-resolve-${Date.now()}`,
         id_produit: fixtures.productId,
         unite_code: fixtures.uniteId,
         quantite_actuelle: 100,

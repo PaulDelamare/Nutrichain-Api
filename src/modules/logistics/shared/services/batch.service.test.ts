@@ -47,6 +47,8 @@ describe('BatchSharedService', () => {
       expect(mockTx.batch.create).toHaveBeenCalledWith({
         data: {
           ...data,
+          date_peremption: undefined,
+          lot_number: expect.stringMatching(/^[0-9]{6}-[0-9A-Z]{6}$/),
           quantite_base: data.quantite_actuelle,
           statut: 'EN_STOCK',
         },

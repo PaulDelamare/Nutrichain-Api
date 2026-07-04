@@ -81,6 +81,7 @@ async function setup(): Promise<Fixtures> {
   const sourceBatch = await prisma.batch.create({
     data: {
       organization_id: ORG_ID!,
+      lot_number: randomUUID(),
       id_produit: product.id,
       quantite_actuelle: 100,
       unite_code: product.unite_reference,
@@ -94,6 +95,7 @@ async function setup(): Promise<Fixtures> {
   const childBatch = await prisma.batch.create({
     data: {
       organization_id: ORG_ID!,
+      lot_number: randomUUID(),
       id_produit: product.id,
       quantite_actuelle: 50,
       unite_code: product.unite_reference,
@@ -329,6 +331,7 @@ async function scenarioBreadthExhaustive() {
   const source = await prisma.batch.create({
     data: {
       organization_id: ORG_ID!,
+      lot_number: randomUUID(),
       id_produit: product.id,
       quantite_actuelle: N,
       unite_code: product.unite_reference,
@@ -344,6 +347,7 @@ async function scenarioBreadthExhaustive() {
   await prisma.batch.createMany({
     data: childIds.map((id) => ({
       id,
+      lot_number: id,
       organization_id: ORG_ID!,
       id_produit: product.id,
       quantite_actuelle: 1,
@@ -413,6 +417,7 @@ async function scenarioDepthCycleGuard() {
     prisma.batch.create({
       data: {
         organization_id: ORG_ID!,
+        lot_number: randomUUID(),
         id_produit: product.id,
         quantite_actuelle: 10,
         unite_code: product.unite_reference,

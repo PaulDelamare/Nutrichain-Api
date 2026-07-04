@@ -99,6 +99,7 @@ async function seed(): Promise<SeedResult> {
   await prisma.batch.createMany({
     data: batchIds.map((id) => ({
       id,
+      lot_number: id,
       organization_id: ORG_ID!,
       id_produit: product.id,
       quantite_actuelle: 1,
