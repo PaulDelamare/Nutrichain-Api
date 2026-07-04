@@ -170,6 +170,8 @@ npm run e2e:security         # garde-fous multi-tenant
 
 Les documents techniques par domaine sont dans [`docs/`](docs/) :
 
+- [`20_DOSSIER_SOUTENANCE.md`](docs/20_DOSSIER_SOUTENANCE.md) — **dossier de soutenance** (problème → solution → démo → preuves)
+- [`19_architecture.md`](docs/19_architecture.md) — **schémas d'architecture** (5 diagrammes Mermaid)
 - [`00_contexte_projet.md`](docs/00_contexte_projet.md) — contexte et cadrage
 - [`04_tracabilite_et_lots.md`](docs/04_tracabilite_et_lots.md), [`11_TECH_TRANSFORMATIONS_GENEALOGY.md`](docs/11_TECH_TRANSFORMATIONS_GENEALOGY.md) — traçabilité & généalogie
 - [`12_RECALLS_SYSTEM.md`](docs/12_RECALLS_SYSTEM.md) — système de rappel
