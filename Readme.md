@@ -133,7 +133,11 @@ npm run lint     # ESLint
 
 ```bash
 npm run unit:test            # suite unitaire + intégration (Vitest)
+npm run test:coverage        # couverture de code (plancher CI : 70 % — mesurée à ~84 % lignes / ~89 % branches)
 ```
+
+> Périmètre de couverture : la logique applicative (`src/**`), hors bootstrap serveur,
+> déclarations de types, templates d'e-mails et config Swagger (cf. `vitest.config.js`).
 
 Scénarios end-to-end contre une base réelle (nécessitent PostgreSQL + seed) :
 
