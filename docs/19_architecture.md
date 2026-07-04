@@ -75,7 +75,7 @@ flowchart TB
     end
 
     PRISMA["Prisma Client"]
-    DB[("PostgreSQL<br/>~30 modèles")]
+    DB[("PostgreSQL<br/>31 modèles")]
 
     HTTP --> Modules
     Modules --> Shared
@@ -131,7 +131,7 @@ flowchart LR
 Conséquences concrètes :
 
 - **Testabilité** : les services se testent avec un Prisma mocké, les utilitaires GS1
-  sont des fonctions pures testées sans aucun mock (375 tests, 68 fichiers).
+  sont des fonctions pures testées sans aucun mock (378 tests, 68 fichiers).
 - **Validation aux frontières** : VineJS (messages français centralisés) valide toute
   entrée *avant* le contrôleur ; le cœur métier reçoit des données déjà typées
   (`Infer<typeof schema>`, zéro `any`).
@@ -230,8 +230,8 @@ par schéma** (une base, filtrage par organisation) :
 
 | Décision | Motivation |
 |---|---|
-| Monolithe modulaire, pas de microservices | Transactions ACID sur les flux critiques ; équipe de 1 ; frontières extractibles plus tard |
-| Hexagonal par module | Cœur métier testable sans HTTP ni base ; 375 tests rapides |
+| Monolithe modulaire, pas de microservices | Transactions ACID sur les flux critiques ; équipe réduite (un seul déployable à opérer) ; frontières extractibles plus tard |
+| Hexagonal par module | Cœur métier testable sans HTTP ni base ; 378 tests rapides |
 | Prisma + migrations versionnées | Schéma tracé en Git, reproductible (fini `db push`) |
 | Better-Auth + clé API via `mixedAuth` | Humains et machines sur le même pipeline de sécurité |
 | VineJS aux frontières, messages FR | Erreurs exploitables par le front, cœur métier typé strict (zéro `any`) |
