@@ -19,7 +19,10 @@ describe('eventExportService.exportEventsCsv', () => {
         event_type: 'ObjectEvent',
         related_entity: 'Receipt',
         related_id: 'rec-1',
-        payload: { epcList: ['batch-1'], bizStep: 'receiving' },
+        payload: {
+          quantityList: [{ epcClass: 'urn:epc:class:lgtin:3456789.001234.260704-ABC123' }],
+          bizStep: 'receiving',
+        },
       },
     ] as never);
 
@@ -28,7 +31,7 @@ describe('eventExportService.exportEventsCsv', () => {
 
     expect(lines[0]).toBe('event_time,event_type,related_entity,related_id,payload');
     expect(lines[1]).toContain('2026-06-20T10:00:00.000Z,ObjectEvent,Receipt,rec-1,');
-    expect(lines[1]).toContain('epcList'); // payload JSON présent
+    expect(lines[1]).toContain('quantityList'); // payload JSON présent
     // cloisonnement multi-tenant
     expect(prisma.ePCIS_Event.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { organization_id: orgId } })

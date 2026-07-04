@@ -8,14 +8,14 @@ import { APIError } from '../../../../shared/utils/errorHandler/APIError';
 export const labelService = {
   /**
    * Génère une URI GS1 Digital Link standard
-   * Format: https://nutrichain.api/01/{gtin}/10/{batchId}
+   * Format: https://nutrichain.api/01/{gtin}/10/{lotNumber}
    * 01 = GTIN (Code produit)
-   * 10 = Batch (Numéro de lot)
+   * 10 = Numéro de lot court GS1 (Batch.lot_number, ≤ 20 caractères)
    */
-  generateDigitalLink(gtin: string, batchId: string): string {
+  generateDigitalLink(gtin: string, lotNumber: string): string {
     const baseUrl = process.env.API_BASE_URL || 'https://api.nutrichain.fr';
     // Le standard GS1 Digital Link utilise des clés identifiées par des AI (Application Identifiers)
-    return `${baseUrl}/gs1/01/${gtin}/10/${batchId}`;
+    return `${baseUrl}/gs1/01/${gtin}/10/${lotNumber}`;
   },
 
   /**

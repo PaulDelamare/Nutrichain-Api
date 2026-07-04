@@ -38,6 +38,7 @@ export const publicScanBatch = catchAsync(async (req: Request, res: Response) =>
   // On ne renvoie JAMAIS les objets 'ancestors' complets car ils contiennent des IDs internes et des quantités
   const publicData = {
     lot: {
+      numero_lot: batch.lot_number,
       date_peremption: batch.date_peremption,
       nom_produit: batch.produit.nom,
       gtin: batch.produit.code_gtin,

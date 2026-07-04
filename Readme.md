@@ -25,7 +25,7 @@ API REST B2B/B2C de **traçabilité agroalimentaire « de la ferme au rayon »**
 
 NutriChain répond à trois besoins critiques du secteur agroalimentaire :
 
-1. **Traçabilité complète des lots** — réception → transformation → expédition, avec généalogie ascendante/descendante (recursive CTE Postgres) et événements **EPCIS** (interopérabilité GS1).
+1. **Traçabilité complète des lots** — réception → transformation → expédition, avec généalogie ascendante/descendante (recursive CTE Postgres) et événements **EPCIS** aux identifiants GS1 stricts (numéro de lot court AI 10, URN **LGTIN**, **AggregationEvent SSCC** à l'expédition, étiquette **GS1 Digital Link**).
 2. **Chaîne du froid en temps réel** — ingestion de télémétrie IoT, détection d'excursion de température sur fenêtre glissante, alertes.
 3. **Rappel produit rapide** — blocage atomique d'un lot **et de toute sa descendance**, notification automatique des clients impactés (objectif < 15 min ; mesuré ~21 ms sur 4645 nœuds).
 
@@ -162,7 +162,7 @@ npm run e2e:security         # garde-fous multi-tenant
 ## Limitations connues
 
 - **RBAC partiel** : le modèle de rôles est en cours de construction. Deux taxonomies coexistent — rôles d'organisation (`owner`/`admin`/`member`, Better-Auth) et rôles métier (`logistics_*`) — non encore réconciliées ; l'authentification des routes logistiques en session web est de fait limitée (le mode M2M par clé API est pleinement fonctionnel). L'**ABAC** prévu par l'objectif sécurité est reporté. À traiter dans une itération dédiée.
-- **EPCIS « maison »** : les `epcList` portent l'UUID interne du lot, pas une URN SGTIN stricte (`urn:epc:id:sgtin:…`). Conforme aux specs du projet (traçabilité fonctionnelle), pas au standard EPCIS le plus strict ; le crochet d'infrastructure existe déjà (`Organization.gs1_company_prefix`).
+- **Préfixe GS1 simulé** : les identifiants GS1 sont conformes (numéro de lot court AI 10, URN LGTIN/SSCC, GS1 Digital Link), mais le préfixe entreprise par défaut (`3456789`) est fictif — projet d'école, aucun préfixe réel acheté auprès de GS1. Chaque organisation peut renseigner le sien (`Organization.gs1_company_prefix`).
 
 ---
 

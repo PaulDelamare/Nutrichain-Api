@@ -23,6 +23,9 @@ vi.mock('../../../../shared/configs/prismaClient.config', () => ({
     customer: {
       findFirst: vi.fn(),
     },
+    organization: {
+      findUnique: vi.fn(),
+    },
     ePCIS_Event: {
       create: vi.fn(),
     },
@@ -46,6 +49,11 @@ describe('ShipmentService', () => {
     // Par défaut, le client destinataire appartient bien à l'organisation (cas nominal).
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     vi.mocked(prisma.customer.findFirst).mockResolvedValue({ id: 'client-456' } as any);
+    vi.mocked(prisma.organization.findUnique).mockResolvedValue({
+      gs1_company_prefix: '3456789',
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+    vi.mocked(prisma.shipment.count).mockResolvedValue(10);
   });
 
   it('devrait échouer (404) si le client destinataire n appartient pas à l organisation', async () => {
@@ -63,6 +71,8 @@ describe('ShipmentService', () => {
     const mockBatch = {
       id: 'batch-1',
       organization_id: 'org-123',
+      lot_number: '260704-LOT001',
+      produit: { code_gtin: '3456789012345' },
       quantite_actuelle: { toNumber: () => 100 },
       unite_code: 'KG',
       statut: 'EN_STOCK',
@@ -91,10 +101,12 @@ describe('ShipmentService', () => {
     expect(result).toBeDefined();
   });
 
-  it('devrait émettre un ObjectEvent EPCIS cloisonné par organisation lors de l expédition', async () => {
+  it('devrait émettre un ObjectEvent EPCIS avec URN LGTIN lors de l expédition', async () => {
     const mockBatch = {
       id: 'batch-1',
       organization_id: 'org-123',
+      lot_number: '260704-LOT001',
+      produit: { code_gtin: '3456789012345' },
       quantite_actuelle: { toNumber: () => 100 },
       unite_code: 'KG',
       statut: 'EN_STOCK',
@@ -115,7 +127,13 @@ describe('ShipmentService', () => {
         related_entity: 'Shipment',
         related_id: 'ship-1',
         payload: expect.objectContaining({
-          epcList: ['batch-1'],
+          quantityList: [
+            {
+              epcClass: 'urn:epc:class:lgtin:3456789.001234.260704-LOT001',
+              quantity: 10,
+              uom: 'KG',
+            },
+          ],
           bizStep: 'urn:epcglobal:cbv:bizstep:shipping',
           destinationParty: 'client-456',
         }),
@@ -123,10 +141,12 @@ describe('ShipmentService', () => {
     });
   });
 
-  it('expédition multi-lots : epcList agrège tous les lots et le payload porte SSCC/disposition/action', async () => {
-    const makeBatch = (id: string) => ({
+  it('expédition multi-lots : quantityList agrège tous les lots et le payload porte SSCC/disposition/action', async () => {
+    const makeBatch = (id: string, lotNumber: string) => ({
       id,
       organization_id: 'org-123',
+      lot_number: lotNumber,
+      produit: { code_gtin: '3456789012345' },
       quantite_actuelle: { toNumber: () => 100 },
       unite_code: 'KG',
       statut: 'EN_STOCK',
@@ -135,9 +155,9 @@ describe('ShipmentService', () => {
 
     vi.mocked(prisma.batch.findFirst)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .mockResolvedValueOnce(makeBatch('batch-1') as any)
+      .mockResolvedValueOnce(makeBatch('batch-1', '260704-LOT001') as any)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .mockResolvedValueOnce(makeBatch('batch-2') as any);
+      .mockResolvedValueOnce(makeBatch('batch-2', '260704-LOT002') as any);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     vi.mocked(prisma.shipment.create).mockResolvedValue({ id: 'ship-1' } as any);
 
@@ -152,11 +172,82 @@ describe('ShipmentService', () => {
     expect(prisma.ePCIS_Event.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         payload: expect.objectContaining({
-          epcList: ['batch-1', 'batch-2'],
+          quantityList: [
+            expect.objectContaining({
+              epcClass: 'urn:epc:class:lgtin:3456789.001234.260704-LOT001',
+              quantity: 10,
+            }),
+            expect.objectContaining({
+              epcClass: 'urn:epc:class:lgtin:3456789.001234.260704-LOT002',
+              quantity: 5,
+            }),
+          ],
           action: 'OBSERVE',
           disposition: 'urn:epcglobal:cbv:disp:in_transit',
           sscc: 'SHIP-001',
         }),
+      }),
+    });
+  });
+
+  it("émet un AggregationEvent SSCC → lots quand l'identifiant est un SSCC généré", async () => {
+    const mockBatch = {
+      id: 'batch-1',
+      organization_id: 'org-123',
+      lot_number: '260704-LOT001',
+      produit: { code_gtin: '3456789012345' },
+      quantite_actuelle: { toNumber: () => 100 },
+      unite_code: 'KG',
+      statut: 'EN_STOCK',
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(prisma.batch.findFirst).mockResolvedValue(mockBatch as any);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(prisma.shipment.create).mockResolvedValue({ id: 'ship-1' } as any);
+
+    await shipmentService.createShipment({ ...mockShipmentData, shipment_id: 'AUTO' });
+
+    expect(prisma.ePCIS_Event.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        event_type: 'AggregationEvent',
+        related_entity: 'Shipment',
+        related_id: 'ship-1',
+        payload: expect.objectContaining({
+          parentID: expect.stringMatching(/^urn:epc:id:sscc:3456789\.[0-9]{10}$/),
+          childQuantityList: [
+            expect.objectContaining({
+              epcClass: 'urn:epc:class:lgtin:3456789.001234.260704-LOT001',
+            }),
+          ],
+          action: 'ADD',
+        }),
+      }),
+    });
+  });
+
+  it("l'AggregationEvent porte l'identifiant brut si l'expéditeur a fourni un id non-SSCC", async () => {
+    const mockBatch = {
+      id: 'batch-1',
+      organization_id: 'org-123',
+      lot_number: '260704-LOT001',
+      produit: { code_gtin: '3456789012345' },
+      quantite_actuelle: { toNumber: () => 100 },
+      unite_code: 'KG',
+      statut: 'EN_STOCK',
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(prisma.batch.findFirst).mockResolvedValue(mockBatch as any);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(prisma.shipment.create).mockResolvedValue({ id: 'ship-1' } as any);
+
+    await shipmentService.createShipment(mockShipmentData); // shipment_id: 'SHIP-001'
+
+    expect(prisma.ePCIS_Event.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        event_type: 'AggregationEvent',
+        payload: expect.objectContaining({ parentID: 'SHIP-001' }),
       }),
     });
   });
@@ -176,6 +267,8 @@ describe('ShipmentService', () => {
     const mockBatch = {
       id: 'batch-1',
       organization_id: 'org-123',
+      lot_number: '260704-LOT001',
+      produit: { code_gtin: '3456789012345' },
       quantite_actuelle: { toNumber: () => 100 },
       unite_code: 'KG',
       statut: 'EN_STOCK',

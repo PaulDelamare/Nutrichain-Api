@@ -122,7 +122,7 @@ export const getBatchLabelController = catchAsync(
       });
     }
 
-    const digitalLink = labelService.generateDigitalLink(gtin, batch.id);
+    const digitalLink = labelService.generateDigitalLink(gtin, batch.lot_number);
 
     // 3. Générer l'image QR
     const qrBuffer = await labelService.generateQRCode(digitalLink);

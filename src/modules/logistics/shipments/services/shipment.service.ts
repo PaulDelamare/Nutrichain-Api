@@ -1,6 +1,6 @@
 import { prisma } from '../../../../shared/configs/prismaClient.config';
 import { APIError } from '../../../../shared/utils/errorHandler/APIError';
-import { gs1Utils } from '../../../../shared/utils/gs1/gs1.utils';
+import { DEFAULT_GS1_COMPANY_PREFIX, gs1Utils } from '../../../../shared/utils/gs1/gs1.utils';
 import {
   EPCIS_ACTION,
   EPCIS_BIZSTEP,
@@ -41,11 +41,18 @@ export const shipmentService = {
         });
       }
 
-      // 0.b Génération automatique de l'identifiant si demandé (Standard SSCC)
+      // 0.b Préfixe entreprise GS1 de l'organisation (SSCC + URN LGTIN)
+      const organization = await tx.organization.findUnique({
+        where: { id: data.organization_id },
+        select: { gs1_company_prefix: true },
+      });
+      const gs1Prefix = organization?.gs1_company_prefix ?? DEFAULT_GS1_COMPANY_PREFIX;
+
+      // 0.c Génération automatique de l'identifiant si demandé (Standard SSCC)
       let finalShipmentId = data.shipment_id;
       if (finalShipmentId === 'AUTO' || !finalShipmentId) {
         const count = await tx.shipment.count({ where: { organization_id: data.organization_id } });
-        finalShipmentId = gs1Utils.generateSSCC(count + 1);
+        finalShipmentId = gs1Utils.generateSSCC(count + 1, gs1Prefix);
       }
 
       // 1. Créer l'entête de l'expédition
@@ -63,13 +70,14 @@ export const shipmentService = {
       });
 
       // 2. Traiter chaque lot (Déduction de stock + Liaison)
-      const shippedLots: string[] = [];
+      const shippedQuantities: Array<{ epcClass: string; quantity: number; uom: string }> = [];
       for (const item of data.items) {
         const batch = await tx.batch.findFirst({
           where: {
             id: item.id_lot,
             organization_id: data.organization_id,
           },
+          include: { produit: { select: { code_gtin: true } } },
         });
 
         if (!batch) {
@@ -138,10 +146,15 @@ export const shipmentService = {
           },
         });
 
-        shippedLots.push(item.id_lot);
+        shippedQuantities.push({
+          epcClass: gs1Utils.buildLgtinUrn(gs1Prefix, batch.produit.code_gtin, batch.lot_number),
+          quantity: item.quantite,
+          uom: batch.unite_code,
+        });
       }
 
-      // 7. Événement EPCIS ObjectEvent : sortie des lots de la chaîne lors de l'expédition (interopérabilité GS1)
+      // 7. Événement EPCIS ObjectEvent : sortie des lots de la chaîne lors de l'expédition.
+      // Lots identifiés au niveau classe (URN LGTIN) dans quantityList.
       await tx.ePCIS_Event.create({
         data: {
           organization_id: data.organization_id,
@@ -150,12 +163,35 @@ export const shipmentService = {
           related_entity: EPCIS_RELATED_ENTITY.shipment,
           related_id: shipment.id,
           payload: {
-            epcList: shippedLots,
+            quantityList: shippedQuantities,
             action: EPCIS_ACTION.observe,
             bizStep: EPCIS_BIZSTEP.shipping,
             disposition: EPCIS_DISPOSITION.inTransit,
             destinationParty: data.id_client,
             sscc: finalShipmentId,
+          },
+        },
+      });
+
+      // 8. Événement EPCIS AggregationEvent : le contenant (SSCC) agrège les lots expédiés.
+      // L'URN SSCC n'a de sens que pour un SSCC 18 chiffres généré/conforme ; un identifiant
+      // métier libre fourni par l'appelant est conservé tel quel.
+      const parentId = /^[0-9]{18}$/.test(finalShipmentId)
+        ? gs1Utils.buildSsccUrn(gs1Prefix, finalShipmentId)
+        : finalShipmentId;
+
+      await tx.ePCIS_Event.create({
+        data: {
+          organization_id: data.organization_id,
+          event_time: new Date(),
+          event_type: EPCIS_EVENT_TYPE.aggregation,
+          related_entity: EPCIS_RELATED_ENTITY.shipment,
+          related_id: shipment.id,
+          payload: {
+            parentID: parentId,
+            childQuantityList: shippedQuantities,
+            action: EPCIS_ACTION.add,
+            bizStep: EPCIS_BIZSTEP.shipping,
           },
         },
       });
