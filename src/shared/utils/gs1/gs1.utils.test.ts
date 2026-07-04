@@ -38,6 +38,12 @@ describe('GS1 Utils', () => {
       expect(sscc).toHaveLength(18);
       expect(sscc.slice(1, 13)).toBe('061414112345');
     });
+
+    it('doit rejeter un serial qui dépasse la capacité (jamais de SSCC > 18 chiffres)', () => {
+      // Préfixe de 12 chiffres → serial ref sur 4 chiffres : 9999 passe, 10000 déborde.
+      expect(gs1Utils.generateSSCC(9999, '061414112345')).toHaveLength(18);
+      expect(() => gs1Utils.generateSSCC(10000, '061414112345')).toThrow(/Capacité SSCC/);
+    });
   });
 
   describe('generateLotNumber', () => {

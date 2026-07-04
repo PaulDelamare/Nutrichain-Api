@@ -12,9 +12,11 @@ import { APIError } from '../../../../shared/utils/errorHandler/APIError';
 export const publicScanBatch = catchAsync(async (req: Request, res: Response) => {
   const { id } = req.params;
 
-  // Scan B2C : seuls les lots déjà commercialisés (EXPEDIE) ou en rappel (ALERTE) sont exposés
+  // Scan B2C : seuls les lots déjà commercialisés (EXPEDIE) ou en rappel (ALERTE) sont exposés.
+  // Résolution par UUID interne OU par numéro de lot GS1 : l'étiquette Digital Link
+  // (AI 10) porte le lot_number court, c'est lui que le consommateur scanne.
   const batch = await prisma.batch.findFirst({
-    where: { id, statut: { in: ['EXPEDIE', 'ALERTE'] } },
+    where: { OR: [{ id }, { lot_number: id }], statut: { in: ['EXPEDIE', 'ALERTE'] } },
     include: {
       produit: {
         select: { nom: true, code_gtin: true },

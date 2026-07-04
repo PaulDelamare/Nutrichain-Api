@@ -10,7 +10,8 @@ import {
   EPCIS_EVENT_TYPE,
   EPCIS_RELATED_ENTITY,
 } from '../../../../shared/constants/epcis.constants';
-import { DEFAULT_GS1_COMPANY_PREFIX, gs1Utils } from '../../../../shared/utils/gs1/gs1.utils';
+import { gs1Utils } from '../../../../shared/utils/gs1/gs1.utils';
+import { resolveGs1Prefix } from '../../../../shared/utils/gs1/gs1Prefix';
 import { BATCH_STATUSES, QUARANTINE_RECEIPT_CONTROLS } from '../../constants/logistics.constants';
 
 /**
@@ -51,11 +52,7 @@ async function createReceiptInTx(tx: Prisma.TransactionClient, data: CreateRecei
     });
   }
 
-  const organization = await tx.organization.findUnique({
-    where: { id: data.organization_id },
-    select: { gs1_company_prefix: true },
-  });
-  const gs1Prefix = organization?.gs1_company_prefix ?? DEFAULT_GS1_COMPANY_PREFIX;
+  const gs1Prefix = await resolveGs1Prefix(tx, data.organization_id);
 
   const user = await tx.user.findUnique({ where: { id: data.received_by } });
   if (!user) {

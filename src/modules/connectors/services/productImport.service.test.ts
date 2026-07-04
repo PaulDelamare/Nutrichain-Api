@@ -52,7 +52,7 @@ describe('productImportService.importProducts', () => {
   });
 
   it('une ligne invalide est rapportée en erreur sans bloquer les lignes valides', async () => {
-    // 2e ligne : gtin trop court (< 8) → invalide
+    // 2e ligne : gtin trop court → invalide
     const csv = `${header}\nLait,3001234567890,Frais,30,10,L\nMauvais,123,Frais,30,10,L`;
 
     const report = await productImportService.importProducts(orgId, csv);
@@ -61,6 +61,24 @@ describe('productImportService.importProducts', () => {
     expect(report.errors).toBe(1);
     const errorRow = report.results.find((r) => r.status === 'error');
     expect(errorRow?.line).toBe(2);
+  });
+
+  it('rejette un GTIN-12 (UPC-A) : seul GTIN-13/14 garantit une URN EPC correcte', async () => {
+    const csv = `${header}\nSoda,345678901230,Boisson,180,10,L`;
+
+    const report = await productImportService.importProducts(orgId, csv);
+
+    expect(report.errors).toBe(1);
+    expect(prisma.product.create).not.toHaveBeenCalled();
+  });
+
+  it('rejette un GTIN non numérique de longueur plausible', async () => {
+    const csv = `${header}\nLait,30012345678AB,Frais,30,10,L`;
+
+    const report = await productImportService.importProducts(orgId, csv);
+
+    expect(report.errors).toBe(1);
+    expect(prisma.product.create).not.toHaveBeenCalled();
   });
 
   it('rejette une unité inconnue (FK Unit) en erreur de ligne', async () => {

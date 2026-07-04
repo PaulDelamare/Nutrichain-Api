@@ -23,6 +23,13 @@ export const gs1Utils = {
   generateSSCC(serial: number, companyPrefix: string = DEFAULT_GS1_COMPANY_PREFIX): string {
     const extensionDigit = '0';
     const serialRefLength = SSCC_LENGTH_WITHOUT_CHECK - 1 - companyPrefix.length;
+    // padStart ne tronque pas : sans cette garde, un serial trop grand (préfixe long
+    // + volume élevé) produirait silencieusement un SSCC > 18 chiffres, invalide GS1.
+    if (serial.toString().length > serialRefLength) {
+      throw new Error(
+        `Capacité SSCC épuisée pour le préfixe ${companyPrefix} (serial ${serial} > ${serialRefLength} chiffres).`
+      );
+    }
     const serialRef = serial.toString().padStart(serialRefLength, '0');
 
     const partialSscc = extensionDigit + companyPrefix + serialRef;
@@ -68,6 +75,11 @@ export const gs1Utils = {
    *
    * Le GTIN est normalisé en GTIN-14 et son check digit est retiré (règle GS1 :
    * le check digit ne figure jamais dans une URN EPC).
+   *
+   * Hypothèse assumée (projet exercice) : l'item ref est découpé positionnellement
+   * à la longueur du préfixe déclaré, SANS vérifier que le GTIN encode réellement
+   * ce préfixe — les GTIN de démo sont fictifs. Un déploiement réel validerait la
+   * correspondance préfixe/GTIN (et la longueur GTIN-13/14) à l'enregistrement produit.
    */
   buildLgtinUrn(companyPrefix: string, gtin: string, lotNumber: string): string {
     const gtin14 = gtin.padStart(14, '0');

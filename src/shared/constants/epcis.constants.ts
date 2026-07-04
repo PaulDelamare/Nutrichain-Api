@@ -13,24 +13,36 @@
 export const EPCIS_EVENT_TYPE = {
   object: 'ObjectEvent',
   aggregation: 'AggregationEvent',
+  transformation: 'TransformationEvent',
 } as const;
-export const EPCIS_RELATED_ENTITY = { receipt: 'Receipt', shipment: 'Shipment' } as const;
+export const EPCIS_RELATED_ENTITY = {
+  receipt: 'Receipt',
+  shipment: 'Shipment',
+  transformation: 'Transformation',
+} as const;
 
 // Tuples dérivés pour les enums VineJS (filtrage des query params).
-export const EPCIS_EVENT_TYPES = [EPCIS_EVENT_TYPE.object, EPCIS_EVENT_TYPE.aggregation] as const;
+export const EPCIS_EVENT_TYPES = [
+  EPCIS_EVENT_TYPE.object,
+  EPCIS_EVENT_TYPE.aggregation,
+  EPCIS_EVENT_TYPE.transformation,
+] as const;
 export const EPCIS_RELATED_ENTITIES = [
   EPCIS_RELATED_ENTITY.receipt,
   EPCIS_RELATED_ENTITY.shipment,
+  EPCIS_RELATED_ENTITY.transformation,
 ] as const;
 
 export const EPCIS_BIZSTEP = {
   receiving: 'urn:epcglobal:cbv:bizstep:receiving',
   shipping: 'urn:epcglobal:cbv:bizstep:shipping',
+  transforming: 'urn:epcglobal:cbv:bizstep:transforming',
 } as const;
 
 export const EPCIS_DISPOSITION = {
   active: 'urn:epcglobal:cbv:disp:active',
   inTransit: 'urn:epcglobal:cbv:disp:in_transit',
+  inProgress: 'urn:epcglobal:cbv:disp:in_progress',
 } as const;
 
 export const EPCIS_ACTION = {

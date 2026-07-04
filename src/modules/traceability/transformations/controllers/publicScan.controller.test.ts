@@ -41,6 +41,7 @@ const buildApp = () => {
 const buildBatch = (overrides: Record<string, unknown> = {}) => ({
   id: 'batch-1',
   organization_id: 'org-1',
+  lot_number: '260704-ABC123',
   statut: 'EXPEDIE',
   date_peremption: new Date('2027-01-01'),
   produit: { nom: 'Yaourt nature', code_gtin: '1234567890' },
@@ -68,9 +69,25 @@ describe('publicScanBatch controller (route publique B2C — Sec C)', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.data.lot.nom_produit).toBe('Yaourt nature');
+    expect(res.body.data.lot.numero_lot).toBe('260704-ABC123');
     expect(res.body.data.lot.statut_sanitaire).toBe('CONFORME');
     expect(res.body.data.lot).not.toHaveProperty('organization_id');
     expect(res.body.data.lot).not.toHaveProperty('quantite_actuelle');
+  });
+
+  it('doit résoudre le lot par son numéro de lot GS1 (celui du Digital Link imprimé)', async () => {
+    vi.mocked(prisma.batch.findFirst).mockResolvedValue(buildBatch());
+
+    const res = await request(buildApp()).get('/api/public/scan/260704-ABC123');
+
+    expect(res.status).toBe(200);
+    expect(prisma.batch.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: [{ id: '260704-ABC123' }, { lot_number: '260704-ABC123' }],
+        }),
+      })
+    );
   });
 
   it('doit accepter (200) un lot ALERTE et signaler RAPPEL_CONSOMMATEUR', async () => {

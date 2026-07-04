@@ -162,7 +162,7 @@ npm run e2e:security         # garde-fous multi-tenant
 ## Limitations connues
 
 - **RBAC partiel** : le modèle de rôles est en cours de construction. Deux taxonomies coexistent — rôles d'organisation (`owner`/`admin`/`member`, Better-Auth) et rôles métier (`logistics_*`) — non encore réconciliées ; l'authentification des routes logistiques en session web est de fait limitée (le mode M2M par clé API est pleinement fonctionnel). L'**ABAC** prévu par l'objectif sécurité est reporté. À traiter dans une itération dédiée.
-- **Préfixe GS1 simulé** : les identifiants GS1 sont conformes (numéro de lot court AI 10, URN LGTIN/SSCC, GS1 Digital Link), mais le préfixe entreprise par défaut (`3456789`) est fictif — projet d'école, aucun préfixe réel acheté auprès de GS1. Chaque organisation peut renseigner le sien (`Organization.gs1_company_prefix`).
+- **Préfixe GS1 simulé** : les identifiants GS1 sont conformes (numéro de lot court AI 10, URN LGTIN/SSCC, GS1 Digital Link), mais le préfixe entreprise par défaut (`3456789`) est fictif — projet d'école, aucun préfixe réel acheté auprès de GS1. Chaque organisation peut renseigner le sien (`Organization.gs1_company_prefix`). Les URN sont découpées positionnellement à la longueur du préfixe déclaré, sans vérifier que le GTIN (fictif en démo) encode réellement ce préfixe ; un déploiement réel validerait cette correspondance à l'enregistrement produit. Le `lot_number` (suffixe aléatoire, ~2 Md de combinaisons/jour/org) s'appuie sur la contrainte d'unicité en base sans retry applicatif — une collision (improbable avant ~50 000 lots/jour/org) renverrait un 400.
 
 ---
 
