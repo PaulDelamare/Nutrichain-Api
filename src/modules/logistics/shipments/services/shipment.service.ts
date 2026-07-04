@@ -1,6 +1,6 @@
 import { prisma } from '../../../../shared/configs/prismaClient.config';
 import { APIError } from '../../../../shared/utils/errorHandler/APIError';
-import { gs1Utils } from '../../shared/utils/gs1.utils';
+import { gs1Utils } from '../../../../shared/utils/gs1/gs1.utils';
 import {
   EPCIS_ACTION,
   EPCIS_BIZSTEP,
