@@ -15,6 +15,9 @@ import crypto from 'crypto';
 
 export const auth = betterAuth({
   baseURL: process.env.API_URL || 'http://localhost:3000',
+  // Le front SvelteKit vit sur une autre origine que l'API : sans elle dans
+  // trustedOrigins, Better-Auth rejette sign-in/sign-up (« Invalid origin »).
+  trustedOrigins: [process.env.FRONTEND_URL || 'http://localhost:5173'],
   // 🛡️ Permet d'accepter les requêtes d'API externes (Postman, Bruno, et IoT) qui n'ont pas pu générer automatiquement d'Origin via un navigateur Moteur.
   advanced: {
     // Aligne Better-Auth sur le standard UUID v4 du reste du projet (Prisma @default(uuid)).
@@ -55,6 +58,21 @@ export const auth = betterAuth({
     provider: 'postgresql',
   }),
   databaseHooks: {
+    session: {
+      create: {
+        // Sans org active en session, requireOrgRole rejette toutes les routes
+        // métier (400) : on résout l'unique organisation du user à la connexion.
+        before: async (session) => {
+          const membership = await prisma.member.findFirst({
+            where: { userId: session.userId },
+            select: { organizationId: true },
+          });
+          return {
+            data: { ...session, activeOrganizationId: membership?.organizationId ?? null },
+          };
+        },
+      },
+    },
     user: {
       create: {
         // Intercepte silencieusement APRÈS la création d'un utilisateur
@@ -150,9 +168,10 @@ export const auth = betterAuth({
   plugins: [
     organization({
       sendInvitationEmail: async (data): Promise<void> => {
-        // Aligné sur le flow custom : on pointe vers la page /register du frontend (Svelte),
-        // pas vers l'API. FRONTEND_URL garanti par assertEnv. Voir docs/16_invitation_register_flow.md.
-        const invitationLink = `${process.env.FRONTEND_URL}/register?token=${data.id}`;
+        // Aligné sur le flow custom : on pointe vers la page /inscription du frontend
+        // (SvelteKit), pas vers l'API. FRONTEND_URL garanti par assertEnv.
+        // Voir docs/16_invitation_register_flow.md.
+        const invitationLink = `${process.env.FRONTEND_URL}/inscription?token=${data.id}`;
 
         const htmlBody = await render(
           React.createElement(InvitationEmail, {

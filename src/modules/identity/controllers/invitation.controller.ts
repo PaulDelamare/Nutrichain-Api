@@ -71,7 +71,7 @@ export const generateInvitation = catchAsync(async (req: AuthenticatedRequest, r
   // d'inscription, pas vers l'API). FRONTEND_URL est garanti non-vide par assertEnv au boot.
   // Le frontend récupère le `token` dans la query et le passe au sign-up Better-Auth
   // pour validation (cf. guardSignUp.middleware).
-  const invitationLink = `${process.env.FRONTEND_URL}/register?token=${invitation.id}`;
+  const invitationLink = `${process.env.FRONTEND_URL}/inscription?token=${invitation.id}`;
 
   const htmlBody = await render(
     React.createElement(InvitationEmail, {
