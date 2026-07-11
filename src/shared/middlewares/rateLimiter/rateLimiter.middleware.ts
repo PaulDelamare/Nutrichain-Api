@@ -17,6 +17,10 @@ function createRateLimiter(minutes: number, maxRequests: number) {
 
     max: maxRequests,
 
+    // Les sondes de santé (Docker/monitoring) ne doivent pas consommer le quota
+    // — sinon un déploiement surveillé finit par se faire 429 tout seul.
+    skip: (req) => req.path === '/api/health' || req.path === '/api/health/ready',
+
     /**
      * Function to handle requests that exceed the rate limit.
      *

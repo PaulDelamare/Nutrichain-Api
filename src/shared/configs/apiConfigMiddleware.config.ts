@@ -58,7 +58,12 @@ const configureMiddleware = (app: express.Application) => {
 
   app.set('trust proxy', ['loopback', 'linklocal', 'uniquelocal']);
 
-  const limiter = createRateLimiter(15, 100);
+  // 100/15 min était trop bas : une seule page front déclenche ~5 appels en
+  // parallèle (SSR) → un usage normal se faisait 429. Défaut confortable pour
+  // l'interactif, resserrable en prod via RATE_LIMIT_MAX / RATE_LIMIT_WINDOW_MIN.
+  const rateWindowMin = Number(process.env.RATE_LIMIT_WINDOW_MIN) || 15;
+  const rateMax = Number(process.env.RATE_LIMIT_MAX) || 1000;
+  const limiter = createRateLimiter(rateWindowMin, rateMax);
   app.use(limiter);
 
   app.use(sanitizeRequestData);

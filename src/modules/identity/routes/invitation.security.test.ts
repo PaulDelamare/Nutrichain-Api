@@ -142,20 +142,21 @@ describe('Security & Validation E2E Scenarios (Invitations)', () => {
       expect(errorContent).toContain('role');
     });
 
-    it("doit refuser (400) si l'email est invalide ou le format UUID incorrect", async () => {
+    it("doit refuser (400) si l'email est invalide", async () => {
+      // organizationId n'est plus validé (le contrôleur le dérive de la session,
+      // pas du body) — un id d'org arbitraire dans le payload est simplement ignoré.
       const res = await request(app)
         .post('/api/identity/invitations')
         .set('x-api-key', VALID_API_KEY)
         .send({
           email: 'mauvais_email_sans_arobase',
           role: 'operator',
-          organizationId: 'mauvais_format_uuid',
+          organizationId: 'ignoré-car-non-validé',
         });
 
       expect(res.status).toBe(400);
       const errorContent = JSON.stringify(res.body.error);
-      expect(errorContent).toContain('email'); // VineJS dÃ©tecte que ce n'est pas un email
-      expect(errorContent).toContain('organizationId'); // VineJS dÃ©tecte la faute d'UUID
+      expect(errorContent).toContain('email'); // VineJS détecte que ce n'est pas un email
     });
   });
 
