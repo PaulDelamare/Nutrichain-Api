@@ -12,6 +12,7 @@
     "push": "npx prisma db push",
     "unit:test": "vitest",
     "test:coverage": "vitest run --coverage",
+    "seed:demo": "tsx --env-file=.env prisma/seed.demo.ts",
     "e2e:security": "tsx --env-file=.env scripts/e2e-security-fixes.ts",
     "e2e:sync": "tsx --env-file=.env scripts/e2e-mobile-sync.ts",
     "e2e:recall": "tsx --env-file=.env scripts/e2e-recall-impact.ts",
