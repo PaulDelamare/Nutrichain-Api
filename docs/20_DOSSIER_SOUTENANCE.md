@@ -69,13 +69,13 @@ Requêtes prêtes dans la collection Bruno (`Nutrichain.json`).
 | # | Action | Endpoint | Ce que le jury voit |
 |---|---|---|---|
 | 1 | L'ERP pousse son catalogue | `POST /api/connectors/imports/products` puis `/customers` (CSV) | Import idempotent, validation ligne à ligne, GTIN-13/14 imposé |
-| 2 | Réception fournisseur | `POST /api/logistics/receipts` | Lot créé avec **numéro GS1 court** (`AAMMJJ-XXXXXX`) + ObjectEvent EPCIS en **URN LGTIN** |
+| 2 | Réception fournisseur | `POST /api/logistics/receipts` (avec `id_materiel` de stockage) | Lot créé avec **numéro GS1 court** (`AAMMJJ-XXXXXX`), **rattaché à son emplacement** (matériel → lieu, position connue) + ObjectEvent EPCIS en **URN LGTIN** |
 | 3 | Étiquette du lot | `GET /api/logistics/batches/:id/label` | QR code **GS1 Digital Link** (GTIN + lot) |
 | 4 | Réception NON CONFORME | `POST /api/logistics/receipts` (`statut_controle: NONCONFORME`) | Lot créé **BLOQUE** (quarantaine HACCP) — l'expédier renvoie 400 |
 | 5 | Décision qualité | `POST /api/logistics/batches/:id/release` (motif obligatoire) | Levée tracée dans l'audit WORM |
 | 6 | Transformation | `POST /api/traceability/transformations` | Lot enfant + généalogie (`GET .../batches/:id/genealogy`) + TransformationEvent LGTIN |
 | 7 | Expédition | `POST /api/logistics/shipments` (`shipment_id: AUTO`) | **SSCC 18 chiffres** généré + AggregationEvent (palette ⊃ lots) |
-| 8 | Excursion chaîne du froid | `POST /api/telemetry/ping` (température hors seuil) | Alerte TEMP_EXCURSION < 30 s + email ; résolution `PATCH /api/alerts/:id/resolve` |
+| 8 | Excursion chaîne du froid | `POST /api/telemetry/ping` (température hors seuil) | Alerte TEMP_EXCURSION < 30 s + email **ET les lots stockés dans l'équipement passent automatiquement en quarantaine (`BLOQUE`)** ; résolution `PATCH /api/alerts/:id/resolve` |
 | 9 | **Rappel produit** | `POST /api/traceability/batches/:id/recall` | Toute la descendance passe en ALERTE (chrono affiché : millisecondes), expéditions impactées listées, **clients notifiés par email automatiquement** |
 | 10 | Le consommateur scanne | `GET /api/public/scan/:numero_lot` (route publique) | `statut_sanitaire: RAPPEL_CONSOMMATEUR` — transparence B2C |
 | 11 | L'ERP récupère l'historique | `GET /api/traceability/events` + `GET /api/connectors/exports/events` | Journal EPCIS filtrable + export CSV |
