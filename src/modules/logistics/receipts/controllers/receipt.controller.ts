@@ -19,9 +19,11 @@ export const createReceiptController = catchAsync(
       });
     }
 
-    // Détermination de l'auteur de la réception (Sécurité Web vs M2M)
-    // Si req.user existe (flux Web), on override l'ID pour éviter l'usurpation
-    const receivedBy = req.user?.id || validatedData.received_by;
+    // La session prime sur le payload. `req.user` n'est posé QUE par `requireAuth` — or cette
+    // route passe par `mixedAuth`, qui remplit `req.auth.user` : la garde anti-usurpation
+    // était donc du code mort, et le champ du corps de requête gagnait TOUJOURS.
+    // Autrement dit, l'auteur scellé dans la chaîne d'audit était choisi par le client.
+    const receivedBy = req.auth?.user?.id ?? validatedData.received_by;
 
     const result = await receiptService.createReceipt({
       ...validatedData,

@@ -20,8 +20,11 @@ export const createShipmentController = catchAsync(
       validatedShipment;
     const activeOrgId = req.activeOrgId as string;
 
-    // Détermination de l'auteur : Priorité à la session (req.user), fallback sur le payload (M2M)
-    const userId = req.user?.id || created_by;
+    // La session prime sur le payload. `req.user` n'est posé QUE par `requireAuth` — or cette
+    // route passe par `mixedAuth`, qui remplit `req.auth.user`. Aucune session ne pouvait donc
+    // être identifiée : toute expédition depuis le web ou le mobile partait en 401, et
+    // l'endpoint était de fait inutilisable (aucun appelant nulle part).
+    const userId = req.auth?.user?.id ?? created_by;
 
     if (!userId) {
       throw new APIError(401, {
