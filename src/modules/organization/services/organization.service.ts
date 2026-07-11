@@ -1,0 +1,100 @@
+import { prisma } from '../../../shared/configs/prismaClient.config';
+import { BATCH_STATUSES } from '../../logistics/constants/logistics.constants';
+
+/**
+ * Façade de lecture pour le frontend : expose les référentiels de l'organisation
+ * (membres, alertes, journal d'audit, qualité, quarantaine, matériel, mouvements,
+ * fournisseurs, clients, expéditions). Les formes de réponse suivent le contrat
+ * du front SvelteKit (src/lib/Api/organization.server.ts) — lecture seule,
+ * cloisonnée par organisation.
+ */
+export const organizationService = {
+  async listMembers(organizationId: string) {
+    return prisma.member.findMany({
+      // Modèle Better-Auth : la clé de tenant est organizationId (camelCase).
+      where: { organizationId },
+      include: {
+        user: { select: { id: true, email: true, name: true, twoFactorEnabled: true } },
+      },
+    });
+  },
+
+  async listAlerts(organizationId: string) {
+    return prisma.alert.findMany({
+      where: { organization_id: organizationId },
+      orderBy: { created_at: 'desc' },
+    });
+  },
+
+  async listAuditLogs(organizationId: string, limit: number) {
+    return prisma.audit_Log.findMany({
+      where: { organization_id: organizationId },
+      orderBy: { horodatage: 'desc' },
+      take: limit,
+    });
+  },
+
+  async listQualityControls(organizationId: string) {
+    return prisma.qualityControl.findMany({
+      where: { organization_id: organizationId },
+      include: { lot: { select: { id: true, produit: { select: { nom: true } } } } },
+      orderBy: { date_test: 'desc' },
+    });
+  },
+
+  async listQuarantineBatches(organizationId: string) {
+    return prisma.batch.findMany({
+      where: { organization_id: organizationId, statut: BATCH_STATUSES.BLOCKED },
+      include: { produit: { select: { nom: true } } },
+      orderBy: { date_creation: 'desc' },
+    });
+  },
+
+  async listEquipment(organizationId: string) {
+    return prisma.equipment.findMany({
+      where: { organization_id: organizationId },
+      include: { lieu: { select: { nom: true } } },
+    });
+  },
+
+  async listMovements(organizationId: string, opts: { lotId?: string; limit?: number } = {}) {
+    return prisma.batch_Mouvement.findMany({
+      // Batch_Mouvement n'a pas d'organization_id : le cloisonnement passe par le lot.
+      where: {
+        lot: { organization_id: organizationId },
+        ...(opts.lotId ? { id_lot: opts.lotId } : {}),
+      },
+      include: {
+        lot: { select: { id: true, produit: { select: { nom: true } } } },
+        user: { select: { name: true } },
+      },
+      orderBy: { created_at: 'desc' },
+      ...(opts.limit ? { take: opts.limit } : {}),
+    });
+  },
+
+  async listSuppliers(organizationId: string) {
+    return prisma.supplier.findMany({
+      where: { organization_id: organizationId },
+      orderBy: { nom_ferme: 'asc' },
+    });
+  },
+
+  async listCustomers(organizationId: string) {
+    return prisma.customer.findMany({
+      where: { organization_id: organizationId },
+      orderBy: { nom_enseigne: 'asc' },
+    });
+  },
+
+  async listShipments(organizationId: string) {
+    return prisma.shipment.findMany({
+      where: { organization_id: organizationId },
+      include: {
+        client: { select: { nom_enseigne: true } },
+        liaisons: { select: { lot: { select: { id: true } } } },
+      },
+      orderBy: { date_envoi: 'desc' },
+    });
+  },
+};
