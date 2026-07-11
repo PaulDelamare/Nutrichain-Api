@@ -17,6 +17,8 @@ export interface ReceiptPayload {
   quantite_actuelle: number;
   unite_code: string;
   statut_controle: string;
+  /** Emplacement de stockage (matériel) où le lot est rangé — optionnel. */
+  id_materiel?: string;
 }
 
 /**

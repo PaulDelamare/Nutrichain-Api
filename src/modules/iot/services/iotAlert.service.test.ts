@@ -10,6 +10,7 @@ import { TelemetryModel } from '../models/telemetry.model';
 const { txClient } = vi.hoisted(() => ({
   txClient: {
     alert: { create: vi.fn() },
+    batch: { updateMany: vi.fn() },
   },
 }));
 
@@ -85,6 +86,7 @@ beforeEach(() => {
   // advisory lock acquis par défaut (renvoie true)
   vi.mocked(prisma.$queryRawUnsafe).mockResolvedValue([{ locked: true }] as never);
   vi.mocked(txClient.alert.create).mockResolvedValue({ id: 'alert-1' } as never);
+  vi.mocked(txClient.batch.updateMany).mockResolvedValue({ count: 0 } as never);
   vi.mocked(auditService.logAction).mockResolvedValue({} as never);
   vi.mocked(sendEmail).mockResolvedValue(undefined as never);
   mockMongoFind(Array.from({ length: 10 }, (_, i) => buildPoint(i + 1, 8))); // tous au-dessus de 4
@@ -191,6 +193,30 @@ describe('iotAlertService.checkAndAlert', () => {
       txClient
     );
     expect(sendEmail).toHaveBeenCalled();
+  });
+
+  it('excursion → lots EN_STOCK de cet équipement mis en quarantaine (BLOQUE)', async () => {
+    vi.mocked(txClient.batch.updateMany).mockResolvedValue({ count: 3 } as never);
+
+    await iotAlertService.checkAndAlert(baseParams);
+
+    // Seuls les lots EN_STOCK rangés dans l'équipement en excursion sont bloqués,
+    // dans la même transaction que l'alerte.
+    expect(txClient.batch.updateMany).toHaveBeenCalledWith({
+      where: {
+        organization_id: 'org-1',
+        id_materiel_actuel: 'equip-1',
+        statut: 'EN_STOCK',
+      },
+      data: { statut: 'BLOQUE' },
+    });
+    // Le nombre de lots bloqués est tracé dans l'audit.
+    expect(auditService.logAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        newValue: expect.objectContaining({ quarantinedBatchesCount: 3 }),
+      }),
+      txClient
+    );
   });
 
   it('dédup : Alert ACTIVE existe → skip création (anti-spam)', async () => {

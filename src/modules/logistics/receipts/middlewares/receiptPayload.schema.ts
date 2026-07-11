@@ -16,6 +16,8 @@ export const receiptPayloadFields = {
   quantite_actuelle: vine.number().positive(),
   unite_code: vine.string().maxLength(10),
   statut_controle: vine.enum(['OK', 'ALERTE', 'NONCONFORME', 'CONFORME']),
+  // Emplacement de stockage du lot reçu (matériel) — optionnel.
+  id_materiel: vine.string().uuid().optional(),
 };
 
 export const receiptPayloadSchema = vine.object(receiptPayloadFields);

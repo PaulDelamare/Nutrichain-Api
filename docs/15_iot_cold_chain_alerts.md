@@ -29,7 +29,7 @@ POST /telemetry/ping → checkApiKey (M2M) → ingestController :
 6. **Query Mongo fenêtre 15min** : derniers points du capteur, filtre temporel + multi-tenant, safety cap 1000 docs.
 7. **Détection** (logique pure dans `excursionDetection.service`) : ≥ 80% des points strictement au-dessus du seuil ET ≥ 5 points.
 8. **Dédup** : si `Alert` ACTIVE existante pour ce equipment + type='TEMP_EXCURSION' → exit (anti-spam).
-9. **Transaction atomique** (Serializable, timeout 10s) : `alert.create({ type: 'TEMP_EXCURSION', niveau_gravite: 'PANIC', ... })` + `auditService.logAction({ action: 'TEMP_EXCURSION_DETECTED' }, tx)`.
+9. **Transaction atomique** (Serializable, timeout 10s) : **mise en quarantaine des lots stockés** — les `Batch` EN_STOCK dont `id_materiel_actuel` pointe sur l'équipement passent en `BLOQUE` (`batch.updateMany`) — puis `alert.create({ type: 'TEMP_EXCURSION', niveau_gravite: 'PANIC', message incluant le nombre de lots bloqués, ... })` + `auditService.logAction({ action: 'TEMP_EXCURSION_DETECTED', newValue.quarantinedBatchesCount }, tx)`. Un incident matériel ne peut donc pas laisser partir un produit potentiellement altéré : la quarantaine, l'alerte et l'audit sont atomiques.
 10. **Email** aux owners/admins (Member filtré par `equipment.organization_id` re-lu depuis la DB, defense-in-depth réelle). Appelé en `void` (vraiment fire-and-forget) — chaque envoi a son `.catch(logger.error)` individuel, et un `try/catch` global garde-fou pour swallow toute promesse non-handled. Échec d'envoi loggué mais alerte persiste.
 11. **Finally** : `pg_advisory_unlock` toujours appelé.
 

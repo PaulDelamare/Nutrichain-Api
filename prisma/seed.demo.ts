@@ -24,6 +24,8 @@ const ID = {
   locProduction: 'd0000000-0000-4000-8000-000000000003',
   eqFrigo: 'd0000000-0000-4000-8000-000000000011',
   eqCuve: 'd0000000-0000-4000-8000-000000000012',
+  eqRack: 'd0000000-0000-4000-8000-000000000013',
+  eqFroidSain: 'd0000000-0000-4000-8000-000000000014',
   prodLaitCru: 'd0000000-0000-4000-8000-000000000021',
   lotCruA: 'd0000000-0000-4000-8000-000000000031',
   lotCruB: 'd0000000-0000-4000-8000-000000000032',
@@ -41,7 +43,7 @@ const ID = {
 const ALL_LOTS = [ID.lotCruA, ID.lotCruB, ID.lotLait, ID.lotBeurre, ID.lotQuarantaine];
 const ALL_TRANSFOS = [ID.transfoLait, ID.transfoBeurre];
 const ALL_SHIPMENTS = [ID.shipLait, ID.shipBeurre];
-const ALL_EQUIP = [ID.eqFrigo, ID.eqCuve];
+const ALL_EQUIP = [ID.eqFrigo, ID.eqCuve, ID.eqRack, ID.eqFroidSain];
 const ALL_LOCS = [ID.locReception, ID.locFroid, ID.locProduction];
 
 const day = (n: number) => new Date(Date.now() + n * 24 * 60 * 60 * 1000);
@@ -138,15 +140,34 @@ async function main() {
   await prisma.equipment.createMany({
     data: [
       {
-        id: ID.eqFrigo,
+        id: ID.eqRack,
+        organization_id: orgId,
+        nom: 'Rack de réception',
+        type: 'ETAGERE',
+        id_lieu: ID.locReception,
+        statut: 'PRET',
+      },
+      {
+        id: ID.eqFroidSain,
         organization_id: orgId,
         nom: 'Chambre froide A — groupe 1',
+        type: 'FRIGO',
+        id_lieu: ID.locFroid,
+        statut: 'PRET',
+        temp_actuelle: 3.2,
+        temp_seuil_max: 4,
+        sensor_id: 'SENSOR-FROID-A1',
+      },
+      {
+        id: ID.eqFrigo,
+        organization_id: orgId,
+        nom: 'Chambre froide A — groupe 2',
         type: 'FRIGO',
         id_lieu: ID.locFroid,
         statut: 'ALERTE',
         temp_actuelle: 7.4,
         temp_seuil_max: 4,
-        sensor_id: 'SENSOR-FROID-A1',
+        sensor_id: 'SENSOR-FROID-A2',
       },
       {
         id: ID.eqCuve,
@@ -182,6 +203,7 @@ async function main() {
       {
         id: ID.lotCruA,
         organization_id: orgId,
+        id_materiel_actuel: ID.eqRack,
         lot_number: '260710-000101',
         id_produit: ID.prodLaitCru,
         quantite_actuelle: 2000,
@@ -194,6 +216,7 @@ async function main() {
       {
         id: ID.lotCruB,
         organization_id: orgId,
+        id_materiel_actuel: ID.eqRack,
         lot_number: '260710-000102',
         id_produit: ID.prodLaitCru,
         quantite_actuelle: 1500,
@@ -207,6 +230,7 @@ async function main() {
       {
         id: ID.lotLait,
         organization_id: orgId,
+        id_materiel_actuel: ID.eqFroidSain,
         lot_number: '260711-000201',
         id_produit: milk.id,
         quantite_actuelle: 3000,
@@ -219,6 +243,7 @@ async function main() {
       {
         id: ID.lotBeurre,
         organization_id: orgId,
+        id_materiel_actuel: ID.eqFroidSain,
         lot_number: '260711-000202',
         id_produit: butter.id,
         quantite_actuelle: 800,
@@ -232,6 +257,7 @@ async function main() {
       {
         id: ID.lotQuarantaine,
         organization_id: orgId,
+        id_materiel_actuel: ID.eqFrigo,
         lot_number: '260709-000099',
         id_produit: butter.id,
         quantite_actuelle: 120,
@@ -386,7 +412,8 @@ async function main() {
   });
 
   logger.info('✅ Seed DÉMO terminé.');
-  logger.info('   3 sites, 2 matériels, généalogie A+B→Lait / A→Beurre, 2 expéditions,');
+  logger.info('   3 sites, 4 matériels, lots rattachés à leur emplacement, généalogie A+B→Lait / A→Beurre,');
+  logger.info('   2 expéditions,');
   logger.info('   2 contrôles qualité, 1 lot en quarantaine, 1 alerte froid active.');
   logger.info(`   Rappel de démo à déclencher sur le lot ${ID.lotCruA} (bloque Lait + Beurre).`);
 }

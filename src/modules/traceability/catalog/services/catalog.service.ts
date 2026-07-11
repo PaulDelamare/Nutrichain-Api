@@ -30,6 +30,8 @@ export const catalogService = {
         produit: { select: { nom: true, code_gtin: true } },
         unite: { select: { nom: true } },
         user: { select: { name: true, email: true } },
+        // Emplacement de stockage (matériel → lieu) : permet de connaître la position du lot.
+        materiel: { select: { nom: true, lieu: { select: { nom: true } } } },
       },
       orderBy: { date_creation: 'desc' },
       take: 100, // Limite de sécurité pour éviter les listes infinies

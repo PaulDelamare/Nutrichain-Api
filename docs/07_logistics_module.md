@@ -11,7 +11,7 @@ Le module `logistics` gère l'entrée des marchandises et la création de l'iden
 - **Défense en profondeur** : Le `activeOrgId` est injecté au niveau des Services pour garantir l'isolation multi-tenant (IDOR prevention).
 
 ### Services Clés
-- `ReceiptService` : Orchestre la création des réceptions et la récupération des lots.
+- `ReceiptService` : Orchestre la création des réceptions et la récupération des lots. À la réception, le lot créé peut être **rattaché à son emplacement de stockage** via un `id_materiel` optionnel (validé cross-tenant) posé sur `Batch.id_materiel_actuel` — la position du lot (matériel → lieu) est ainsi connue dès son entrée, et alimente le suivi de position et la quarantaine automatique sur excursion (cf. `docs/15`).
 - `LabelService` : Génère des identifiants au format **GS1 Digital Link** (`/01/{gtin}/10/{batchId}`) et produit les fichiers binaires pour QR Code et DataMatrix.
 
 ## 3. Endpoints API
