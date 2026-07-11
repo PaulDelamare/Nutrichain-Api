@@ -50,6 +50,5 @@ node_modules
 build
 **/.env
 *.tar
-.env.exemple
 
 uploads/public/merchandises

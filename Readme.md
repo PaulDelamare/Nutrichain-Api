@@ -106,7 +106,7 @@ Variables d'environnement requises (validées au démarrage — *fail-fast*) :
 | `MONGO_URI` | Chaîne de connexion MongoDB (logs) |
 | `BETTER_AUTH_SECRET` | Secret Better-Auth (≥ 32 caractères) |
 | `API_KEY` | Clé API pour le mode machine-à-machine (M2M : IoT, scripts) |
-| `API_KEY_ORG_ID` | `Organization.id` lié à la clé API (mode M2M) |
+| `API_KEY_ORG_ID` | `Organization.id` lié à la clé API (mode M2M). **Ne pas laisser vide** (validation fail-fast) ; défaut du seed : `usine-laitiere-paris` |
 | `API_URL` | URL publique de l'API |
 | `FRONTEND_URL` | URL du frontend (liens cliquables dans les emails) |
 
