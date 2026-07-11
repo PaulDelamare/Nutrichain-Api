@@ -27,13 +27,18 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Copier les packages et installer uniquement les dépendances de production
+# Copier les packages et installer uniquement les dépendances de production.
+# --ignore-scripts : évite le hook husky (devDependency) ; le client Prisma
+# généré est copié depuis l'étape builder, aucun postinstall n'est nécessaire.
 COPY package*.json ./
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev --ignore-scripts
 
 # Copier le client Prisma généré pour que l'ORM fonctionne en production
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+
+# Schéma + migrations versionnées : permet `prisma migrate deploy` au démarrage du conteneur
+COPY --from=builder /app/prisma ./prisma
 
 # Copier les fichiers JavaScript compilés (d'après votre tsconfig.json qui spécifie "outDir": "dist")
 COPY --from=builder /app/dist ./dist
@@ -41,8 +46,8 @@ COPY --from=builder /app/dist ./dist
 # Configurer l'environnement
 ENV NODE_ENV=production
 
-# Exposer le port de l'application
-EXPOSE 3030
+# Exposer le port de l'application (PORT par défaut : 3000)
+EXPOSE 3000
 
 # Lancer la version compilée
 CMD ["node", "dist/server.js"]

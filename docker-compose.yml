@@ -1,0 +1,66 @@
+# Démarrage complet reproductible : API + PostgreSQL + MongoDB.
+#   docker compose up --build
+# Les variables sont surchargées par un fichier .env à la racine s'il existe
+# (mêmes noms que .env.example) ; les valeurs par défaut suffisent pour une démo locale.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: nutrichain
+      POSTGRES_PASSWORD: nutrichain
+      POSTGRES_DB: nutrichain
+    ports:
+      # 5433 côté hôte pour ne pas entrer en conflit avec un PostgreSQL local
+      # (utile pour lancer le seed depuis l'hôte : DATABASE_URL sur localhost:5433).
+      - '5433:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U nutrichain -d nutrichain']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mongo:
+    image: mongo:7
+    volumes:
+      - mongodata:/data/db
+    healthcheck:
+      test: ['CMD-SHELL', "mongosh --quiet --eval 'db.adminCommand({ ping: 1 })'"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: .
+    ports:
+      - '3000:3000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://nutrichain:nutrichain@postgres:5432/nutrichain?schema=public
+      MONGO_URI: mongodb://mongo:27017/nutrichain-logs
+      API_URL: ${API_URL:-http://localhost:3000}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-secret-de-demo-docker-32-caracteres-minimum}
+      API_KEY: ${API_KEY:-cle-api-de-demo-docker-a-remplacer-en-production}
+      # Doit correspondre à une organisation existante ; celle du seed par défaut.
+      API_KEY_ORG_ID: ${API_KEY_ORG_ID:-usine-laitiere-paris}
+      SMTP_HOST: ${SMTP_HOST:-smtp.ethereal.email}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-"NutriChain API" <no-reply@nutrichain.local>}
+    # Applique les migrations versionnées (non destructif) avant de démarrer l'API.
+    command: sh -c "node_modules/.bin/prisma migrate deploy && node dist/server.js"
+
+volumes:
+  pgdata:
+  mongodata:

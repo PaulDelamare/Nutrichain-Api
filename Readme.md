@@ -127,6 +127,19 @@ npm run build    # compilation TypeScript (tsc)
 npm run lint     # ESLint
 ```
 
+### Ou tout lancer avec Docker
+
+```bash
+docker compose up --build   # API (port 3000) + PostgreSQL + MongoDB, migrations appliquées au démarrage
+```
+
+Les valeurs par défaut suffisent pour une démo locale (surchargées par votre `.env` s'il existe).
+Pour seeder la base du conteneur depuis l'hôte (PostgreSQL exposé sur le port 5433) :
+
+```bash
+DATABASE_URL="postgresql://nutrichain:nutrichain@localhost:5433/nutrichain?schema=public" npx prisma db seed
+```
+
 ---
 
 ## Tests
