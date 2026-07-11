@@ -1,0 +1,10 @@
+# Propriétaires de code — relecture demandée automatiquement à l'ouverture d'une PR.
+# Voir https://docs.github.com/articles/about-code-owners
+#
+# Par défaut, le chef de projet est propriétaire de tout le dépôt.
+* @PaulDelamare
+
+# Exemples de découpage par domaine (à activer quand les usernames de l'équipe sont connus) :
+# /src/modules/identity/      @PaulDelamare
+# /src/modules/iot/           @PaulDelamare
+# /prisma/                    @PaulDelamare
