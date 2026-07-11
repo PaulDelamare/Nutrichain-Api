@@ -7,6 +7,7 @@ import { escapeHtml } from '../../../shared/utils/html/escapeHtml';
 import { logger } from '../../../shared/utils/logger/logger';
 import { TelemetryModel } from '../models/telemetry.model';
 import { detectExcursion, TelemetryPoint } from './excursionDetection.service';
+import { BATCH_STATUSES } from '../../logistics/constants/logistics.constants';
 
 /**
  * Service d'alerte chaîne du froid (Objectif SMART n°2).
@@ -114,15 +115,28 @@ export const iotAlertService = {
         return; // anti-spam : on attend la résolution de l'alerte courante
       }
 
-      // 9. Atomique : Alert.create + Audit dans une seule tx Serializable
+      // 9. Atomique : mise en quarantaine des lots stockés + Alert.create + Audit
+      //    dans une seule tx Serializable.
       const alert = await prisma.$transaction(
         async (tx) => {
+          // Sûreté sanitaire : les lots EN_STOCK rangés dans l'équipement en excursion
+          // sont placés en quarantaine (BLOQUE) — un incident matériel ne doit pas laisser
+          // un produit potentiellement altéré partir en transformation ou en expédition.
+          const quarantined = await tx.batch.updateMany({
+            where: {
+              organization_id: cached.equipmentOrgId,
+              id_materiel_actuel: cached.equipmentId,
+              statut: BATCH_STATUSES.IN_STOCK,
+            },
+            data: { statut: BATCH_STATUSES.BLOCKED },
+          });
+
           const created = await tx.alert.create({
             data: {
               organization_id: cached.equipmentOrgId,
               type: 'TEMP_EXCURSION',
               niveau_gravite: 'PANIC',
-              message: `Excursion thermique détectée sur ${sensorId} : pic ${result.peakTemp}°C (seuil ${threshold}°C, ratio ${(result.ratioOverThreshold * 100).toFixed(0)}% sur ${WINDOW_MINUTES}min).`,
+              message: `Excursion thermique détectée sur ${sensorId} : pic ${result.peakTemp}°C (seuil ${threshold}°C, ratio ${(result.ratioOverThreshold * 100).toFixed(0)}% sur ${WINDOW_MINUTES}min). ${quarantined.count} lot(s) mis en quarantaine.`,
               id_materiel: cached.equipmentId,
               related_entity: 'Equipment',
               related_id: cached.equipmentId,
@@ -143,6 +157,7 @@ export const iotAlertService = {
                 peakTemp: result.peakTemp,
                 ratioOverThreshold: result.ratioOverThreshold,
                 windowMinutes: WINDOW_MINUTES,
+                quarantinedBatchesCount: quarantined.count,
               },
             },
             tx
