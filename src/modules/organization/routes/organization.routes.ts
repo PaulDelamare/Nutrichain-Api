@@ -1,6 +1,12 @@
 import { Router } from 'express';
 import { mixedAuth } from '../../../shared/middlewares/mixedAuth';
 import { validateOrganizationQuery } from '../middlewares/validateOrganizationQuery.middleware';
+import { validateCreateEquipment } from '../middlewares/validateEquipment.middleware';
+import {
+  createEquipmentController,
+  getEquipmentLabelController,
+  listLocationsController,
+} from '../controllers/equipment.controller';
 import {
   listAlertsController,
   listAuditLogsController,
@@ -43,5 +49,23 @@ router.get(
 router.get('/organization/suppliers', mixedAuth(READ_ROLES), listSuppliersController);
 router.get('/organization/customers', mixedAuth(READ_ROLES), listCustomersController);
 router.get('/organization/shipments', mixedAuth(READ_ROLES), listShipmentsController);
+router.get('/organization/locations', mixedAuth(READ_ROLES), listLocationsController);
+
+/**
+ * Écriture : le plan d'usine (où sont les frigos, les cuves) est une donnée de configuration.
+ * Seuls les responsables la modifient — un opérateur terrain scanne, il ne déclare pas de
+ * nouveaux matériels.
+ */
+const CONFIG_ROLES = ['owner', 'admin'];
+
+router.post(
+  '/organization/equipment',
+  mixedAuth(CONFIG_ROLES),
+  validateCreateEquipment,
+  createEquipmentController
+);
+
+/** L'étiquette à imprimer et coller sur le matériel : c'est ce que l'opérateur scannera. */
+router.get('/organization/equipment/:id/label', mixedAuth(READ_ROLES), getEquipmentLabelController);
 
 export default router;
