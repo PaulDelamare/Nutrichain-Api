@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { requireAuth } from '../../identity/middlewares/requireAuth.middleware';
 import { requireOrgRole } from '../../identity/middlewares/requireOrgRole.middleware';
 import { auditVerifyController } from '../controllers/auditVerify.controller';
+import { ADMIN_ROLES } from '../../identity/constants/roles.constants';
 
 const router = Router();
 
@@ -60,6 +61,6 @@ const router = Router();
  *       403:
  *         description: Rôle insuffisant (seuls owner / admin)
  */
-router.get('/audit/verify', requireAuth, requireOrgRole(['owner', 'admin']), auditVerifyController);
+router.get('/audit/verify', requireAuth, requireOrgRole(ADMIN_ROLES), auditVerifyController);
 
 export default router;

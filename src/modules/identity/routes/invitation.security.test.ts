@@ -93,16 +93,16 @@ describe('Security & Validation E2E Scenarios (Invitations)', () => {
       expect(res.body.error[0].message).toContain("sélectionné d'Organisation active");
     });
 
-    it("doit refuser (403) si l'utilisateur est connectÃ© dans l'usine, mais a un grade trop faible (ex: member)", async () => {
+    it("doit refuser (403) si l'utilisateur est connecté mais a un grade trop faible (ex: operator)", async () => {
       // Mock de session valide
       vi.mocked(auth.api.getSession).mockResolvedValue({
         session: { activeOrganizationId: 'org_123' } as unknown,
         user: { id: 'user_1' } as unknown,
       });
 
-      // Mock de l'organisation : L'utilisateur est juste "member", mais la route exige "owner" ou "admin"
+      // L'utilisateur est "operator", mais inviter exige owner/admin (ADMIN_ROLES).
       vi.mocked(auth.api.getFullOrganization).mockResolvedValue({
-        members: [{ userId: 'user_1', role: 'member' }],
+        members: [{ userId: 'user_1', role: 'operator' }],
       } as unknown);
 
       const res = await request(app)
@@ -112,7 +112,7 @@ describe('Security & Validation E2E Scenarios (Invitations)', () => {
 
       expect(res.status).toBe(403);
       expect(res.body.error[0].message).toContain('Action refusée');
-      expect(res.body.error[0].message).toContain('Rôle member insuffisant');
+      expect(res.body.error[0].message).toContain('Rôle operator insuffisant');
     });
   });
 

@@ -20,7 +20,7 @@ vi.mock('../../../shared/middlewares/mixedAuth', () => ({
         auth: {
           user: { id: 'u-session', email: 'op@nutrichain.local' },
           activeOrgId: 'org_test_123',
-          role: 'logistics_operator',
+          role: 'operator',
           session: { activeOrganizationId: 'org_test_123' },
         },
       });

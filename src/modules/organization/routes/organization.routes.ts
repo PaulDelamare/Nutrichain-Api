@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { mixedAuth } from '../../../shared/middlewares/mixedAuth';
+import { ALL_ROLES, ADMIN_ROLES } from '../../identity/constants/roles.constants';
 import { validateOrganizationQuery } from '../middlewares/validateOrganizationQuery.middleware';
 import { validateCreateEquipment } from '../middlewares/validateEquipment.middleware';
 import {
@@ -23,7 +24,7 @@ import {
 const router = Router();
 
 // Lectures seules, cloisonnées par organisation — session web ou clé API (mixedAuth).
-const READ_ROLES = ['owner', 'admin', 'member'];
+const READ_ROLES = ALL_ROLES;
 
 router.get('/organization/members', mixedAuth(READ_ROLES), listMembersController);
 router.get('/organization/alerts', mixedAuth(READ_ROLES), listAlertsController);
@@ -56,7 +57,7 @@ router.get('/organization/locations', mixedAuth(READ_ROLES), listLocationsContro
  * Seuls les responsables la modifient — un opérateur terrain scanne, il ne déclare pas de
  * nouveaux matériels.
  */
-const CONFIG_ROLES = ['owner', 'admin'];
+const CONFIG_ROLES = ADMIN_ROLES;
 
 router.post(
   '/organization/equipment',

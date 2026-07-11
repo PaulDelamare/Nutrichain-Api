@@ -4,6 +4,7 @@ import { checkApiKey } from '../../../shared/utils/checkApiKey/checkApiKey';
 import { mixedAuth } from '../../../shared/middlewares/mixedAuth';
 import { requireAuth } from '../../identity/middlewares/requireAuth.middleware';
 import { requireOrgRole } from '../../identity/middlewares/requireOrgRole.middleware';
+import { ALL_ROLES } from '../../identity/constants/roles.constants';
 
 const router = Router();
 
@@ -120,7 +121,7 @@ router.get(
   '/telemetry/:sensor_id/history',
   checkApiKey(),
   requireAuth,
-  requireOrgRole(['owner', 'admin', 'member']),
+  requireOrgRole(ALL_ROLES),
   getSensorHistory
 );
 

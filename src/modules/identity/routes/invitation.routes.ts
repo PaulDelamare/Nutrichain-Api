@@ -4,6 +4,7 @@ import { requireAuth } from '../middlewares/requireAuth.middleware';
 import { requireOrgRole } from '../middlewares/requireOrgRole.middleware';
 import { validateInvitationParams } from '../middlewares/validateInvitation.middleware';
 import { generateInvitation, previewInvitation } from '../controllers/invitation.controller';
+import { ADMIN_ROLES } from '../constants/roles.constants';
 
 const router = Router();
 
@@ -45,7 +46,7 @@ router.post(
   '/identity/invitations',
   checkApiKey(), // 1. Clé d'API requise
   requireAuth, // 2. Doit être identifié en tant qu'utilisateur (Token ou Cookie)
-  requireOrgRole(['owner', 'admin']), // 3. ABAC : Doit Ãªtre un admin/owner de l'organisation active
+  requireOrgRole(ADMIN_ROLES), // 3. ABAC : Doit être un admin/owner de l'organisation active
   validateInvitationParams, // 4. Email propre ? RÃ´le dans la liste ? UUID correct pour Zone ?
   generateInvitation // 5. ExÃ©cution du contrÃ´leur (CrÃ©er DB + Envoyer l'email)
 );
