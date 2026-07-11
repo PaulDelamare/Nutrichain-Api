@@ -193,6 +193,7 @@ async function runOperation(
           quantite_actuelle: item.payload.quantite_actuelle,
           unite_code: item.payload.unite_code,
           statut_controle: item.payload.statut_controle,
+          id_materiel: item.payload.id_materiel, // emplacement de stockage (scan mobile)
           received_by: userId, // forcé serveur-side (anti-usurpation)
         },
         tx

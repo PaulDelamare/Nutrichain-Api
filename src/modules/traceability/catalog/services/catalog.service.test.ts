@@ -58,6 +58,7 @@ describe('CatalogService', () => {
             produit: { select: { nom: true, code_gtin: true } },
             unite: { select: { nom: true } },
             user: { select: { name: true, email: true } },
+            materiel: { select: { nom: true, lieu: { select: { nom: true } } } },
           },
         })
       );

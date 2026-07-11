@@ -14,6 +14,8 @@ export interface CreateBatchInput {
   date_peremption?: Date;
   /** Statut initial du lot. Défaut EN_STOCK ; BLOQUE pour une réception non-conforme. */
   statut?: BatchStatus;
+  /** Emplacement de stockage du lot (matériel) — permet de connaître sa position. */
+  id_materiel_actuel?: string;
 }
 
 /**
@@ -37,6 +39,7 @@ export const batchService = {
         created_by: data.created_by,
         date_peremption: data.date_peremption,
         statut: data.statut ?? BATCH_STATUSES.IN_STOCK,
+        id_materiel_actuel: data.id_materiel_actuel,
       },
     });
   },

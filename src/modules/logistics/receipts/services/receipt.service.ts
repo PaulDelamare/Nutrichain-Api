@@ -26,6 +26,8 @@ export interface CreateReceiptData {
   received_by: string;
   quantite_actuelle: number;
   unite_code: string;
+  /** Emplacement de stockage (matériel) où le lot reçu est rangé — optionnel. */
+  id_materiel?: string;
 }
 
 /**
@@ -68,6 +70,21 @@ async function createReceiptInTx(tx: Prisma.TransactionClient, data: CreateRecei
     }
   }
 
+  // Emplacement de stockage : on vérifie que le matériel appartient à l'organisation
+  // (garde cross-tenant) avant de rattacher le lot à sa position.
+  if (data.id_materiel) {
+    const equipment = await tx.equipment.findFirst({
+      where: { id: data.id_materiel, organization_id: data.organization_id },
+    });
+    if (!equipment) {
+      throw new APIError(404, {
+        error: [
+          { field: 'id_materiel', message: 'Matériel de stockage introuvable ou accès refusé' },
+        ],
+      });
+    }
+  }
+
   const receipt = await tx.receipt.create({
     data: {
       organization_id: data.organization_id,
@@ -91,6 +108,7 @@ async function createReceiptInTx(tx: Prisma.TransactionClient, data: CreateRecei
     unite_code: data.unite_code,
     created_by: data.received_by,
     statut: isQuarantined ? BATCH_STATUSES.BLOCKED : BATCH_STATUSES.IN_STOCK,
+    id_materiel_actuel: data.id_materiel,
   });
 
   // Événement EPCIS ObjectEvent : entrée du lot dans la chaîne lors de la réception.
