@@ -94,3 +94,26 @@ export const generateInvitation = catchAsync(async (req: AuthenticatedRequest, r
     expiresAt,
   });
 });
+
+/**
+ * Prévisualisation publique d'une invitation (page d'inscription du front,
+ * avant toute session). Volontairement minimal : email, rôle, statut,
+ * expiration — la validation dure (statut/expiration) reste dans guardSignUp
+ * au moment du sign-up.
+ */
+export const previewInvitation = catchAsync(async (req: AuthenticatedRequest, res: Response) => {
+  const token = req.params.token as string;
+
+  const invitation = await bdd.invitation.findFirst({
+    where: { id: token },
+    select: { email: true, role: true, status: true, expiresAt: true },
+  });
+
+  if (!invitation) {
+    throw new APIError(404, {
+      error: [{ field: 'token', message: 'Invitation introuvable ou lien invalide.' }],
+    });
+  }
+
+  sendSuccess(res, 200, 'Invitation récupérée', invitation);
+});

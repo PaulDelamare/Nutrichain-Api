@@ -20,6 +20,7 @@ vi.mock('../controllers/invitation.controller', () => ({
   generateInvitation: vi.fn((req, res) =>
     res.status(201).json({ status: 201, message: 'Success' })
   ),
+  previewInvitation: vi.fn((req, res) => res.status(200).json({ status: 200, message: 'OK' })),
 }));
 
 const VALID_API_KEY = 'TEST_SECRET_KEY';

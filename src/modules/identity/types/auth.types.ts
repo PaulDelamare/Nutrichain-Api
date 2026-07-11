@@ -2,6 +2,7 @@ import { Request } from 'express';
 import { Alert, Batch, Receipt } from '@prisma/client';
 import { SyncScansPayload } from '../../sync/types/sync.types';
 import { EventsQuery } from '../../traceability/events/middlewares/eventsQuery.schema';
+import type { OrganizationQuery } from '../../organization/middlewares/organizationQuery.schema';
 import type { ReceiptPayload } from '../../logistics/receipts/middlewares/receiptPayload.schema';
 import type { QuarantineLiftPayload } from '../../logistics/receipts/middlewares/quarantineLift.schema';
 import type { ShipmentPayload } from '../../logistics/shipments/middlewares/shipmentPayload.schema';
@@ -70,4 +71,6 @@ export interface AuthenticatedRequest extends Request {
   validatedResolveAlert?: { note?: string };
   // Query params validés de GET /api/traceability/events — typé via Infer du schéma VineJS
   validatedEventsQuery?: EventsQuery;
+
+  validatedOrganizationQuery?: OrganizationQuery;
 }

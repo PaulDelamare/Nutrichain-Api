@@ -3,7 +3,7 @@ import { checkApiKey } from '../../../shared/utils/checkApiKey/checkApiKey';
 import { requireAuth } from '../middlewares/requireAuth.middleware';
 import { requireOrgRole } from '../middlewares/requireOrgRole.middleware';
 import { validateInvitationParams } from '../middlewares/validateInvitation.middleware';
-import { generateInvitation } from '../controllers/invitation.controller';
+import { generateInvitation, previewInvitation } from '../controllers/invitation.controller';
 
 const router = Router();
 
@@ -49,5 +49,9 @@ router.post(
   validateInvitationParams, // 4. Email propre ? RÃ´le dans la liste ? UUID correct pour Zone ?
   generateInvitation // 5. ExÃ©cution du contrÃ´leur (CrÃ©er DB + Envoyer l'email)
 );
+
+// Prévisualisation d'une invitation depuis la page d'inscription (pas encore de
+// session utilisateur) : protégée par la clé API seulement.
+router.get('/identity/invitations/:token/preview', checkApiKey(), previewInvitation);
 
 export default router;
