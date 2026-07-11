@@ -17,10 +17,10 @@ import { checkApiKey } from '../utils/checkApiKey/checkApiKey';
 import { requireOrgRole } from '../../modules/identity/middlewares/requireOrgRole.middleware';
 
 describe('mixedAuth', () => {
-  const buildReq = (apiKey?: string): Request =>
+  const buildReq = (apiKey?: string, sessionHeaders: Record<string, string> = {}): Request =>
     ({
-      headers: apiKey ? { 'x-api-key': apiKey } : {},
-    }) as Request;
+      headers: { ...(apiKey ? { 'x-api-key': apiKey } : {}), ...sessionHeaders },
+    }) as unknown as Request;
 
   const res = {} as Response;
 
@@ -78,6 +78,42 @@ describe('mixedAuth', () => {
     mixedAuth(['admin'])(buildReq(), res, next);
 
     expect(next).toHaveBeenCalledWith();
+  });
+
+  it('doit privilégier la session quand un Bearer accompagne la clé API', () => {
+    // Les clients porteurs d'une session (mobile, front SSR) envoient aussi la clé API,
+    // exigée par /api/auth/*. Basculer en M2M sur sa seule présence ignorerait l'utilisateur
+    // et bornerait l'organisation à API_KEY_ORG_ID : chacun verrait les données d'une autre
+    // organisation que la sienne.
+    const next = vi.fn() as NextFunction;
+
+    mixedAuth(['owner'])(buildReq('any-key', { authorization: 'Bearer jwt-123' }), res, next);
+
+    expect(requireOrgRole).toHaveBeenCalledWith(['owner']);
+    expect(checkApiKey).not.toHaveBeenCalled();
+  });
+
+  it('doit privilégier la session quand un cookie de session accompagne la clé API', () => {
+    const next = vi.fn() as NextFunction;
+
+    mixedAuth(['owner'])(
+      buildReq('any-key', { cookie: 'better-auth.session_token=abc; theme=dark' }),
+      res,
+      next
+    );
+
+    expect(requireOrgRole).toHaveBeenCalledWith(['owner']);
+    expect(checkApiKey).not.toHaveBeenCalled();
+  });
+
+  it('reste en M2M avec une clé API et des cookies non liés à une session', () => {
+    // Un cookie quelconque ne doit pas priver une intégration machine de son mode d'auth.
+    const next = vi.fn() as NextFunction;
+
+    mixedAuth(['owner'])(buildReq('any-key', { cookie: 'theme=dark' }), res, next);
+
+    expect(checkApiKey).toHaveBeenCalled();
+    expect(requireOrgRole).not.toHaveBeenCalled();
   });
 
   it("propage une erreur d'authentification sans la masquer", () => {

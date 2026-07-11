@@ -3,6 +3,7 @@ import { getProducts, getBatches } from '../controllers/catalog.controller';
 import { checkApiKey } from '../../../../shared/utils/checkApiKey/checkApiKey';
 import { requireAuth } from '../../../identity/middlewares/requireAuth.middleware';
 import { requireOrgRole } from '../../../identity/middlewares/requireOrgRole.middleware';
+import { CATALOG_READ_ROLES } from '../constants/catalog.constants';
 
 const router = Router();
 
@@ -62,7 +63,7 @@ router.use('/traceability/batches', requireAuth);
  *       403:
  *         description: Accès refusé (rôle insuffisant ou organisation non sélectionnée)
  */
-router.get('/traceability/products', requireOrgRole(['owner', 'admin', 'member']), getProducts);
+router.get('/traceability/products', requireOrgRole(CATALOG_READ_ROLES), getProducts);
 
 /**
  * @swagger
@@ -81,6 +82,6 @@ router.get('/traceability/products', requireOrgRole(['owner', 'admin', 'member']
  *       403:
  *         description: Accès refusé (rôle insuffisant ou organisation non sélectionnée)
  */
-router.get('/traceability/batches', requireOrgRole(['owner', 'admin', 'member']), getBatches);
+router.get('/traceability/batches', requireOrgRole(CATALOG_READ_ROLES), getBatches);
 
 export default router;
