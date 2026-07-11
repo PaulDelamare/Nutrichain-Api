@@ -42,11 +42,10 @@ function signedInAs(role: string): void {
 describe('accès au catalogue par rôle', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("autorise l'opérateur logistique, la persona de l'application mobile", async () => {
-    // Il doit choisir un produit pour saisir une réception, opération que /api/sync/scans
-    // lui accorde déjà. Un 403 ici rend la réception impossible sur le terrain — et le
-    // compte de démo, `owner`, masquait le trou.
-    signedInAs('logistics_operator');
+  it("autorise l'opérateur, la persona de l'application mobile", async () => {
+    // Il doit choisir un produit pour saisir une réception (opération que /api/sync/scans
+    // lui accorde). Un 403 ici rendrait la réception impossible sur le terrain.
+    signedInAs('operator');
 
     const response = await request(app).get('/api/traceability/products');
 
@@ -54,7 +53,7 @@ describe('accès au catalogue par rôle', () => {
   });
 
   it('autorise le contrôle qualité', async () => {
-    signedInAs('quality_control');
+    signedInAs('quality');
 
     const response = await request(app).get('/api/traceability/batches');
 

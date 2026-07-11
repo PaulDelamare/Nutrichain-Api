@@ -1,8 +1,60 @@
 /**
- * Les rôles autorisés dans l'application NutriChain.
- * Définit la hiérarchie et les accès à travers les Zones/Organisations.
+ * Vocabulaire de rôles CANONIQUE et UNIQUE de NutriChain.
+ *
+ * Un membre a exactement un rôle (Better-Auth `Member.role`, mono-valué). Toute
+ * autorisation en découle via les ensembles ci-dessous — c'est la SEULE source de
+ * vérité des droits, appliquée à toutes les gardes de routes.
+ *
+ * (Remplace les anciens vocabulaires qui se télescopaient : `member`, `manager`,
+ * et les `logistics_*` / `quality_control`.)
  */
-export const USER_ROLES = ['owner', 'admin', 'manager', 'operator'] as const;
+export const ROLES = {
+  /** Créateur de l'organisation — tous les droits, y compris la gestion de l'org. */
+  OWNER: 'owner',
+  /** Tous les droits métier + gestion de l'org (inviter, configurer). */
+  ADMIN: 'admin',
+  /** Décisions qualité / sécurité : levée de quarantaine, rappel, contrôles qualité. */
+  QUALITY: 'quality',
+  /** Opérations terrain : réception, transformation, expédition. */
+  OPERATOR: 'operator',
+  /** Lecture seule. */
+  VIEWER: 'viewer',
+} as const;
+
+export type Role = (typeof ROLES)[keyof typeof ROLES];
+
+/** Lectures — tous les rôles. */
+export const ALL_ROLES: Role[] = [
+  ROLES.OWNER,
+  ROLES.ADMIN,
+  ROLES.QUALITY,
+  ROLES.OPERATOR,
+  ROLES.VIEWER,
+];
+
+/** Écritures métier (réception, transformation, expédition, scans terrain). */
+export const WRITE_ROLES: Role[] = [ROLES.OWNER, ROLES.ADMIN, ROLES.OPERATOR];
+
+/**
+ * Décisions qualité / sécurité (levée de quarantaine, rappel, résolution d'alerte,
+ * contrôles qualité). L'opérateur en est exclu : séparation des tâches HACCP —
+ * celui qui réceptionne ne valide pas sa propre quarantaine.
+ */
+export const QUALITY_ROLES: Role[] = [ROLES.OWNER, ROLES.ADMIN, ROLES.QUALITY];
+
+/** Gestion de l'organisation (inviter, configurer, vérifier l'audit). */
+export const ADMIN_ROLES: Role[] = [ROLES.OWNER, ROLES.ADMIN];
+
+/**
+ * Rôles proposés à l'invitation. `owner` en est absent : il n'y a qu'un propriétaire,
+ * le créateur de l'organisation — on n'invite pas un second owner.
+ */
+export const INVITABLE_ROLES = [ROLES.ADMIN, ROLES.QUALITY, ROLES.OPERATOR, ROLES.VIEWER] as const;
+
+/**
+ * @deprecated Conservé pour la validation d'invitation ; alias de `INVITABLE_ROLES`.
+ */
+export const USER_ROLES = INVITABLE_ROLES;
 
 /**
  * Configuration des expirations.

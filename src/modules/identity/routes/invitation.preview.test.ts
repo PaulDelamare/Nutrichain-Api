@@ -37,7 +37,7 @@ describe('GET /identity/invitations/:token/preview (page inscription du front)',
     const expiresAt = new Date('2026-08-01T00:00:00.000Z');
     vi.mocked(bdd.invitation.findFirst).mockResolvedValue({
       email: 'invite@nutrichain.local',
-      role: 'member',
+      role: 'viewer',
       status: 'pending',
       expiresAt,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -48,7 +48,7 @@ describe('GET /identity/invitations/:token/preview (page inscription du front)',
     expect(res.status).toBe(200);
     expect(res.body.data).toEqual({
       email: 'invite@nutrichain.local',
-      role: 'member',
+      role: 'viewer',
       status: 'pending',
       expiresAt: expiresAt.toISOString(),
     });

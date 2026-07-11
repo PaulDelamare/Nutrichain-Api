@@ -4,6 +4,7 @@ import { getBatchGenealogy, triggerRecall } from '../controllers/recall.controll
 import { publicScanBatch } from '../controllers/publicScan.controller';
 import { validateTransformationParams } from '../middlewares/validateTransformation.middleware';
 import { requireAuth } from '../../../identity/middlewares/requireAuth.middleware';
+import { ALL_ROLES, WRITE_ROLES, QUALITY_ROLES } from '../../../identity/constants/roles.constants';
 import { requireOrgRole } from '../../../identity/middlewares/requireOrgRole.middleware';
 import rateLimit from 'express-rate-limit';
 
@@ -85,7 +86,7 @@ router.get('/public/scan/:id', publicScanLimiter, publicScanBatch);
 router.post(
   '/traceability/transformations',
   requireAuth,
-  requireOrgRole(['owner', 'admin', 'member']),
+  requireOrgRole(WRITE_ROLES),
   validateTransformationParams,
   createTransformation
 );
@@ -100,7 +101,7 @@ router.post(
 router.get(
   '/traceability/batches/:id/genealogy',
   requireAuth,
-  requireOrgRole(['owner', 'admin', 'member']),
+  requireOrgRole(ALL_ROLES),
   getBatchGenealogy
 );
 
@@ -115,7 +116,7 @@ router.get(
 router.post(
   '/traceability/batches/:id/recall',
   requireAuth,
-  requireOrgRole(['owner', 'admin']),
+  requireOrgRole(QUALITY_ROLES),
   triggerRecall
 );
 

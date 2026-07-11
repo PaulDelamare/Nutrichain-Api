@@ -109,7 +109,7 @@ export const auth = betterAuth({
                   id: crypto.randomUUID(),
                   organizationId: invitation.organizationId,
                   userId: user.id,
-                  role: invitation.role || 'member',
+                  role: invitation.role || 'viewer',
                   createdAt: new Date(),
                 },
               });

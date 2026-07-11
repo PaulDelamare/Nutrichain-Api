@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import express from 'express';
 import { mixedAuth } from '../../../shared/middlewares/mixedAuth';
+import { ALL_ROLES, ADMIN_ROLES } from '../../identity/constants/roles.constants';
 import {
   importProductsController,
   importCustomersController,
@@ -21,21 +22,17 @@ const router = Router();
 router.post(
   '/connectors/imports/products',
   CSV_BODY,
-  mixedAuth(['owner', 'admin']),
+  mixedAuth(ADMIN_ROLES),
   importProductsController
 );
 
 router.post(
   '/connectors/imports/customers',
   CSV_BODY,
-  mixedAuth(['owner', 'admin']),
+  mixedAuth(ADMIN_ROLES),
   importCustomersController
 );
 
-router.get(
-  '/connectors/exports/events',
-  mixedAuth(['owner', 'admin', 'member']),
-  exportEventsController
-);
+router.get('/connectors/exports/events', mixedAuth(ALL_ROLES), exportEventsController);
 
 export default router;

@@ -7,29 +7,8 @@
  * - Éviter les typos et strings magiques dans le code
  */
 
-// ========== RÔLES MÉTIER LOGISTICS ==========
-/**
- * Énumération des rôles spécifiques au domaine Logistics.
- *
- * Ces rôles seront stockés dans Member.role (string) et matchés lors de la vérification.
- * Chaque rôle représente un ensemble de permissions (voir ROUTE_ROLE_MATRIX).
- */
-export const LOGISTICS_ROLES = {
-  /** Administrateur: Toutes les opérations + statistiques */
-  ADMIN: 'logistics_admin',
-
-  /** Opérateur: Créer des réceptions, consulter ses propres données, lister */
-  OPERATOR: 'logistics_operator',
-
-  /** Lecteur: Consultation uniquement (read-only) */
-  VIEWER: 'logistics_viewer',
-
-  /** Qualité: Lecture + gestion des tests de qualité */
-  QA: 'quality_control',
-
-  /** Gérant: Accès complet au site logistique */
-  OWNER: 'logistics_owner',
-} as const;
+// Les rôles ont été unifiés dans le vocabulaire canonique unique :
+// `src/modules/identity/constants/roles.constants.ts` (ROLES + *_ROLES).
 
 // ========== STATUTS DE RÉCEPTION ==========
 /**

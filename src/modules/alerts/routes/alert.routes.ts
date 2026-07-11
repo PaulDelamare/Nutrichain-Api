@@ -4,6 +4,7 @@ import { requireOrgRole } from '../../identity/middlewares/requireOrgRole.middle
 import { verifyAlertAccess } from '../middlewares/verifyAlertAccess.middleware';
 import { validateResolveAlert } from '../middlewares/validateResolveAlert.middleware';
 import { resolveAlertController } from '../controllers/resolveAlert.controller';
+import { QUALITY_ROLES } from '../../identity/constants/roles.constants';
 
 const router = Router();
 
@@ -71,7 +72,7 @@ const router = Router();
 router.patch(
   '/alerts/:id/resolve',
   requireAuth,
-  requireOrgRole(['owner', 'admin']),
+  requireOrgRole(QUALITY_ROLES),
   // Access check (`verifyAlertAccess`) AVANT la validation du body : un cross-tenant
   // doit recevoir 404 anti-enum, même si son body était par ailleurs invalide.
   verifyAlertAccess,

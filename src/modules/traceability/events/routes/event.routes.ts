@@ -2,11 +2,12 @@ import { Router } from 'express';
 import { listEventsController } from '../controllers/event.controller';
 import { validateEventsQuery } from '../middlewares/validateEventsQuery.middleware';
 import { mixedAuth } from '../../../../shared/middlewares/mixedAuth';
+import { ALL_ROLES } from '../../../identity/constants/roles.constants';
 
 const router = Router();
 
 // Lecture autorisée aux rôles org (session) ou via clé API (M2M, ex: connecteurs ERP)
-const READ_ROLES = ['owner', 'admin', 'member'];
+const READ_ROLES = ALL_ROLES;
 
 /**
  * @swagger
