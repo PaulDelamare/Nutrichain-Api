@@ -17,7 +17,11 @@ export const auth = betterAuth({
   baseURL: process.env.API_URL || 'http://localhost:3000',
   // Le front SvelteKit vit sur une autre origine que l'API : sans elle dans
   // trustedOrigins, Better-Auth rejette sign-in/sign-up (« Invalid origin »).
-  trustedOrigins: [process.env.FRONTEND_URL || 'http://localhost:5173'],
+  trustedOrigins: [
+    process.env.FRONTEND_URL || 'http://localhost:5173',
+    // vite preview (e2e Playwright du front) sert le build sur 4173 — hors production.
+    ...(process.env.NODE_ENV !== 'production' ? ['http://localhost:4173'] : []),
+  ],
   // 🛡️ Permet d'accepter les requêtes d'API externes (Postman, Bruno, et IoT) qui n'ont pas pu générer automatiquement d'Origin via un navigateur Moteur.
   advanced: {
     // Aligne Better-Auth sur le standard UUID v4 du reste du projet (Prisma @default(uuid)).
