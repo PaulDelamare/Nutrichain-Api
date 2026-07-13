@@ -46,7 +46,7 @@ describe('CatalogService', () => {
       );
     });
 
-    it('doit exposer produit, unité et créateur du lot (payload catalogue)', async () => {
+    it("n'expose PAS l'auteur du lot par défaut (nom + email = donnée personnelle)", async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       vi.mocked(prisma.batch.findMany).mockResolvedValue([] as any);
 
@@ -57,9 +57,23 @@ describe('CatalogService', () => {
           include: {
             produit: { select: { nom: true, code_gtin: true } },
             unite: { select: { nom: true } },
-            user: { select: { name: true, email: true } },
             materiel: { select: { nom: true, lieu: { select: { nom: true } } } },
           },
+        })
+      );
+    });
+
+    it("expose l'auteur du lot UNIQUEMENT pour l'administration", async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(prisma.batch.findMany).mockResolvedValue([] as any);
+
+      await catalogService.getAllBatches('org-1', undefined, true);
+
+      expect(prisma.batch.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          include: expect.objectContaining({
+            user: { select: { name: true, email: true } },
+          }),
         })
       );
     });

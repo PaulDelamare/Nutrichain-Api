@@ -440,7 +440,7 @@ model Receipt {
   organization               Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
   id_fournisseur             String
   fournisseur                Supplier     @relation(fields: [id_fournisseur], references: [id])
-  shipment_id                String       @unique
+  shipment_id                String
   date_reception             DateTime
   temperature_camion_summary Json?
   temperature_camion_raw     Json?
@@ -448,6 +448,7 @@ model Receipt {
   received_by                String
   user                       User         @relation(fields: [received_by], references: [id])
 
+  @@unique([organization_id, shipment_id])
   @@index([organization_id])
 }
 
@@ -474,7 +475,7 @@ model Shipment {
   organization     Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
   id_client        String
   client           Customer     @relation(fields: [id_client], references: [id])
-  shipment_id        String   @unique
+  shipment_id        String
   date_envoi         DateTime
   transporteur       String
   destination_adresse String?
@@ -485,6 +486,7 @@ model Shipment {
   liaisons   Liaison_Shipment[]
   mouvements Batch_Mouvement[]
 
+  @@unique([organization_id, shipment_id])
   @@index([organization_id])
 }
 

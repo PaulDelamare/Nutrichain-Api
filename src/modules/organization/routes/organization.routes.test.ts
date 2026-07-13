@@ -39,9 +39,10 @@ const buildApp = () => {
   return app;
 };
 
-const authAs = (orgId: string) => {
+const authAs = (orgId: string, role = 'operator') => {
   sessionAuthMock.mockImplementation((req: AuthenticatedRequest, _res, next) => {
     req.activeOrgId = orgId;
+    req.auth = { role } as AuthenticatedRequest['auth'];
     next();
   });
 };
@@ -90,13 +91,30 @@ describe('Organization routes (façade de lecture front)', () => {
     expect(organizationService.listMovements).not.toHaveBeenCalled();
   });
 
-  it('GET /organization/movements : lotId + limit transmis au service (fiche lot)', async () => {
-    authAs('org-1');
+  it('GET /organization/movements : un opérateur ne révèle PAS l’auteur des mouvements', async () => {
+    authAs('org-1', 'operator');
     const lotId = '11111111-1111-4111-8111-111111111111';
 
     await request(buildApp()).get(`/api/organization/movements?lotId=${lotId}&limit=10`);
 
-    expect(organizationService.listMovements).toHaveBeenCalledWith('org-1', { lotId, limit: 10 });
+    expect(organizationService.listMovements).toHaveBeenCalledWith('org-1', {
+      lotId,
+      limit: 10,
+      revealAuthor: false,
+    });
+  });
+
+  it('GET /organization/movements : un admin révèle l’auteur', async () => {
+    authAs('org-1', 'admin');
+    const lotId = '11111111-1111-4111-8111-111111111111';
+
+    await request(buildApp()).get(`/api/organization/movements?lotId=${lotId}&limit=10`);
+
+    expect(organizationService.listMovements).toHaveBeenCalledWith('org-1', {
+      lotId,
+      limit: 10,
+      revealAuthor: true,
+    });
   });
 
   it("chaque endpoint reste derrière l'auth : 401 quand sessionAuth rejette", async () => {

@@ -3,6 +3,7 @@ import { catchAsync } from '../../../shared/utils/errorHandler/catchAsync';
 import { sendSuccess } from '../../../shared/utils/returnSuccess/returnSuccess';
 import { AuthenticatedRequest } from '../../identity/types/auth.types';
 import { organizationService } from '../services/organization.service';
+import { ADMIN_ROLES, type Role } from '../../identity/constants/roles.constants';
 
 const DEFAULT_AUDIT_LOGS_LIMIT = 30;
 
@@ -50,9 +51,13 @@ export const listEquipmentController = catchAsync(
 export const listMovementsController = catchAsync(
   async (req: AuthenticatedRequest, res: Response) => {
     const { limit, lotId } = req.validatedOrganizationQuery ?? {};
+    // Le nom de l'auteur d'un mouvement est une donnée personnelle : seule l'administration le voit.
+    // L'opérateur garde tout l'historique métier du lot, sans savoir QUI a fait chaque geste.
+    const revealAuthor = ADMIN_ROLES.includes(req.auth?.role as Role);
     const movements = await organizationService.listMovements(req.activeOrgId as string, {
       limit,
       lotId,
+      revealAuthor,
     });
     sendSuccess(res, 200, 'Mouvements de lots récupérés', movements);
   }
