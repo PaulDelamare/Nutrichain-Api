@@ -105,17 +105,31 @@ describe('OrganizationService (façade de lecture pour le front)', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     vi.mocked(prisma.batch_Mouvement.findMany).mockResolvedValue([] as any);
 
+    // Sans `revealAuthor`, l'identité de l'auteur n'est PAS jointe : un opérateur voit l'historique
+    // matière du lot, jamais qui a fait chaque geste (donnée personnelle réservée à l'admin).
     await organizationService.listMovements(ORG, { limit: 100 });
 
     expect(prisma.batch_Mouvement.findMany).toHaveBeenCalledWith({
       where: { lot: { organization_id: ORG } },
       include: {
         lot: { select: { id: true, produit: { select: { nom: true } } } },
-        user: { select: { name: true } },
       },
       orderBy: { created_at: 'desc' },
       take: 100,
     });
+  });
+
+  it("listMovements : joint le nom de l'auteur UNIQUEMENT pour l'administration", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(prisma.batch_Mouvement.findMany).mockResolvedValue([] as any);
+
+    await organizationService.listMovements(ORG, { limit: 100, revealAuthor: true });
+
+    expect(prisma.batch_Mouvement.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        include: expect.objectContaining({ user: { select: { name: true } } }),
+      })
+    );
   });
 
   it('listMovements : filtre par lot quand lotId est fourni (fiche lot)', async () => {

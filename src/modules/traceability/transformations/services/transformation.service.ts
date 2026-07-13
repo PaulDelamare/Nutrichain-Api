@@ -57,6 +57,21 @@ export const transformationService = {
         });
       }
 
+      // 0 bis. La CUVE aussi — le contrôle manquait, et son absence ne salissait pas qu'une
+      // référence : la quarantaine automatique sur excursion de température croise
+      // `organization_id` ET `id_materiel_actuel`. Un lot fini rattaché au matériel d'une AUTRE
+      // organisation n'est donc bloqué par personne — ni par la sienne (le matériel n'y est pas),
+      // ni par l'autre (le lot n'y est pas). Il échappe définitivement au rappel.
+      const materiel = await tx.equipment.findFirst({
+        where: { id: data.id_materiel, organization_id: data.organization_id },
+        select: { id: true },
+      });
+      if (!materiel) {
+        throw new APIError(404, {
+          error: [{ field: 'id_materiel', message: 'Matériel introuvable ou accès refusé.' }],
+        });
+      }
+
       const gs1Prefix = await resolveGs1Prefix(tx, data.organization_id);
 
       // 1. Validation des lots parents

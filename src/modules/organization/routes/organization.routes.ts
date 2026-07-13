@@ -1,6 +1,11 @@
 import { Router } from 'express';
 import { sessionAuth } from '../../../shared/middlewares/sessionAuth';
-import { ALL_ROLES, ADMIN_ROLES, QUALITY_ROLES } from '../../identity/constants/roles.constants';
+import {
+  ALL_ROLES,
+  ADMIN_ROLES,
+  QUALITY_ROLES,
+  PERSONAL_DATA_ROLES,
+} from '../../identity/constants/roles.constants';
 import { validateOrganizationQuery } from '../middlewares/validateOrganizationQuery.middleware';
 import { validateCreateEquipment } from '../middlewares/validateEquipment.middleware';
 import { validateCreateQualityControl } from '../middlewares/validateQualityControl.middleware';
@@ -28,16 +33,20 @@ import {
 
 const router = Router();
 
-// Lectures seules, cloisonnées par organisation — SESSION OBLIGATOIRE.
-// La clé API n'y donne plus accès : `/organization/members` expose l'annuaire nominatif des
-// salariés (donnée personnelle), et cette clé est publique par construction.
+// Lectures seules, cloisonnées par organisation — session obligatoire.
+//
+// Deux niveaux, selon la nature de la donnée :
+// - MÉTIER (catalogue, lots, alertes, équipement) → tous les rôles peuvent lire.
+// - PERSONNELLE (annuaire du personnel, journal nominatif, coordonnées clients/fournisseurs,
+//   nom de l'auteur des mouvements) → administration seule. Elles étaient ouvertes à tous, viewer
+//   compris : un compte en lecture seule voyait l'e-mail et le statut MFA de chaque salarié.
 const READ_ROLES = ALL_ROLES;
 
-router.get('/organization/members', sessionAuth(READ_ROLES), listMembersController);
+router.get('/organization/members', sessionAuth(PERSONAL_DATA_ROLES), listMembersController);
 router.get('/organization/alerts', sessionAuth(READ_ROLES), listAlertsController);
 router.get(
   '/organization/audit-logs',
-  sessionAuth(READ_ROLES),
+  sessionAuth(PERSONAL_DATA_ROLES),
   validateOrganizationQuery,
   listAuditLogsController
 );
@@ -52,14 +61,16 @@ router.get(
   listQuarantineBatchesController
 );
 router.get('/organization/equipment', sessionAuth(READ_ROLES), listEquipmentController);
+// Métier (l'opérateur en a besoin pour l'historique d'un lot), MAIS le nom de l'auteur des
+// mouvements — seule donnée personnelle — est masqué pour les non-administrateurs, dans le service.
 router.get(
   '/organization/movements',
   sessionAuth(READ_ROLES),
   validateOrganizationQuery,
   listMovementsController
 );
-router.get('/organization/suppliers', sessionAuth(READ_ROLES), listSuppliersController);
-router.get('/organization/customers', sessionAuth(READ_ROLES), listCustomersController);
+router.get('/organization/suppliers', sessionAuth(PERSONAL_DATA_ROLES), listSuppliersController);
+router.get('/organization/customers', sessionAuth(PERSONAL_DATA_ROLES), listCustomersController);
 router.get('/organization/shipments', sessionAuth(READ_ROLES), listShipmentsController);
 router.get('/organization/locations', sessionAuth(READ_ROLES), listLocationsController);
 

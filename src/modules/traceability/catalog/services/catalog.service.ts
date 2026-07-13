@@ -14,7 +14,7 @@ export const catalogService = {
   /**
    * Récupère la liste de tous les lots (batches) en cours de suivi
    */
-  async getAllBatches(organization_id: string, search?: string) {
+  async getAllBatches(organization_id: string, search?: string, revealAuthor = false) {
     return await prisma.batch.findMany({
       where: {
         organization_id,
@@ -29,7 +29,9 @@ export const catalogService = {
       include: {
         produit: { select: { nom: true, code_gtin: true } },
         unite: { select: { nom: true } },
-        user: { select: { name: true, email: true } },
+        // Le nom ET l'e-mail de l'auteur du lot ne sont joints que pour l'administration : c'est une
+        // donnée personnelle, inutile à un opérateur qui consulte le catalogue.
+        ...(revealAuthor ? { user: { select: { name: true, email: true } } } : {}),
         // Emplacement de stockage (matériel → lieu) : permet de connaître la position du lot.
         materiel: { select: { nom: true, lieu: { select: { nom: true } } } },
       },

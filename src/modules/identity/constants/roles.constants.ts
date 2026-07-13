@@ -46,6 +46,17 @@ export const QUALITY_ROLES: Role[] = [ROLES.OWNER, ROLES.ADMIN, ROLES.QUALITY];
 export const ADMIN_ROLES: Role[] = [ROLES.OWNER, ROLES.ADMIN];
 
 /**
+ * Lecture de DONNÉES PERSONNELLES : annuaire nominatif du personnel, journal d'audit « qui a fait
+ * quoi », coordonnées des clients et fournisseurs. Réservé à l'administration.
+ *
+ * Ces lectures étaient ouvertes à `ALL_ROLES` (donc au `viewer`, lecture seule) : le rôle le plus
+ * faible voyait l'e-mail et le statut MFA de chaque salarié, et le journal de leurs actions. C'est
+ * une violation du moindre privilège et un enjeu RGPD — le DPIA n'aurait pas pu le justifier.
+ * Les lectures purement MÉTIER (catalogue, lots, événements, alertes) restent en `ALL_ROLES`.
+ */
+export const PERSONAL_DATA_ROLES: Role[] = [ROLES.OWNER, ROLES.ADMIN];
+
+/**
  * Rôles proposés à l'invitation. `owner` en est absent : il n'y a qu'un propriétaire,
  * le créateur de l'organisation — on n'invite pas un second owner.
  */

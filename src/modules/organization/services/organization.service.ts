@@ -57,7 +57,10 @@ export const organizationService = {
     });
   },
 
-  async listMovements(organizationId: string, opts: { lotId?: string; limit?: number } = {}) {
+  async listMovements(
+    organizationId: string,
+    opts: { lotId?: string; limit?: number; revealAuthor?: boolean } = {}
+  ) {
     return prisma.batch_Mouvement.findMany({
       // Batch_Mouvement n'a pas d'organization_id : le cloisonnement passe par le lot.
       where: {
@@ -66,7 +69,9 @@ export const organizationService = {
       },
       include: {
         lot: { select: { id: true, produit: { select: { nom: true } } } },
-        user: { select: { name: true } },
+        // L'identité de l'auteur n'est jointe que pour l'administration : un `select` conditionnel
+        // au niveau de la requête, pour ne pas la faire remonter puis l'oublier en aval.
+        ...(opts.revealAuthor ? { user: { select: { name: true } } } : {}),
       },
       orderBy: { created_at: 'desc' },
       ...(opts.limit ? { take: opts.limit } : {}),

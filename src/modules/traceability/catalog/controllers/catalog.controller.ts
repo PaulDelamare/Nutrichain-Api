@@ -4,6 +4,7 @@ import { sendSuccess } from '../../../../shared/utils/returnSuccess/returnSucces
 import { catalogService } from '../services/catalog.service';
 import { AuthenticatedRequest } from '../../../identity/middlewares/requireAuth.middleware';
 import { APIError } from '../../../../shared/utils/errorHandler/APIError';
+import { ADMIN_ROLES, type Role } from '../../../identity/constants/roles.constants';
 
 export const getProducts = catchAsync(async (req: AuthenticatedRequest, res: Response) => {
   const activeOrgId = req.activeOrgId || req.auth?.activeOrgId;
@@ -28,6 +29,7 @@ export const getBatches = catchAsync(async (req: AuthenticatedRequest, res: Resp
     });
   }
 
-  const batches = await catalogService.getAllBatches(activeOrgId, q as string);
+  const revealAuthor = ADMIN_ROLES.includes(req.auth?.role as Role);
+  const batches = await catalogService.getAllBatches(activeOrgId, q as string, revealAuthor);
   sendSuccess(res, 200, 'Lots récupérés avec succès', batches);
 });
