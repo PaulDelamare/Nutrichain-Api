@@ -121,6 +121,14 @@ export const recallService = {
         // par un createMany applicatif : sur un rappel massif, réinsérer N lignes de 6 colonnes
         // dépasserait le plafond de 65535 paramètres liés de PostgreSQL → throw → rollback →
         // ZÉRO lot bloqué. Set-based, il n'y a ni plafond, ni aller-retour, ni allongement de la tx.
+        //
+        // `created_at` est fourni explicitement, et converti en UTC. La colonne est un `timestamp`
+        // SANS fuseau : le DEFAULT (comme un paramètre `timestamptz` non converti) y écrit l'heure
+        // LOCALE du serveur, alors que Prisma y écrit de l'UTC. Sans la conversion, le mouvement de
+        // rappel était daté +2 h (Europe/Paris) — l'historique affichait le rappel AVANT la
+        // réception qui l'avait précédé.
+        const recalledAt = new Date();
+
         const [blockResult] = await tx.$queryRaw<
           { impacted_ids: string[] | null; max_depth: number | null }[]
         >(Prisma.sql`
@@ -133,14 +141,15 @@ export const recallService = {
             RETURNING id, quantite_actuelle, unite_code
           ),
           traced AS (
-            INSERT INTO "Batch_Mouvement" (id_lot, type_action, quantite, unite, id_user, metadata)
+            INSERT INTO "Batch_Mouvement" (id_lot, type_action, quantite, unite, id_user, metadata, created_at)
             SELECT
               b.id,
               ${MOVEMENT_TYPES.RECALL},
               b.quantite_actuelle,
               b.unite_code,
               ${userId},
-              jsonb_build_object('motif', ${reason}::text, 'lot_source', ${batchId}::text)
+              jsonb_build_object('motif', ${reason}::text, 'lot_source', ${batchId}::text),
+              ${recalledAt}::timestamptz AT TIME ZONE 'UTC'
             FROM blocked b
           )
           SELECT
