@@ -24,7 +24,7 @@ describe('createShipmentController', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("identifie l'auteur depuis la SESSION, sans exiger created_by dans le corps", async () => {
-    // La route passe par `mixedAuth`, qui remplit `req.auth.user` — et NON `req.user`, que
+    // La route passe par `sessionAuth`, qui remplit `req.auth.user` — et NON `req.user`, que
     // seul `requireAuth` pose. Le contrôleur ne lisait que `req.user` : AUCUNE session ne
     // pouvait être identifiée, et toute expédition partait en 401. L'endpoint était de fait
     // inutilisable — ce qui explique qu'il n'ait jamais eu le moindre appelant.
@@ -56,17 +56,19 @@ describe('createShipmentController', () => {
     );
   });
 
-  it('accepte created_by en machine-à-machine, faute de session', async () => {
+  it("refuse un created_by déclaré par le client, même sans session", async () => {
+    // Ce test affirmait l'inverse (« accepte created_by en machine-à-machine »). C'est la
+    // signature d'une expédition offerte à qui la demande : le champ n'existe plus au schéma, et
+    // même s'il revenait, l'auteur reste introuvable sans session.
     const req = {
       activeOrgId: 'org-1',
       validatedShipment: { ...PAYLOAD, created_by: 'connecteur-erp' },
     } as unknown as AuthenticatedRequest;
 
-    await createShipmentController(req, {} as Response);
-
-    expect(shipmentService.createShipment).toHaveBeenCalledWith(
-      expect.objectContaining({ created_by: 'connecteur-erp' })
-    );
+    await expect(createShipmentController(req, {} as Response)).rejects.toMatchObject({
+      status: 401,
+    });
+    expect(shipmentService.createShipment).not.toHaveBeenCalled();
   });
 
   it('refuse une expédition dont l’auteur ne peut pas être établi', async () => {

@@ -5,9 +5,9 @@ import express from 'express';
 const getSession = vi.fn();
 const getFullOrganization = vi.fn();
 
-// On exerce le VRAI mixedAuth/requireOrgRole : c'est la liste des rôles autorisés
+// On exerce le VRAI sessionAuth/requireOrgRole : c'est la liste des rôles autorisés
 // (WRITE_ROLES / QUALITY_ROLES) qu'on teste. Les autres tests de ces routes mockent
-// mixedAuth et ne détecteraient donc aucune régression RBAC — d'où ce fichier dédié.
+// sessionAuth et ne détecteraient donc aucune régression RBAC — d'où ce fichier dédié.
 vi.mock('../../../identity/auth.config', () => ({
   auth: {
     api: {
@@ -112,5 +112,38 @@ describe('RBAC des routes logistiques (session réelle)', () => {
     signedInAs('stagiaire_curieux');
     const res = await request(app).post('/api/logistics/receipts').send({});
     expect(res.status).toBe(403);
+  });
+
+  describe('la clé API n’écrit rien — même en déclarant un acteur légitime', () => {
+    beforeEach(() => {
+      process.env.API_KEY = 'cle-de-test';
+      process.env.API_KEY_ORG_ID = 'org-1';
+    });
+
+    it('refuse une réception présentée avec la seule clé API', async () => {
+      const res = await request(app)
+        .post('/api/logistics/receipts')
+        .set('x-api-key', 'cle-de-test')
+        .send({});
+
+      expect(res.status).toBe(401);
+    });
+
+    it("refuse même quand l'acteur déclaré est un membre parfaitement autorisé", async () => {
+      // LE test qui manquait, et le cœur du sujet. Vérifier que l'acteur déclaré est membre avec
+      // le bon rôle empêche de désigner un étranger — mais PAS d'usurper un collègue légitime.
+      // Or la seule pièce d'identité de ce mode est la clé… qui est compilée dans le bundle
+      // mobile, donc extractible par quiconque installe l'application. Une réception « signée du
+      // patron » repartait alors dans la chaîne d'audit WORM, indiscernable d'une vraie.
+      //
+      // Une intégration machine passe désormais par un COMPTE DE SERVICE : un utilisateur, des
+      // identifiants, une session — et une révocation possible.
+      const res = await request(app)
+        .post('/api/logistics/receipts')
+        .set('x-api-key', 'cle-de-test')
+        .send({ actorUserId: 'u-1' });
+
+      expect(res.status).toBe(401);
+    });
   });
 });

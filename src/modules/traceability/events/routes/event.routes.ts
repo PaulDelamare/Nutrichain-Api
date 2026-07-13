@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { listEventsController } from '../controllers/event.controller';
 import { validateEventsQuery } from '../middlewares/validateEventsQuery.middleware';
-import { mixedAuth } from '../../../../shared/middlewares/mixedAuth';
+import { sessionAuth } from '../../../../shared/middlewares/sessionAuth';
 import { ALL_ROLES } from '../../../identity/constants/roles.constants';
 
 const router = Router();
@@ -41,7 +41,7 @@ const READ_ROLES = ALL_ROLES;
  */
 router.get(
   '/traceability/events',
-  mixedAuth(READ_ROLES),
+  sessionAuth(READ_ROLES),
   validateEventsQuery,
   listEventsController
 );

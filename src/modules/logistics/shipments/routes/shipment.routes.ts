@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { mixedAuth } from '../../../../shared/middlewares/mixedAuth';
+import { sessionAuth } from '../../../../shared/middlewares/sessionAuth';
 import { validateShipmentParams } from '../middlewares/validateShipment.middleware';
 import { createShipmentController } from '../controllers/shipment.controller';
 import { WRITE_ROLES } from '../../../identity/constants/roles.constants';
@@ -8,13 +8,13 @@ const router = Router();
 
 /**
  * Endpoints pour la gestion des Expéditions (Shipments)
- * Isolation Multi-Tenant via mixedAuth
+ * Isolation Multi-Tenant via sessionAuth (session obligatoire, rôle évalué)
  */
 
 // POST /api/logistics/shipments - Créer une expédition
 router.post(
   '/logistics/shipments',
-  mixedAuth(WRITE_ROLES),
+  sessionAuth(WRITE_ROLES),
   validateShipmentParams,
   createShipmentController
 );

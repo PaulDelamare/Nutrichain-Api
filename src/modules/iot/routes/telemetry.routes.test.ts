@@ -2,14 +2,14 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import { app } from '../../../app';
 
-// On NE mocke PAS mixedAuth/checkApiKey : ce test prouve le rejet RÉEL de la garde
+// On NE mocke PAS machineAuth/checkApiKey : ce test prouve le rejet RÉEL de la garde
 // multi-tenant centralisée au niveau HTTP (le rejet survient avant le controller).
 vi.mock('../../../shared/configs/prismaClient.config', () => {
   const mock = {};
   return { prisma: mock, bdd: mock };
 });
 
-describe('POST /api/telemetry/ping — garde multi-tenant réelle (mixedAuth)', () => {
+describe('POST /api/telemetry/ping — garde multi-tenant réelle (machineAuth)', () => {
   beforeEach(() => {
     process.env.API_KEY = 'test-key';
     delete process.env.API_KEY_ORG_ID;

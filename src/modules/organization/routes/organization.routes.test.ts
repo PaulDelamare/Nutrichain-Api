@@ -4,13 +4,13 @@ import express from 'express';
 import { globalErrorHandler } from '../../../shared/utils/errorHandler/errorHandler';
 import { AuthenticatedRequest } from '../../identity/types/auth.types';
 
-const mixedAuthMock = vi.fn();
+const sessionAuthMock = vi.fn();
 
-vi.mock('../../../shared/middlewares/mixedAuth', () => ({
-  // Wrapper évalué à la requête : mixedAuthMock n'existe pas encore au moment
-  // où les routes appellent mixedAuth() (hoisting de vi.mock).
-  mixedAuth: () => (req: express.Request, res: express.Response, next: express.NextFunction) =>
-    mixedAuthMock(req, res, next),
+vi.mock('../../../shared/middlewares/sessionAuth', () => ({
+  // Wrapper évalué à la requête : sessionAuthMock n'existe pas encore au moment
+  // où les routes appellent sessionAuth() (hoisting de vi.mock).
+  sessionAuth: () => (req: express.Request, res: express.Response, next: express.NextFunction) =>
+    sessionAuthMock(req, res, next),
 }));
 
 vi.mock('../services/organization.service', () => ({
@@ -40,7 +40,7 @@ const buildApp = () => {
 };
 
 const authAs = (orgId: string) => {
-  mixedAuthMock.mockImplementation((req: AuthenticatedRequest, _res, next) => {
+  sessionAuthMock.mockImplementation((req: AuthenticatedRequest, _res, next) => {
     req.activeOrgId = orgId;
     next();
   });
@@ -99,8 +99,8 @@ describe('Organization routes (façade de lecture front)', () => {
     expect(organizationService.listMovements).toHaveBeenCalledWith('org-1', { lotId, limit: 10 });
   });
 
-  it("chaque endpoint reste derrière l'auth : 401 quand mixedAuth rejette", async () => {
-    mixedAuthMock.mockImplementation((_req, res) => {
+  it("chaque endpoint reste derrière l'auth : 401 quand sessionAuth rejette", async () => {
+    sessionAuthMock.mockImplementation((_req, res) => {
       res.status(401).json({ status: 401, error: [{ field: 'auth', message: 'Non authentifié' }] });
     });
     const app = buildApp();

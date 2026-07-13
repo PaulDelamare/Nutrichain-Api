@@ -26,7 +26,6 @@ const router = Router();
  *       Voir `docs/18_PCA_PRA.md` pour le runbook intégrité + restore.
  *     tags: [Audit]
  *     security:
- *       - apiKeyAuth: []
  *       - bearerAuth: []
  *     responses:
  *       200:

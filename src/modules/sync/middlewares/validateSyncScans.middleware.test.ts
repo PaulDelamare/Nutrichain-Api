@@ -97,19 +97,14 @@ describe('validateSyncScans Middleware', () => {
     expect(err?.status).toBe(400);
   });
 
-  it('accepte un identifiant utilisateur opaque (les comptes existants ne sont pas des UUID)', async () => {
-    // Better-Auth n'a été aligné sur les UUID que tardivement : les comptes créés avant
-    // ont un identifiant d'un autre format, et ils sont parfaitement légitimes.
+  it("ignore un auteur déclaré dans le corps : le payload n'en porte plus", async () => {
+    // Le champ a disparu du schéma. VineJS ignore les clés inconnues — l'important est qu'aucun
+    // code en aval ne puisse le relire : l'auteur des scans vient de la session, point.
     const err = await runAndCaptureError({
       items: [validItem],
-      actorUserId: 'Qx7pL2mN9vB3kR8sT1wY6zA4cD5eF0gH',
+      actorUserId: 'usurpateur',
     });
     expect(err).toBeUndefined();
-  });
-
-  it('rejette un actorUserId vide', async () => {
-    const err = await runAndCaptureError({ items: [validItem], actorUserId: '' });
-    expect(err?.status).toBe(400);
   });
 
   it('rejette un statut_controle hors de l enum', async () => {

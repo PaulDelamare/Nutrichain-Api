@@ -32,7 +32,6 @@ const router = Router();
  *       Voir `docs/17_alert_resolve.md` pour le workflow complet et les contraintes PII de la `note`.
  *     tags: [Alertes]
  *     security:
- *       - apiKeyAuth: []
  *       - bearerAuth: []
  *     parameters:
  *       - in: path

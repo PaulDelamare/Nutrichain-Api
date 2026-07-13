@@ -9,9 +9,16 @@ import { Receipt, Supplier } from '@prisma/client';
 // On définit un type pour la réponse de getReceiptById qui inclut la relation fournisseur
 type ReceiptWithSupplier = Receipt & { fournisseur: Supplier };
 
-// Mock the mixedAuth middleware to inject activeOrgId
-vi.mock('../../../../shared/middlewares/mixedAuth', () => ({
-  mixedAuth: vi.fn(() => (req: Request, _res: Response, next: NextFunction) => {
+/**
+ * Une session authentifiée est simulée : ce fichier teste le COMPORTEMENT des routes, pas leurs
+ * gardes. Le refus de la clé API seule est prouvé contre les middlewares RÉELS, ailleurs
+ * (`sessionAuth.test.ts`, `connector.security.test.ts`, `receipt.roles.test.ts`) — un test d'accès
+ * qui simule sa propre garde ne prouve rien.
+ */
+// `vi.hoisted` : les fabriques de `vi.mock` sont remontées en tête de fichier, elles ne peuvent
+// donc pas lire une constante déclarée après elles.
+const { sessionAuthentifiee } = vi.hoisted(() => ({
+  sessionAuthentifiee: (req: Request, _res: Response, next: NextFunction) => {
     Object.assign(req, {
       activeOrgId: 'org_test_123',
       auth: {
@@ -21,7 +28,11 @@ vi.mock('../../../../shared/middlewares/mixedAuth', () => ({
       },
     });
     next();
-  }),
+  },
+}));
+
+vi.mock('../../../../shared/middlewares/sessionAuth', () => ({
+  sessionAuth: vi.fn(() => sessionAuthentifiee),
 }));
 
 // Mock the legacy middlewares for safety if still imported somewhere

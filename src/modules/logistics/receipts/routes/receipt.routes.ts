@@ -10,7 +10,7 @@ import {
 } from '../controllers/receipt.controller';
 import { validateReceiptParams } from '../middlewares/validateReceipt.middleware';
 import { validateQuarantineLift } from '../middlewares/validateQuarantineLift.middleware';
-import { mixedAuth } from '../../../../shared/middlewares/mixedAuth';
+import { sessionAuth } from '../../../../shared/middlewares/sessionAuth';
 import { verifyReceiptAccess } from '../../middlewares/verifyReceiptAccess.middleware';
 import { verifyBatchAccess } from '../../middlewares/verifyBatchAccess.middleware';
 import {
@@ -24,32 +24,39 @@ const router = Router();
 
 router.post(
   '/logistics/receipts',
-  mixedAuth(WRITE_ROLES),
+  // Aucune écriture sans utilisateur authentifié — pas même pour une machine.
+  //
+  // Une intégration ERP se connecte avec un COMPTE DE SERVICE (un utilisateur, avec ses propres
+  // identifiants et le rôle `operator`). Une clé ne suffit pas : celle du mobile est compilée dans
+  // le bundle, donc extractible. Qui la détenait pouvait déclarer n'importe quel membre comme
+  // auteur — y compris le patron — et cette signature partait dans la chaîne d'audit WORM.
+  // Un compte de service, lui, se révoque ; une clé livrée à dix mille téléphones, non.
+  sessionAuth(WRITE_ROLES),
   validateReceiptParams,
   createReceiptController
 );
 
-router.get('/logistics/receipts/stats', mixedAuth(ADMIN_ROLES), getReceiptStatsController);
+router.get('/logistics/receipts/stats', sessionAuth(ADMIN_ROLES), getReceiptStatsController);
 
-router.get('/logistics/receipts', mixedAuth(ALL_ROLES), listReceiptsController);
+router.get('/logistics/receipts', sessionAuth(ALL_ROLES), listReceiptsController);
 
 router.get(
   '/logistics/receipts/:id',
-  mixedAuth(ALL_ROLES),
+  sessionAuth(ALL_ROLES),
   verifyReceiptAccess,
   getReceiptByIdController
 );
 
 router.get(
   '/logistics/batches/:id',
-  mixedAuth(ALL_ROLES),
+  sessionAuth(ALL_ROLES),
   verifyBatchAccess,
   getBatchByIdController
 );
 
 router.get(
   '/logistics/batches/:id/label',
-  mixedAuth(ALL_ROLES),
+  sessionAuth(ALL_ROLES),
   verifyBatchAccess,
   getBatchLabelController
 );
@@ -58,7 +65,7 @@ router.get(
 // (l'opérateur en est exclu — séparation des tâches HACCP).
 router.post(
   '/logistics/batches/:id/release',
-  mixedAuth(QUALITY_ROLES),
+  sessionAuth(QUALITY_ROLES),
   verifyBatchAccess,
   validateQuarantineLift,
   liftBatchQuarantineController

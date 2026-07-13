@@ -10,7 +10,7 @@ export const shipmentSchema = vine.object({
   shipment_id: vine.string().minLength(3).maxLength(100),
   transporteur: vine.string().minLength(2).maxLength(100),
   destination_adresse: vine.string().minLength(5),
-  created_by: vine.string().uuid().optional(),
+  // `created_by` retiré : l'auteur d'une expédition vient de la session, jamais du client.
   lots: vine
     .array(
       vine.object({
