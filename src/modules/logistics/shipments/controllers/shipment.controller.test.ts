@@ -56,7 +56,7 @@ describe('createShipmentController', () => {
     );
   });
 
-  it("refuse un created_by déclaré par le client, même sans session", async () => {
+  it('refuse un created_by déclaré par le client, même sans session', async () => {
     // Ce test affirmait l'inverse (« accepte created_by en machine-à-machine »). C'est la
     // signature d'une expédition offerte à qui la demande : le champ n'existe plus au schéma, et
     // même s'il revenait, l'auteur reste introuvable sans session.

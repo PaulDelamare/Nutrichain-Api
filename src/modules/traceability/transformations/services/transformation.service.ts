@@ -130,7 +130,9 @@ export const transformationService = {
           date_peremption: data.date_peremption,
           id_materiel_actuel: data.id_materiel,
           created_by: data.created_by,
-          statut: BATCH_STATUSES.IN_STOCK,
+          // BARRIÈRE QUALITÉ : un produit fini ne sort pas de l'usine sans contrôle. Il naît en
+          // attente, donc ni transformable ni expédiable, jusqu'à ce qu'un contrôle le libère.
+          statut: BATCH_STATUSES.PENDING_QC,
         },
       });
 
@@ -159,13 +161,16 @@ export const transformationService = {
           where: { id: input.id_lot_parent, organization_id: data.organization_id },
         });
 
-        // RE-VÉRIFICATION DU STATUT au moment du verrouillage (Sécurité Rappel de dernière seconde)
-        if (currentParent.statut === 'ALERTE') {
+        // RE-VÉRIFICATION DU STATUT au moment du verrouillage (sécurité de dernière seconde).
+        // ⚠️ Ce test comparait `=== 'ALERTE'` en dur : il laissait donc passer un lot mis en
+        // QUARANTAINE entre-temps (excursion froid, contrôle non conforme). On teste la garde
+        // sanitaire centrale, pas un statut particulier.
+        if (isBatchBlocked(currentParent.statut)) {
           throw new APIError(400, {
             error: [
               {
                 field: 'inputs',
-                message: `Le lot parent ${input.id_lot_parent} vient d'être bloqué (ALERTE) et ne peut plus être transformé.`,
+                message: `Le lot parent ${input.id_lot_parent} vient d'être bloqué (${currentParent.statut}) et ne peut plus être transformé.`,
               },
             ],
           });
@@ -194,7 +199,9 @@ export const transformationService = {
           },
           data: {
             quantite_actuelle: { decrement: input.quantite_prelevee },
-            statut: isExhausted ? BATCH_STATUSES.DEPLETED : BATCH_STATUSES.IN_STOCK,
+            // On NE réécrit PAS le statut du parent quand il reste du stock : le forcer à
+            // EN_STOCK effacerait une quarantaine posée entre-temps, sans aucune trace.
+            statut: isExhausted ? BATCH_STATUSES.DEPLETED : currentParent.statut,
             version: { increment: 1 }, // Incrément de version à chaque mutation
           },
         });

@@ -60,7 +60,7 @@ describe('sessionAuth', () => {
     expect(next).not.toHaveBeenCalledWith(expect.any(APIError));
   });
 
-  it("refuse une session sans organisation active (sinon Prisma ne filtre plus rien)", () => {
+  it('refuse une session sans organisation active (sinon Prisma ne filtre plus rien)', () => {
     const next = vi.fn() as unknown as NextFunction;
     const req = buildReq({ authorization: 'Bearer jeton' });
 

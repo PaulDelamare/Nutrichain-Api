@@ -32,16 +32,25 @@ const ID = {
   lotLait: 'd0000000-0000-4000-8000-000000000033',
   lotBeurre: 'd0000000-0000-4000-8000-000000000034',
   lotQuarantaine: 'd0000000-0000-4000-8000-000000000035',
+  lotAttenteQc: 'd0000000-0000-4000-8000-000000000036',
   transfoLait: 'd0000000-0000-4000-8000-000000000041',
   transfoBeurre: 'd0000000-0000-4000-8000-000000000042',
+  transfoAttenteQc: 'd0000000-0000-4000-8000-000000000043',
   shipLait: 'd0000000-0000-4000-8000-000000000051',
   shipBeurre: 'd0000000-0000-4000-8000-000000000052',
   customer2: 'd0000000-0000-4000-8000-000000000061',
   alertFroid: 'd0000000-0000-4000-8000-000000000071',
 };
 
-const ALL_LOTS = [ID.lotCruA, ID.lotCruB, ID.lotLait, ID.lotBeurre, ID.lotQuarantaine];
-const ALL_TRANSFOS = [ID.transfoLait, ID.transfoBeurre];
+const ALL_LOTS = [
+  ID.lotCruA,
+  ID.lotCruB,
+  ID.lotLait,
+  ID.lotBeurre,
+  ID.lotQuarantaine,
+  ID.lotAttenteQc,
+];
+const ALL_TRANSFOS = [ID.transfoLait, ID.transfoBeurre, ID.transfoAttenteQc];
 const ALL_SHIPMENTS = [ID.shipLait, ID.shipBeurre];
 const ALL_EQUIP = [ID.eqFrigo, ID.eqCuve, ID.eqRack, ID.eqFroidSain];
 const ALL_LOCS = [ID.locReception, ID.locFroid, ID.locProduction];
@@ -70,8 +79,9 @@ async function purgePreviousDemo() {
     where: { OR: [{ id: ID.alertFroid }, { related_id: { in: ALL_LOTS } }] },
   });
   await prisma.batch.deleteMany({ where: { id: { in: ALL_LOTS } } });
-  await prisma.equipment.deleteMany({ where: { id: { in: ALL_EQUIP } } });
-  await prisma.location.deleteMany({ where: { id: { in: ALL_LOCS } } });
+  // ⚠️ Matériels et sites NE SONT PAS supprimés : d'autres lots (réceptions réelles, e2e) les
+  // référencent, la clé étrangère est en RESTRICT, et le seed mourait au milieu de sa purge —
+  // après avoir déjà effacé les lots de démo. Ils ont des identifiants fixes : on les RÉÉCRIT.
 }
 
 async function purgeE2EResidue(orgId: string) {
@@ -123,63 +133,65 @@ async function main() {
   await purgeE2EResidue(orgId);
 
   // 1. Sites réels
-  await prisma.location.createMany({
-    data: [
-      { id: ID.locReception, organization_id: orgId, nom: 'Quai de réception', type: 'RECEPTION' },
-      { id: ID.locFroid, organization_id: orgId, nom: 'Chambre froide A', type: 'COLD_STORAGE' },
-      {
-        id: ID.locProduction,
-        organization_id: orgId,
-        nom: 'Ligne de conditionnement',
-        type: 'PRODUCTION',
-      },
-    ],
-  });
+  const locations = [
+    { id: ID.locReception, organization_id: orgId, nom: 'Quai de réception', type: 'RECEPTION' },
+    { id: ID.locFroid, organization_id: orgId, nom: 'Chambre froide A', type: 'COLD_STORAGE' },
+    {
+      id: ID.locProduction,
+      organization_id: orgId,
+      nom: 'Ligne de conditionnement',
+      type: 'PRODUCTION',
+    },
+  ];
+  for (const loc of locations) {
+    await prisma.location.upsert({ where: { id: loc.id }, update: loc, create: loc });
+  }
 
   // 2. Matériel (dont un frigo instrumenté en excursion)
-  await prisma.equipment.createMany({
-    data: [
-      {
-        id: ID.eqRack,
-        organization_id: orgId,
-        nom: 'Rack de réception',
-        type: 'ETAGERE',
-        id_lieu: ID.locReception,
-        statut: 'PRET',
-      },
-      {
-        id: ID.eqFroidSain,
-        organization_id: orgId,
-        nom: 'Chambre froide A — groupe 1',
-        type: 'FRIGO',
-        id_lieu: ID.locFroid,
-        statut: 'PRET',
-        temp_actuelle: 3.2,
-        temp_seuil_max: 4,
-        sensor_id: 'SENSOR-FROID-A1',
-      },
-      {
-        id: ID.eqFrigo,
-        organization_id: orgId,
-        nom: 'Chambre froide A — groupe 2',
-        type: 'FRIGO',
-        id_lieu: ID.locFroid,
-        statut: 'ALERTE',
-        temp_actuelle: 7.4,
-        temp_seuil_max: 4,
-        sensor_id: 'SENSOR-FROID-A2',
-      },
-      {
-        id: ID.eqCuve,
-        organization_id: orgId,
-        nom: 'Cuve de pasteurisation',
-        type: 'CUVE',
-        id_lieu: ID.locProduction,
-        statut: 'PRET',
-        temp_actuelle: 72,
-      },
-    ],
-  });
+  const equipements = [
+    {
+      id: ID.eqRack,
+      organization_id: orgId,
+      nom: 'Rack de réception',
+      type: 'ETAGERE',
+      id_lieu: ID.locReception,
+      statut: 'PRET',
+    },
+    {
+      id: ID.eqFroidSain,
+      organization_id: orgId,
+      nom: 'Chambre froide A — groupe 1',
+      type: 'FRIGO',
+      id_lieu: ID.locFroid,
+      statut: 'PRET',
+      temp_actuelle: 3.2,
+      temp_seuil_max: 4,
+      sensor_id: 'SENSOR-FROID-A1',
+    },
+    {
+      id: ID.eqFrigo,
+      organization_id: orgId,
+      nom: 'Chambre froide A — groupe 2',
+      type: 'FRIGO',
+      id_lieu: ID.locFroid,
+      statut: 'ALERTE',
+      temp_actuelle: 7.4,
+      temp_seuil_max: 4,
+      sensor_id: 'SENSOR-FROID-A2',
+    },
+    {
+      id: ID.eqCuve,
+      organization_id: orgId,
+      nom: 'Cuve de pasteurisation',
+      type: 'CUVE',
+      id_lieu: ID.locProduction,
+      statut: 'PRET',
+      temp_actuelle: 72,
+    },
+  ];
+  for (const eq of equipements) {
+    await prisma.equipment.upsert({ where: { id: eq.id }, update: eq, create: eq });
+  }
 
   // 3. Produit matière première
   await prisma.product.upsert({
@@ -253,6 +265,22 @@ async function main() {
         statut: 'EN_STOCK',
         created_by: userId,
       },
+      // Lot fraîchement transformé : il ATTEND son contrôle de sortie d'usine.
+      // Barrière qualité : il n'est ni expédiable ni transformable tant qu'un contrôle
+      // ne l'a pas libéré. C'est l'état nominal d'un produit fini qui vient d'être produit.
+      {
+        id: ID.lotAttenteQc,
+        organization_id: orgId,
+        id_materiel_actuel: ID.eqFroidSain,
+        lot_number: '260713-000203',
+        id_produit: milk.id,
+        quantite_actuelle: 1200,
+        unite_code: 'L',
+        quantite_base: 1200,
+        date_peremption: day(28),
+        statut: 'EN_ATTENTE_QC',
+        created_by: userId,
+      },
       // Lot en quarantaine (contrôle non conforme)
       {
         id: ID.lotQuarantaine,
@@ -270,7 +298,27 @@ async function main() {
     ],
   });
 
-  // 5. Transformations (généalogie) : A+B → Lait ; A → Beurre
+  // 5. Transformations (généalogie) : A+B → Lait ; A → Beurre ; B → lot en attente de contrôle
+  await prisma.transformation.create({
+    data: {
+      id: ID.transfoAttenteQc,
+      id_lot_enfant: ID.lotAttenteQc,
+      id_produit_fini: milk.id,
+      id_user: userId,
+      id_materiel: ID.eqCuve,
+      statut: 'TERMINE',
+      compositions: {
+        create: [
+          {
+            id_lot_parent: ID.lotCruB,
+            quantite_prelevee: 300,
+            unite: 'L',
+            lot_parent_epuise: false,
+          },
+        ],
+      },
+    },
+  });
   await prisma.transformation.create({
     data: {
       id: ID.transfoLait,
@@ -281,8 +329,18 @@ async function main() {
       statut: 'TERMINE',
       compositions: {
         create: [
-          { id_lot_parent: ID.lotCruA, quantite_prelevee: 1800, unite: 'L', lot_parent_epuise: false },
-          { id_lot_parent: ID.lotCruB, quantite_prelevee: 1200, unite: 'L', lot_parent_epuise: false },
+          {
+            id_lot_parent: ID.lotCruA,
+            quantite_prelevee: 1800,
+            unite: 'L',
+            lot_parent_epuise: false,
+          },
+          {
+            id_lot_parent: ID.lotCruB,
+            quantite_prelevee: 1200,
+            unite: 'L',
+            lot_parent_epuise: false,
+          },
         ],
       },
     },
@@ -297,7 +355,12 @@ async function main() {
       statut: 'TERMINE',
       compositions: {
         create: [
-          { id_lot_parent: ID.lotCruA, quantite_prelevee: 200, unite: 'L', lot_parent_epuise: false },
+          {
+            id_lot_parent: ID.lotCruA,
+            quantite_prelevee: 200,
+            unite: 'L',
+            lot_parent_epuise: false,
+          },
         ],
       },
     },
@@ -390,10 +453,22 @@ async function main() {
         organization_id: orgId,
         id_lot: ID.lotQuarantaine,
         type_test: 'Analyse microbiologique',
-        resultat: 'NON_CONFORME — QUARANTAINE',
+        resultat: 'NON_CONFORME',
         id_user_labo: userId,
         date_test: day(-2),
         notes: 'Dépassement flore totale — lot bloqué.',
+      },
+      {
+        // Le beurre a été EXPÉDIÉ : il ne peut l'avoir été que parce qu'un contrôle l'a libéré.
+        // Sans cette ligne, la base de démo contredirait la barrière qualité qu'elle est censée
+        // illustrer — un lot fini expédié sans le moindre contrôle.
+        organization_id: orgId,
+        id_lot: ID.lotBeurre,
+        type_test: 'Analyse microbiologique',
+        resultat: 'CONFORME',
+        id_user_labo: userId,
+        date_test: day(-1),
+        notes: 'Conforme — lot libéré pour expédition.',
       },
     ],
   });
@@ -412,7 +487,9 @@ async function main() {
   });
 
   logger.info('✅ Seed DÉMO terminé.');
-  logger.info('   3 sites, 4 matériels, lots rattachés à leur emplacement, généalogie A+B→Lait / A→Beurre,');
+  logger.info(
+    '   3 sites, 4 matériels, lots rattachés à leur emplacement, généalogie A+B→Lait / A→Beurre,'
+  );
   logger.info('   2 expéditions,');
   logger.info('   2 contrôles qualité, 1 lot en quarantaine, 1 alerte froid active.');
   logger.info(`   Rappel de démo à déclencher sur le lot ${ID.lotCruA} (bloque Lait + Beurre).`);

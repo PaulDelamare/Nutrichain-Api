@@ -50,7 +50,7 @@ describe('ReceiptController', () => {
       );
     });
 
-    it("ignore un auteur déclaré dans le corps, même vraisemblable", async () => {
+    it('ignore un auteur déclaré dans le corps, même vraisemblable', async () => {
       // Vérifier que l'acteur déclaré est bien membre avec le bon rôle — ce que faisait la garde
       // précédente — empêche de désigner un ÉTRANGER, mais pas d'usurper un COLLÈGUE légitime.
       // Or la seule pièce d'identité de ce mode était une clé API… compilée dans le bundle mobile.
@@ -71,7 +71,7 @@ describe('ReceiptController', () => {
       );
     });
 
-    it("refuse une réception sans session : une machine ne signe rien", async () => {
+    it('refuse une réception sans session : une machine ne signe rien', async () => {
       const req = {
         activeOrgId: 'org-1',
         validatedReceipt: { id_fournisseur: 'supp-1', actorUserId: 'le-patron' },

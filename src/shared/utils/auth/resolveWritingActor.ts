@@ -24,7 +24,7 @@ export function resolveWritingActor({ sessionUserId }: ResolveWritingActorParams
       error: [
         {
           field: 'auth',
-          message: "Auteur non identifié : cette écriture requiert un utilisateur authentifié.",
+          message: 'Auteur non identifié : cette écriture requiert un utilisateur authentifié.',
         },
       ],
     });

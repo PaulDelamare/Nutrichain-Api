@@ -39,7 +39,7 @@ router.get('/me', requireAuth, (req: AuthenticatedRequest, res: Response) => {
   sendSuccess(res, 200, 'Authentification réussie !', {
     user: req.auth?.user,
     session: req.auth?.session,
-    activeOrgId: req.activeOrgId
+    activeOrgId: req.activeOrgId,
   });
 });
 

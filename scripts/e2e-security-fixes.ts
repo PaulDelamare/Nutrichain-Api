@@ -2,6 +2,9 @@ import { prisma } from '../src/shared/configs/prismaClient.config';
 import { auditService } from '../src/shared/utils/audit/audit.service';
 import { genealogyService } from '../src/modules/traceability/transformations/services/genealogy.service';
 import crypto from 'crypto';
+// Import manquant sur develop : le script appelait signInAsOperator sans jamais l'importer,
+// l'e2e sécurité échouait donc au setup (« signInAsOperator is not defined »).
+import { signInAsOperator } from './helpers/e2eSession';
 
 /**
  * NUTRICHAIN — E2E Security Fixes

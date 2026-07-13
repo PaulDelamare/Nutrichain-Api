@@ -75,7 +75,9 @@ beforeEach(() => {
 
 describe('Sync Routes — POST /api/sync/scans', () => {
   it('retourne 207 et passe l’opérateur de la SESSION au service', async () => {
-    const res = await request(app).post('/api/sync/scans').send({ items: [validItem] });
+    const res = await request(app)
+      .post('/api/sync/scans')
+      .send({ items: [validItem] });
 
     expect(res.status).toBe(207);
     expect(res.body.data.summary.ok).toBe(1);
