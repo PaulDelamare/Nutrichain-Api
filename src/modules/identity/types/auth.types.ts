@@ -4,6 +4,7 @@ import { SyncScansPayload } from '../../sync/types/sync.types';
 import { EventsQuery } from '../../traceability/events/middlewares/eventsQuery.schema';
 import type { OrganizationQuery } from '../../organization/middlewares/organizationQuery.schema';
 import type { CreateEquipmentPayload } from '../../organization/middlewares/equipment.schema';
+import type { CreateQualityControlPayload } from '../../organization/middlewares/qualityControl.schema';
 import type { ReceiptPayload } from '../../logistics/receipts/middlewares/receiptPayload.schema';
 import type { QuarantineLiftPayload } from '../../logistics/receipts/middlewares/quarantineLift.schema';
 import type { ShipmentPayload } from '../../logistics/shipments/middlewares/shipmentPayload.schema';
@@ -74,6 +75,7 @@ export interface AuthenticatedRequest extends Request {
   validatedEventsQuery?: EventsQuery;
   // Création d'un matériel de stockage (POST /api/organization/equipment)
   validatedEquipment?: CreateEquipmentPayload;
+  validatedQualityControl?: CreateQualityControlPayload;
 
   validatedOrganizationQuery?: OrganizationQuery;
 }

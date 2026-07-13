@@ -33,7 +33,8 @@
     "prepare": "husky",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
-    "format": "prettier --write \"src/**/*.ts\""
+    "format": "prettier --write \"src/**/*.ts\"",
+    "e2e:quality-gate": "tsx scripts/e2e-quality-gate.ts"
   },
   "lint-staged": {
     "src/**/*.{ts,js}": [

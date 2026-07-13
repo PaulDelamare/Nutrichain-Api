@@ -7,7 +7,11 @@ import { escapeHtml } from '../../../shared/utils/html/escapeHtml';
 import { logger } from '../../../shared/utils/logger/logger';
 import { TelemetryModel } from '../models/telemetry.model';
 import { detectExcursion, TelemetryPoint } from './excursionDetection.service';
-import { BATCH_STATUSES, MOVEMENT_TYPES } from '../../logistics/constants/logistics.constants';
+import {
+  BATCH_STATUSES,
+  COLD_QUARANTINABLE_STATUSES,
+  MOVEMENT_TYPES,
+} from '../../logistics/constants/logistics.constants';
 
 /**
  * Service d'alerte chaîne du froid (Objectif SMART n°2).
@@ -130,10 +134,10 @@ export const iotAlertService = {
             { id: string; quantite_actuelle: Prisma.Decimal; unite_code: string }[]
           >`
             UPDATE "Batch"
-               SET statut = ${BATCH_STATUSES.BLOCKED}
+               SET statut = ${BATCH_STATUSES.BLOCKED}, version = version + 1
              WHERE organization_id = ${cached.equipmentOrgId}
                AND id_materiel_actuel = ${cached.equipmentId}
-               AND statut = ${BATCH_STATUSES.IN_STOCK}
+               AND statut = ANY(${COLD_QUARANTINABLE_STATUSES as string[]})
          RETURNING id, quantite_actuelle, unite_code
           `;
 

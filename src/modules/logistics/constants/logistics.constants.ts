@@ -30,7 +30,12 @@ export const BATCH_STATUSES = {
   IN_STOCK: 'EN_STOCK',
   /** En cours de transformation. */
   IN_PRODUCTION: 'EN_PRODUCTION',
-  /** Quarantaine qualité : non-conformité au contrôle réception (blocage HACCP). */
+  /**
+   * Produit fini sorti de transformation : il attend son contrôle qualité de sortie d'usine.
+   * Barrière HACCP : rien ne quitte l'usine sans qu'un contrôle l'ait libéré.
+   */
+  PENDING_QC: 'EN_ATTENTE_QC',
+  /** Quarantaine qualité : non-conformité au contrôle (réception ou sortie). Levable. */
   BLOCKED: 'BLOQUE',
   /** Bloqué par un rappel produit ou une excursion chaîne du froid. */
   ALERT: 'ALERTE',
@@ -45,11 +50,23 @@ export type BatchStatus = (typeof BATCH_STATUSES)[keyof typeof BATCH_STATUSES];
 /**
  * Statuts bloquant toute opération de sortie (transformation, expédition).
  * Un lot dans l'un de ces états ne doit JAMAIS quitter le stock : c'est la garde
- * sanitaire centrale (non-conformité qualité, rappel, alerte froide).
+ * sanitaire centrale (non-conformité qualité, rappel, alerte froide, attente de contrôle).
  */
 export const BLOCKING_BATCH_STATUSES: readonly BatchStatus[] = [
+  BATCH_STATUSES.PENDING_QC,
   BATCH_STATUSES.BLOCKED,
   BATCH_STATUSES.ALERT,
+];
+
+/**
+ * Statuts d'un lot qui DORT en stock et qu'une excursion thermique doit mettre en quarantaine.
+ * ⚠️ Ne jamais filtrer sur `= EN_STOCK` seul : un lot en attente de contrôle qualité est
+ * physiquement dans le frigo, il subit l'excursion comme les autres. L'oublier le laisserait
+ * sortir plus tard sur un contrôle conforme, sans qu'aucune trace ne dise qu'il a chauffé.
+ */
+export const COLD_QUARANTINABLE_STATUSES: readonly BatchStatus[] = [
+  BATCH_STATUSES.IN_STOCK,
+  BATCH_STATUSES.PENDING_QC,
 ];
 
 /**
@@ -71,8 +88,23 @@ export function isBatchBlocked(statut: string): boolean {
  * Note : pour un changement de statut (quarantaine, levée, rappel), `quantite`/`unite` portent
  * la quantité du lot CONCERNÉE par la décision — ce n'est pas un mouvement de matière.
  */
+// ========== CONTRÔLE QUALITÉ ==========
+/**
+ * Résultat d'un contrôle qualité. `QualityControl.resultat` est un String libre en base :
+ * ces valeurs sont la seule source de vérité, et elles PILOTENT le statut du lot.
+ */
+export const QUALITY_RESULTS = {
+  CONFORM: 'CONFORME',
+  NON_CONFORM: 'NON_CONFORME',
+} as const;
+
+export type QualityResult = (typeof QUALITY_RESULTS)[keyof typeof QUALITY_RESULTS];
+
+export const QUALITY_RESULT_VALUES = Object.values(QUALITY_RESULTS) as readonly string[];
+
 export const MOVEMENT_TYPES = {
   RECEPTION: 'RECEPTION',
+  QUALITY_CONTROL: 'CONTROLE_QUALITE',
   TRANSFORMATION_IN: 'TRANSFORMATION_ENTREE',
   TRANSFORMATION_OUT: 'TRANSFORMATION_SORTIE',
   SHIPMENT: 'EXPEDITION',

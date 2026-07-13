@@ -54,6 +54,20 @@ async function seed() {
     update: {},
     create: { id: USER_ID, email: 'epcis.user@example.com', name: 'EPCIS User' },
   });
+  // L'auteur d'une réception doit être MEMBRE de l'organisation : sans cette ligne, la fixture
+  // fabriquait un utilisateur hors organisation qui signait pourtant des réceptions — c'est
+  // exactement la falsification d'identité que resolveWritingActor ferme.
+  await prisma.member.upsert({
+    where: { id: `member-${USER_ID}-${ORG_ID}` },
+    update: { role: 'operator' },
+    create: {
+      id: `member-${USER_ID}-${ORG_ID}`,
+      organizationId: ORG_ID!,
+      userId: USER_ID,
+      role: 'operator',
+      createdAt: new Date(),
+    },
+  });
   await prisma.unit.upsert({
     where: { code: 'KG' },
     update: {},

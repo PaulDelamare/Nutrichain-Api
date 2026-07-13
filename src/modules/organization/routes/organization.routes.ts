@@ -1,8 +1,13 @@
 import { Router } from 'express';
 import { mixedAuth } from '../../../shared/middlewares/mixedAuth';
-import { ALL_ROLES, ADMIN_ROLES } from '../../identity/constants/roles.constants';
+import { ALL_ROLES, ADMIN_ROLES, QUALITY_ROLES } from '../../identity/constants/roles.constants';
 import { validateOrganizationQuery } from '../middlewares/validateOrganizationQuery.middleware';
 import { validateCreateEquipment } from '../middlewares/validateEquipment.middleware';
+import { validateCreateQualityControl } from '../middlewares/validateQualityControl.middleware';
+import {
+  createQualityControlController,
+  listPendingQualityControlController,
+} from '../controllers/qualityControl.controller';
 import {
   createEquipmentController,
   getEquipmentLabelController,
@@ -58,6 +63,27 @@ router.get('/organization/locations', mixedAuth(READ_ROLES), listLocationsContro
  * nouveaux matériels.
  */
 const CONFIG_ROLES = ADMIN_ROLES;
+
+/**
+ * Barrière qualité de sortie d'usine.
+ *
+ * Un produit fini sort de transformation en `EN_ATTENTE_QC` : il ne peut ni être transformé ni
+ * expédié tant qu'un contrôle ne l'a pas libéré. C'est ici que le rôle `quality` agit — et
+ * l'opérateur en est exclu (séparation des tâches HACCP : celui qui produit ne valide pas
+ * lui-même sa production).
+ */
+router.get(
+  '/organization/pending-quality-control',
+  mixedAuth(READ_ROLES),
+  listPendingQualityControlController
+);
+
+router.post(
+  '/organization/quality-controls',
+  mixedAuth(QUALITY_ROLES),
+  validateCreateQualityControl,
+  createQualityControlController
+);
 
 router.post(
   '/organization/equipment',
