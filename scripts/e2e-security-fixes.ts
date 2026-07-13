@@ -109,6 +109,21 @@ async function setup(): Promise<Fixtures> {
   });
   const userId = secUser.id;
 
+  // L'utilisateur doit etre MEMBRE de l'organisation pour signer une reception : sans cette ligne,
+  // la fixture creait un utilisateur hors organisation qui pouvait pourtant etre scelle comme
+  // auteur dans l'audit WORM. C'est exactement la faille que resolveWritingActor ferme.
+  await prisma.member.upsert({
+    where: { id: `member-${userId}-${ORG_ID}` },
+    update: { role: 'operator' },
+    create: {
+      id: `member-${userId}-${ORG_ID}`,
+      organizationId: ORG_ID!,
+      userId,
+      role: 'operator',
+      createdAt: new Date(),
+    },
+  });
+
   const foreignOrgId = 'e2e-sec-foreign-org';
   await prisma.organization.upsert({
     where: { id: foreignOrgId },
@@ -182,7 +197,7 @@ async function scenario1_apiKeySpoofing(ctx: Fixtures) {
       quantite_actuelle: 10,
       unite_code: 'KG',
       statut_controle: 'OK',
-      received_by: ctx.userId,
+      actorUserId: ctx.userId,
     }),
   });
 

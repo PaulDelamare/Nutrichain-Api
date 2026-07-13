@@ -97,8 +97,18 @@ describe('validateSyncScans Middleware', () => {
     expect(err?.status).toBe(400);
   });
 
-  it('rejette si actorUserId est présent mais pas un UUID', async () => {
-    const err = await runAndCaptureError({ items: [validItem], actorUserId: 'not-a-uuid' });
+  it('accepte un identifiant utilisateur opaque (les comptes existants ne sont pas des UUID)', async () => {
+    // Better-Auth n'a été aligné sur les UUID que tardivement : les comptes créés avant
+    // ont un identifiant d'un autre format, et ils sont parfaitement légitimes.
+    const err = await runAndCaptureError({
+      items: [validItem],
+      actorUserId: 'Qx7pL2mN9vB3kR8sT1wY6zA4cD5eF0gH',
+    });
+    expect(err).toBeUndefined();
+  });
+
+  it('rejette un actorUserId vide', async () => {
+    const err = await runAndCaptureError({ items: [validItem], actorUserId: '' });
     expect(err?.status).toBe(400);
   });
 

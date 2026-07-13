@@ -5,6 +5,7 @@ import { auditService } from '../../../shared/utils/audit/audit.service';
 import { APIError } from '../../../shared/utils/errorHandler/APIError';
 import { logger } from '../../../shared/utils/logger/logger';
 import { idempotencyService } from './idempotency.service';
+import { resolveWritingActor } from '../../../shared/utils/auth/resolveWritingActor';
 import { IDEMPOTENCY_TTL_MS, SYNC_WRITE_ROLES } from '../constants/sync.constants';
 import { SyncItem, SyncItemError, SyncItemResult, SyncScansResponse } from '../types/sync.types';
 
@@ -34,43 +35,16 @@ export const syncScansService = {
 };
 
 /**
- * Résout l'identité de l'acteur :
- * - session : sessionUserId est forcé serveur-side (anti-usurpation, déjà authentifié par mixedAuth)
- * - M2M    : actorUserId doit être fourni ET membre de l'org avec un rôle ∈ SYNC_WRITE_ROLES
+ * Résout l'identité de l'acteur. Même règle que la réception directe : une seule source de vérité
+ * pour « qui a le droit de signer une écriture » (cf. shared/utils/auth/resolveWritingActor).
  */
 async function resolveAndAuthorize(params: SyncScansParams): Promise<string> {
-  if (params.sessionUserId) {
-    return params.sessionUserId;
-  }
-
-  if (!params.actorUserId) {
-    throw new APIError(400, {
-      error: [
-        {
-          field: 'actorUserId',
-          message:
-            "actorUserId requis en mode M2M (clé API). En mode session, l'utilisateur est résolu depuis la session.",
-        },
-      ],
-    });
-  }
-
-  const member = await prisma.member.findFirst({
-    where: {
-      userId: params.actorUserId,
-      organizationId: params.organizationId,
-      role: { in: SYNC_WRITE_ROLES },
-    },
-    select: { id: true },
+  return resolveWritingActor({
+    sessionUserId: params.sessionUserId,
+    actorUserId: params.actorUserId,
+    organizationId: params.organizationId,
+    allowedRoles: SYNC_WRITE_ROLES,
   });
-
-  if (!member) {
-    throw new APIError(403, {
-      error: [{ field: 'actorUserId', message: 'Utilisateur non membre ou rôle insuffisant' }],
-    });
-  }
-
-  return params.actorUserId;
 }
 
 /**
