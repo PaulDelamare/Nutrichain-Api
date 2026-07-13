@@ -114,8 +114,25 @@ Variables d'environnement requises (validées au démarrage — *fail-fast*) :
 
 ```bash
 npx prisma migrate deploy   # applique les migrations versionnées (non destructif)
-npx prisma db seed          # jeu de données de démo (org, produits, lots, clients…)
+npx prisma db seed          # jeu de données de démo (org, comptes, produits, lots, clients…)
 ```
+
+Le seed est **rejouable** : le relancer rétablit l'état de démonstration sans rien dupliquer.
+
+#### Comptes de démonstration
+
+Tous avec le mot de passe **`NutriChain!2026`**, dans l'organisation « Usine Laitière de Paris ».
+
+| Email | Rôle | Peut, ne peut pas |
+| --- | --- | --- |
+| `admin@nutrichain.local` | `owner` | tout |
+| `admin.demo@nutrichain.local` | `admin` | tout le métier + gestion de l'organisation |
+| `quality@nutrichain.local` | `quality` | décisions qualité (levée de quarantaine, rappel) — **pas** de réception |
+| `operator@nutrichain.local` | `operator` | terrain (réception, transformation, expédition) — **pas** de décision qualité |
+| `viewer@nutrichain.local` | `viewer` | lecture seule |
+
+> Se connecter en `owner` **masque tous les 403** : il a tous les droits. Pour vérifier qu'une garde
+> tient réellement, rejouer le parcours avec le rôle le plus faible qui devrait être refusé.
 
 > ⚠️ Les migrations sont **versionnées** (`prisma/migrations/`). Toute évolution de schéma passe par une nouvelle migration — **jamais `db push`**.
 
