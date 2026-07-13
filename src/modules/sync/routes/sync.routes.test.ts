@@ -4,27 +4,28 @@ import type { Request, Response, NextFunction } from 'express';
 import { app } from '../../../app';
 import { syncScansService } from '../services/syncScans.service';
 
-// Mock mixedAuth qui mime le vrai comportement :
-// - x-api-key présent → M2M (pas de session user)
-// - sinon              → session OPERATOR
-vi.mock('../../../shared/middlewares/mixedAuth', () => ({
-  mixedAuth: vi.fn(() => (req: Request, _res: Response, next: NextFunction) => {
-    if (req.headers['x-api-key']) {
-      Object.assign(req, {
+/**
+ * Une session d'opérateur est simulée : ce fichier teste le COMPORTEMENT de la route.
+ *
+ * Le mock précédent mimait l'ancien `mixedAuth` : il basculait en « mode machine » dès qu'un
+ * en-tête `x-api-key` était présent, et trois tests certifiaient un chemin qui n'existe plus.
+ * Ils seraient restés verts si l'on rétablissait le contournement par clé — un test qui simule
+ * la garde qu'il prétend prouver ne prouve rien.
+ *
+ * Le refus de la clé seule est prouvé contre les middlewares RÉELS, ailleurs
+ * (`receipt.roles.test.ts`, `connector.security.test.ts`).
+ */
+vi.mock('../../../shared/middlewares/sessionAuth', () => ({
+  sessionAuth: vi.fn(() => (req: Request, _res: Response, next: NextFunction) => {
+    Object.assign(req, {
+      activeOrgId: 'org_test_123',
+      auth: {
+        user: { id: 'u-session', email: 'op@nutrichain.local' },
         activeOrgId: 'org_test_123',
-        auth: { activeOrgId: 'org_test_123' },
-      });
-    } else {
-      Object.assign(req, {
-        activeOrgId: 'org_test_123',
-        auth: {
-          user: { id: 'u-session', email: 'op@nutrichain.local' },
-          activeOrgId: 'org_test_123',
-          role: 'operator',
-          session: { activeOrganizationId: 'org_test_123' },
-        },
-      });
-    }
+        role: 'operator',
+        session: { activeOrganizationId: 'org_test_123' },
+      },
+    });
     next();
   }),
 }));
@@ -73,98 +74,29 @@ beforeEach(() => {
 });
 
 describe('Sync Routes — POST /api/sync/scans', () => {
-  describe('Session mode (web/mobile)', () => {
-    it('retourne 207 et passe sessionUserId au service', async () => {
-      const res = await request(app)
-        .post('/api/sync/scans')
-        .send({ items: [validItem] });
+  it('retourne 207 et passe l’opérateur de la SESSION au service', async () => {
+    const res = await request(app).post('/api/sync/scans').send({ items: [validItem] });
 
-      expect(res.status).toBe(207);
-      expect(res.body.data.summary.ok).toBe(1);
-      expect(syncScansService.syncScans).toHaveBeenCalledWith(
-        expect.objectContaining({
-          organizationId: 'org_test_123',
-          sessionUserId: 'u-session',
-        })
-      );
-    });
-
-    it("session : actorUserId du payload est transmis mais le service décidera de l'ignorer", async () => {
-      await request(app)
-        .post('/api/sync/scans')
-        .send({ items: [validItem], actorUserId: '550e8400-e29b-41d4-a716-446655440099' });
-
-      // Le controller transmet les deux ; le service décide. On vérifie juste le transit.
-      expect(syncScansService.syncScans).toHaveBeenCalledWith(
-        expect.objectContaining({
-          sessionUserId: 'u-session',
-          actorUserId: '550e8400-e29b-41d4-a716-446655440099',
-        })
-      );
-    });
+    expect(res.status).toBe(207);
+    expect(res.body.data.summary.ok).toBe(1);
+    expect(syncScansService.syncScans).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId: 'org_test_123',
+        sessionUserId: 'u-session',
+      })
+    );
   });
 
-  describe('M2M mode (x-api-key)', () => {
-    it('retourne 207 quand actorUserId est fourni', async () => {
-      const res = await request(app)
-        .post('/api/sync/scans')
-        .set('x-api-key', 'any-key')
-        .send({
-          items: [validItem],
-          actorUserId: '550e8400-e29b-41d4-a716-446655440099',
-        });
+  it('ignore tout auteur déclaré dans le corps de la requête', async () => {
+    // Le champ n'existe plus au schéma. S'il revenait, il ne doit jamais atteindre le service :
+    // l'identité scellée dans l'audit WORM ne se négocie pas avec le client.
+    await request(app)
+      .post('/api/sync/scans')
+      .send({ items: [validItem], actorUserId: 'usurpateur' });
 
-      expect(res.status).toBe(207);
-      expect(syncScansService.syncScans).toHaveBeenCalledWith(
-        expect.objectContaining({
-          organizationId: 'org_test_123',
-          sessionUserId: undefined,
-          actorUserId: '550e8400-e29b-41d4-a716-446655440099',
-        })
-      );
-    });
-
-    it('transmet le rejet du service au client (ex: 403 actor non membre)', async () => {
-      vi.mocked(syncScansService.syncScans).mockRejectedValue({
-        status: 403,
-        body: {
-          error: [{ field: 'actorUserId', message: 'Utilisateur non membre ou rôle insuffisant' }],
-        },
-      });
-
-      const res = await request(app)
-        .post('/api/sync/scans')
-        .set('x-api-key', 'any-key')
-        .send({
-          items: [validItem],
-          actorUserId: '550e8400-e29b-41d4-a716-446655440099',
-        });
-
-      expect(res.status).toBe(403);
-      expect(res.body.error[0].field).toBe('actorUserId');
-    });
-
-    it('retourne 400 si actorUserId manque en M2M (rejet du service propagé)', async () => {
-      vi.mocked(syncScansService.syncScans).mockRejectedValue({
-        status: 400,
-        body: { error: [{ field: 'actorUserId', message: 'actorUserId requis en mode M2M' }] },
-      });
-
-      const res = await request(app)
-        .post('/api/sync/scans')
-        .set('x-api-key', 'any-key')
-        .send({ items: [validItem] }); // PAS d'actorUserId
-
-      expect(res.status).toBe(400);
-      expect(res.body.error[0].field).toBe('actorUserId');
-      // Le controller doit avoir appelé le service avec actorUserId undefined
-      expect(syncScansService.syncScans).toHaveBeenCalledWith(
-        expect.objectContaining({
-          sessionUserId: undefined,
-          actorUserId: undefined,
-        })
-      );
-    });
+    expect(syncScansService.syncScans).toHaveBeenCalledWith(
+      expect.not.objectContaining({ actorUserId: 'usurpateur' })
+    );
   });
 
   describe('Validation', () => {

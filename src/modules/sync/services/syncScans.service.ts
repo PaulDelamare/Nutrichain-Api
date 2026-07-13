@@ -38,13 +38,8 @@ export const syncScansService = {
  * Résout l'identité de l'acteur. Même règle que la réception directe : une seule source de vérité
  * pour « qui a le droit de signer une écriture » (cf. shared/utils/auth/resolveWritingActor).
  */
-async function resolveAndAuthorize(params: SyncScansParams): Promise<string> {
-  return resolveWritingActor({
-    sessionUserId: params.sessionUserId,
-    actorUserId: params.actorUserId,
-    organizationId: params.organizationId,
-    allowedRoles: SYNC_WRITE_ROLES,
-  });
+function resolveAndAuthorize(params: SyncScansParams): string {
+  return resolveWritingActor({ sessionUserId: params.sessionUserId });
 }
 
 /**

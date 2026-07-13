@@ -16,15 +16,11 @@ export const createShipmentController = catchAsync(
         error: [{ field: 'shipment', message: "Données d'expédition non validées." }],
       });
     }
-    const { id_client, shipment_id, transporteur, destination_adresse, lots, created_by } =
-      validatedShipment;
+    const { id_client, shipment_id, transporteur, destination_adresse, lots } = validatedShipment;
     const activeOrgId = req.activeOrgId as string;
 
-    // La session prime sur le payload. `req.user` n'est posé QUE par `requireAuth` — or cette
-    // route passe par `mixedAuth`, qui remplit `req.auth.user`. Aucune session ne pouvait donc
-    // être identifiée : toute expédition depuis le web ou le mobile partait en 401, et
-    // l'endpoint était de fait inutilisable (aucun appelant nulle part).
-    const userId = req.auth?.user?.id ?? created_by;
+    // L'auteur vient de la session, et de NULLE PART ailleurs (cf. `receipt.controller`).
+    const userId = req.auth?.user?.id;
 
     if (!userId) {
       throw new APIError(401, {

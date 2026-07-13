@@ -55,21 +55,8 @@ router.get('/me', requireAuth, (req: AuthenticatedRequest, res: Response) => {
  */
 router.post('/error', HelloController.errorRequest);
 
-/**
- * @swagger
- * /api/service:
- *   post:
- *     summary: Exemple de route appelant un service (Nécessite Clé API)
- *     tags: [Core]
- *     security:
- *       - apiKeyAuth: []
- *     responses:
- *       200:
- *         description: Succès
- *       401:
- *         description: Clé API manquante ou invalide
- */
-router.post('/service', checkApiKey(), HelloController.serviceExemple);
+// `POST /api/service` (exemple de démonstration, ouvert à la seule clé API) a été supprimé :
+// aucun appelant, et une surface d'attaque de plus pour rien.
 
 // ! EXPORT
 export default router;

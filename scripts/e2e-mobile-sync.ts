@@ -18,6 +18,7 @@
  *
  * Code de sortie 0 si tous les scénarios passent, 1 sinon.
  */
+import { signInAsOperator } from './helpers/e2eSession';
 import crypto from 'crypto';
 import { prisma } from '../src/shared/configs/prismaClient.config';
 
@@ -57,14 +58,17 @@ function assert(condition: boolean, label: string) {
   }
 }
 
-async function postSync(
-  items: unknown[],
-  actorUserId: string
-): Promise<{ status: number; body: SyncResponseBody }> {
+/**
+ * Le jeton de l'opérateur, comme le mobile réel. Ce script s'authentifiait avec la seule clé API :
+ * il empruntait le chemin qui permettait d'écrire sans compte — celui qui n'existe plus.
+ */
+let sessionToken = '';
+
+async function postSync(items: unknown[]): Promise<{ status: number; body: SyncResponseBody }> {
   const res = await fetch(`${API_BASE}/api/sync/scans`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-api-key': API_KEY! },
-    body: JSON.stringify({ items, actorUserId }),
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}` },
+    body: JSON.stringify({ items }),
   });
   const body = (await res.json()) as SyncResponseBody;
   return { status: res.status, body };
@@ -94,7 +98,15 @@ async function countAudit(action: string): Promise<number> {
 async function main() {
   console.log(`[E2E] Sync mobile bulk — API ${API_BASE}, org ${ORG_ID}\n`);
 
-  const { supplierId, productId, actorUserId } = await fetchFixtures();
+  const { supplierId, productId } = await fetchFixtures();
+
+  // Session d'operateur : le mobile reel envoie un jeton, jamais la cle sur les routes metier.
+  const session = await signInAsOperator(prisma, {
+    apiBase: API_BASE,
+    apiKey: API_KEY!,
+    organizationId: ORG_ID!,
+  });
+  sessionToken = session.token;
 
   const baseReceipt = {
     id_fournisseur: supplierId,
@@ -120,7 +132,7 @@ async function main() {
     { clientOpId: clientOpA, type: 'receipt', payload: { ...baseReceipt, shipment_id: shipmentA, quantite_actuelle: 100 } },
     { clientOpId: clientOpB, type: 'receipt', payload: { ...baseReceipt, shipment_id: shipmentB, quantite_actuelle: 250 } },
   ];
-  const r1 = await postSync(items1, actorUserId);
+  const r1 = await postSync(items1);
   if (r1.status !== 207) {
     console.error('  ⚠ Body reçu (non-207):', JSON.stringify(r1.body, null, 2));
   }
@@ -139,7 +151,7 @@ async function main() {
 
   // ─── Scénario 2 : Idempotency replay (même body) ───────────────────
   console.log('\nScénario 2 — Idempotency replay (même body)');
-  const r2 = await postSync(items1, actorUserId);
+  const r2 = await postSync(items1);
   assert(r2.status === 207, 'HTTP 207');
   assert(r2.body.data.summary.ok === 2, 'replay summary.ok === 2');
   const sameId = r2.body.data.results[0].serverId?.receiptId === r1.body.data.results[0].serverId?.receiptId;
@@ -156,7 +168,7 @@ async function main() {
       payload: { ...baseReceipt, shipment_id: shipmentA, quantite_actuelle: 999 }, // quantité modifiée
     },
   ];
-  const r3 = await postSync(items3, actorUserId);
+  const r3 = await postSync(items3);
   assert(r3.status === 207, 'HTTP 207');
   assert(r3.body.data.summary.conflict === 1, 'summary.conflict === 1');
   assert(r3.body.data.results[0].status === 'conflict', "status='conflict'");
@@ -172,7 +184,7 @@ async function main() {
       payload: { ...baseReceipt, id_fournisseur: ghostSupplierId, shipment_id: `${shipmentC}-bad`, quantite_actuelle: 50 },
     },
   ];
-  const r4 = await postSync(items4, actorUserId);
+  const r4 = await postSync(items4);
   assert(r4.status === 207, 'HTTP 207');
   assert(r4.body.data.summary.ok === 1, 'summary.ok === 1');
   assert(r4.body.data.summary.error === 1, 'summary.error === 1');

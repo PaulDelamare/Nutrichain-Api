@@ -187,7 +187,54 @@ npm run e2e:audit-verify     # intégrité de la chaîne d'audit WORM
 
 ## Sécurité & conformité
 
-- **Multi-tenancy strict (defense-in-depth)** : chaque requête Prisma filtre par `organization_id` ; garde centralisée dans `mixedAuth` / `requireOrgRole` (rejet si aucune organisation active).
+### Modèle d'authentification : une clé identifie, une session autorise
+
+C'est la règle qui gouverne toutes les routes, et elle tient en une phrase :
+
+> **Une clé API identifie une APPLICATION. Seule une session AUTORISE une action.**
+
+| Middleware | Pour qui | Ce qu'il permet |
+| --- | --- | --- |
+| `sessionAuth(roles)` | tout le métier | Un utilisateur **authentifié**, dont le rôle est **toujours** évalué. |
+| `machineAuth()` | les capteurs IoT | Déposer une mesure, avec `IOT_API_KEY` (secret serveur). |
+
+**Deux clés, deux natures** :
+
+- `API_KEY` — **publique par construction** : elle est compilée dans le bundle de l'application
+  mobile (`EXPO_PUBLIC_API_KEY`), donc extractible par quiconque l'installe. Elle n'ouvre que
+  `/api/auth/*` : elle **identifie une application**, elle n'autorise personne (OWASP API Security :
+  *Broken Authentication*).
+- `IOT_API_KEY` — **un vrai secret**, qui ne quitte ni le serveur ni la passerelle IoT. Il lui faut
+  ce statut : une trame de télémétrie ne décrit pas, elle **décide** — elle met en quarantaine tous
+  les lots du matériel visé, lève une alerte PANIC et scelle un maillon d'audit WORM. Avec une clé
+  publique, un inconnu **arrêtait la production** en postant une fausse température.
+
+**Une intégration machine (ERP/WMS) se connecte avec un COMPTE DE SERVICE** : un utilisateur, avec
+ses propres identifiants et le rôle `operator`. Il obtient une session, comme tout le monde — et il
+se **révoque**, ce qu'une clé livrée à des milliers de téléphones ne permet pas.
+
+L'auteur d'une écriture vient **toujours** de la session : le payload n'a plus aucun champ pour le
+déclarer (`received_by` et `actorUserId` ont été supprimés). Ce qui n'existe pas ne se falsifie pas.
+
+Preuve reproductible, contre l'API réelle : `npm run e2e:api-key`.
+
+> 🔴 **À FAIRE — la clé actuelle est COMPROMISE.** Elle a été commitée dans `.env.example` sur un
+> dépôt **public** : considérez-la comme connue de tous, et **régénérez-la maintenant**. Rien à
+> purger dans l'historique (aucun `.env` réel n'a jamais été commité) — une rotation suffit, car
+> l'ancienne valeur ne vaut plus rien une fois remplacée.
+>
+> ```bash
+> node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"   # ×2
+> ```
+>
+> 1. `API_KEY` (nouvelle valeur) → `.env` de l'API, `.env` du front, `EXPO_PUBLIC_API_KEY` du mobile.
+> 2. `IOT_API_KEY` (**valeur différente**) → `.env` de l'API **uniquement**. Jamais dans un client.
+>
+> `.env.example` ne contient que des valeurs factices : ne jamais y remettre un secret.
+
+### Le reste
+
+- **Multi-tenancy strict (defense-in-depth)** : chaque requête Prisma filtre par `organization_id` ; garde centralisée dans `sessionAuth` / `requireOrgRole` (rejet si aucune organisation active).
 - **Audit WORM** : journal chaîné par hash (`signature_hash` ← `prev_hash`), recomputable et vérifié par un job planifié — intégrité de la piste d'audit (HACCP / ISO 22000).
 - **Sûreté sanitaire (quarantaine HACCP)** : un lot reçu non-conforme est mis en `BLOQUE` — impossible à transformer ou expédier ; levée auditée (décision qualité tracée).
 - **Intégrité concurrente** : transactions Serializable, optimistic locking (`Batch.version`), advisory locks Postgres.
@@ -198,7 +245,9 @@ npm run e2e:audit-verify     # intégrité de la chaîne d'audit WORM
 
 ## Limitations connues
 
-- **RBAC partiel** : le modèle de rôles est en cours de construction. Deux taxonomies coexistent — rôles d'organisation (`owner`/`admin`/`member`, Better-Auth) et rôles métier (`logistics_*`) — non encore réconciliées ; l'authentification des routes logistiques en session web est de fait limitée (le mode M2M par clé API est pleinement fonctionnel). L'**ABAC** prévu par l'objectif sécurité est reporté. À traiter dans une itération dédiée.
+- **Authenticité des capteurs (trou assumé, et il est sérieux)** : `IOT_API_KEY` est **partagée par tous les capteurs**, et le `sensor_id` est déclaré dans le corps de la requête sans être rattaché à un appareil authentifié. Qui détient cette clé (une passerelle compromise) peut donc agir au nom de **n'importe quel capteur de l'organisation** — et une trame ne fait pas qu'écrire une mesure : elle **met en quarantaine tous les lots du matériel visé** et lève une alerte PANIC. Autrement dit : fabriquer une chaîne du froid conforme, noyer une vraie excursion, **ou arrêter la production**. La séparation des clés met cette capacité hors de portée d'un client public (le bundle mobile) ; la fermer complètement demande un **secret par appareil** ou une **signature des trames** — hors périmètre de ce projet, et c'est le prochain durcissement à faire. La garde multi-tenant, elle, tient : une trame ne peut pas atterrir dans une autre organisation.
+- **Aperçu d'invitation** (`GET /identity/invitations/:token/preview`) : accessible avec la seule clé publique, il expose l'e-mail et le rôle de l'invité — une donnée personnelle. C'est nécessaire (l'écran d'inscription s'affiche avant toute session) et borné par la connaissance du jeton, mais c'est une lecture de PII sans compte, à connaître pour le DPIA.
+- **ABAC** : l'attribution par site (`Location`) prévue par l'objectif sécurité est reportée — les utilisateurs sont rattachés à l'organisation, pas au site.
 - **Préfixe GS1 simulé** : les identifiants GS1 sont conformes (numéro de lot court AI 10, URN LGTIN/SSCC, GS1 Digital Link), mais le préfixe entreprise par défaut (`3456789`) est fictif — projet d'école, aucun préfixe réel acheté auprès de GS1. Chaque organisation peut renseigner le sien (`Organization.gs1_company_prefix`). Les URN sont découpées positionnellement à la longueur du préfixe déclaré, sans vérifier que le GTIN (fictif en démo) encode réellement ce préfixe ; un déploiement réel validerait cette correspondance à l'enregistrement produit. Le `lot_number` (suffixe aléatoire, ~2 Md de combinaisons/jour/org) s'appuie sur la contrainte d'unicité en base sans retry applicatif — une collision (improbable avant ~50 000 lots/jour/org) renverrait un 400.
 
 ---

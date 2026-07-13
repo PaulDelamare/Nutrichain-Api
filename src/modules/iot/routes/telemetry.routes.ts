@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { ingestTelemetry, getSensorHistory } from '../controllers/telemetry.controller';
 import { checkApiKey } from '../../../shared/utils/checkApiKey/checkApiKey';
-import { mixedAuth } from '../../../shared/middlewares/mixedAuth';
+import { machineAuth } from '../../../shared/middlewares/machineAuth';
 import { requireAuth } from '../../identity/middlewares/requireAuth.middleware';
 import { requireOrgRole } from '../../identity/middlewares/requireOrgRole.middleware';
 import { ALL_ROLES } from '../../identity/constants/roles.constants';
@@ -86,10 +86,9 @@ const router = Router();
  *       401:
  *         description: Clé API manquante ou invalide
  */
-// Capteurs IoT : pas de session utilisateur, clé API obligatoire (M2M).
-// mixedAuth([]) applique la garde multi-tenant centralisée : org résolue (API_KEY_ORG_ID)
-// obligatoire, sinon 401 — pas de bypass de la politique cross-tenant.
-router.post('/telemetry/ping', mixedAuth([]), ingestTelemetry);
+// La SEULE route ouverte à une machine : un capteur ne peut pas ouvrir de session humaine.
+// Elle n'ingère que des mesures — aucune décision, aucune identité d'auteur (cf. machineAuth).
+router.post('/telemetry/ping', machineAuth(), ingestTelemetry);
 
 /**
  * @swagger

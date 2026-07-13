@@ -1,4 +1,12 @@
 import { prisma } from '../src/shared/configs/prismaClient.config';
+import { signInAsOperator } from './helpers/e2eSession';
+
+/**
+ * Le jeton de l'opérateur. Ce script appelait les routes métier avec la seule clé API — le chemin
+ * qui permettait d'écrire sans compte, et qui n'existe plus. Il emprunte désormais le parcours
+ * d'un vrai client : connexion, puis jeton.
+ */
+let sessionToken = '';
 
 // Configuration
 const API_BASE = process.env.API_BASE || 'http://localhost:3000';
@@ -79,14 +87,13 @@ async function postReceipt() {
     quantite_actuelle: 42,
     unite_code: 'KG',
     statut_controle: 'OK',
-    actorUserId: USER_ID,
   };
 
   const res = await fetch(`${API_BASE}/api/logistics/receipts`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      ...(API_KEY ? { 'x-api-key': API_KEY } : {}),
+      Authorization: `Bearer ${sessionToken}`,
     },
     body: JSON.stringify(payload),
   });
@@ -101,7 +108,6 @@ async function postShipment(batchId: string) {
     id_client: CUSTOMER_ID,
     transporteur: 'Transports EPCIS',
     destination_adresse: 'Adresse Livraison Test',
-    created_by: USER_ID,
     date_expedition: new Date().toISOString(),
     shipment_id: 'AUTO',
     lots: [{ id_lot: batchId, quantite_expediee: 10 }],
@@ -111,7 +117,7 @@ async function postShipment(batchId: string) {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      ...(API_KEY ? { 'x-api-key': API_KEY } : {}),
+      Authorization: `Bearer ${sessionToken}`,
     },
     body: JSON.stringify(payload),
   });
@@ -132,6 +138,13 @@ async function main() {
   let shipmentId: string | undefined;
   let foreignOrgId: string | undefined;
   let foreignEventId: string | undefined;
+
+  const session = await signInAsOperator(prisma, {
+    apiBase: API_BASE,
+    apiKey: API_KEY,
+    organizationId: API_KEY_ORG_ID,
+  });
+  sessionToken = session.token;
 
   try {
     console.log('Seeding fixtures...');
@@ -223,7 +236,7 @@ async function main() {
 
     console.log('Scénario : restitution via GET /api/traceability/events (filtre + cloisonnement)');
     const evRes = await fetch(`${API_BASE}/api/traceability/events?related_entity=Shipment&limit=50`, {
-      headers: { ...(API_KEY ? { 'x-api-key': API_KEY } : {}) },
+      headers: { Authorization: `Bearer ${sessionToken}` },
     });
     const evBody = await evRes.json().catch(() => null);
     console.log('GET /traceability/events ->', evRes.status);
@@ -257,7 +270,7 @@ async function main() {
     foreignEventId = foreignEvent.id;
 
     const leakRes = await fetch(`${API_BASE}/api/traceability/events?limit=500`, {
-      headers: { ...(API_KEY ? { 'x-api-key': API_KEY } : {}) },
+      headers: { Authorization: `Bearer ${sessionToken}` },
     });
     const leakBody = await leakRes.json().catch(() => null);
     const leakItems = (leakBody?.data?.data ?? []) as Array<Record<string, unknown>>;

@@ -21,14 +21,8 @@ export const createReceiptController = catchAsync(
       });
     }
 
-    // L'auteur est scellé dans l'audit WORM : il ne peut pas être choisi par le client.
-    // En M2M, l'acteur déclaré est VÉRIFIÉ membre de l'organisation (il ne l'était pas).
-    const receivedBy = await resolveWritingActor({
-      sessionUserId: req.auth?.user?.id,
-      actorUserId: validatedData.actorUserId,
-      organizationId: activeOrgId,
-      allowedRoles: WRITE_ROLES,
-    });
+    // L'auteur est scellé dans l'audit WORM : il vient de la session, jamais du client.
+    const receivedBy = resolveWritingActor({ sessionUserId: req.auth?.user?.id });
 
     const result = await receiptService.createReceipt({
       ...validatedData,

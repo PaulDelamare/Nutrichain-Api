@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import express from 'express';
-import { mixedAuth } from '../../../shared/middlewares/mixedAuth';
+import { sessionAuth } from '../../../shared/middlewares/sessionAuth';
 import { ALL_ROLES, ADMIN_ROLES } from '../../identity/constants/roles.constants';
 import {
   importProductsController,
@@ -16,23 +16,28 @@ const CSV_BODY = express.text({
 const router = Router();
 
 /**
- * Connecteurs ERP/WMS/TMS (M2M ou session) — cloisonnés par organisation via `mixedAuth`.
+ * Connecteurs ERP/WMS/TMS — import/export cloisonnés par organisation.
+ *
+ * Une session administrateur est désormais EXIGÉE : ces routes écrivent le catalogue et le fichier
+ * clients. Elles étaient ouvertes à la seule clé API — une clé publique, embarquée dans le bundle
+ * mobile. L'intégration machine-à-machine reste possible, mais elle devra passer par le patron du
+ * module `sync` : l'appelant déclare un utilisateur dont l'appartenance ET le rôle sont vérifiés.
  * Entrant : import de catalogue produit (CSV). Sortant : export des événements EPCIS (CSV).
  */
 router.post(
   '/connectors/imports/products',
   CSV_BODY,
-  mixedAuth(ADMIN_ROLES),
+  sessionAuth(ADMIN_ROLES),
   importProductsController
 );
 
 router.post(
   '/connectors/imports/customers',
   CSV_BODY,
-  mixedAuth(ADMIN_ROLES),
+  sessionAuth(ADMIN_ROLES),
   importCustomersController
 );
 
-router.get('/connectors/exports/events', mixedAuth(ALL_ROLES), exportEventsController);
+router.get('/connectors/exports/events', sessionAuth(ALL_ROLES), exportEventsController);
 
 export default router;

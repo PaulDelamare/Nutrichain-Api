@@ -4,8 +4,8 @@ import type { Request, Response, NextFunction } from 'express';
 import { app } from '../../../../app';
 import { eventService } from '../services/event.service';
 
-vi.mock('../../../../shared/middlewares/mixedAuth', () => ({
-  mixedAuth: vi.fn(() => (req: Request, _res: Response, next: NextFunction) => {
+vi.mock('../../../../shared/middlewares/sessionAuth', () => ({
+  sessionAuth: vi.fn(() => (req: Request, _res: Response, next: NextFunction) => {
     Object.assign(req, { activeOrgId: 'org_test_123' });
     next();
   }),

@@ -1,79 +1,24 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { resolveWritingActor } from './resolveWritingActor';
-import { prisma } from '../../configs/prismaClient.config';
 import { APIError } from '../errorHandler/APIError';
 
-vi.mock('../../configs/prismaClient.config', () => ({
-  prisma: { member: { findFirst: vi.fn() } },
-}));
-
-const ORG = 'org-1';
-const ROLES = ['owner', 'admin', 'operator'];
-
-beforeEach(() => vi.clearAllMocks());
-
 describe('resolveWritingActor', () => {
-  it('la session fait foi : le corps de la requête est ignoré', async () => {
-    const actor = await resolveWritingActor({
-      sessionUserId: 'user-session',
-      actorUserId: 'user-usurpe',
-      organizationId: ORG,
-      allowedRoles: ROLES,
-    });
-
-    expect(actor).toBe('user-session');
-    // Aucune vérification d'appartenance nécessaire : mixedAuth a déjà authentifié la session.
-    expect(prisma.member.findFirst).not.toHaveBeenCalled();
+  it("prend l'auteur dans la session, seule source admise", () => {
+    expect(resolveWritingActor({ sessionUserId: 'operatrice-olivia' })).toBe('operatrice-olivia');
   });
 
-  it('refuse un acteur qui n’est PAS membre de l’organisation (falsification d’identité)', async () => {
-    vi.mocked(prisma.member.findFirst).mockResolvedValue(null);
+  it('refuse une écriture sans session : personne ne signerait', () => {
+    // Le client n'a plus aucun champ pour désigner l'auteur. Il en avait un (`received_by`, puis
+    // `actorUserId`), et une garde vérifiait que l'acteur déclaré était bien membre de
+    // l'organisation avec un rôle autorisé. Cette garde empêchait de désigner un ÉTRANGER — mais
+    // pas d'usurper un collègue légitime, car la seule pièce d'identité de ce mode était une clé
+    // API… compilée dans le bundle mobile, donc extractible par quiconque installe l'application.
+    expect(() => resolveWritingActor({})).toThrow(APIError);
 
-    await expect(
-      resolveWritingActor({
-        actorUserId: 'user-autre-org',
-        organizationId: ORG,
-        allowedRoles: ROLES,
-      })
-    ).rejects.toThrow(APIError);
-  });
-
-  it('accepte un acteur membre de l’organisation avec un rôle autorisé', async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    vi.mocked(prisma.member.findFirst).mockResolvedValue({ id: 'member-1' } as any);
-
-    const actor = await resolveWritingActor({
-      actorUserId: 'user-operateur',
-      organizationId: ORG,
-      allowedRoles: ROLES,
-    });
-
-    expect(actor).toBe('user-operateur');
-    expect(prisma.member.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          userId: 'user-operateur',
-          organizationId: ORG,
-          role: { in: ROLES },
-        }),
-      })
-    );
-  });
-
-  it('exige un acteur en M2M : sans session ni acteur déclaré, on refuse', async () => {
-    await expect(resolveWritingActor({ organizationId: ORG, allowedRoles: ROLES })).rejects.toThrow(
-      APIError
-    );
-  });
-
-  it('n’impose AUCUN format d’identifiant : les comptes existants ne sont pas des UUID', async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    vi.mocked(prisma.member.findFirst).mockResolvedValue({ id: 'member-1' } as any);
-
-    const legacyId = 'Qx7pL2mN9vB3kR8sT1wY6zA4cD5eF0gH';
-
-    await expect(
-      resolveWritingActor({ actorUserId: legacyId, organizationId: ORG, allowedRoles: ROLES })
-    ).resolves.toBe(legacyId);
+    try {
+      resolveWritingActor({});
+    } catch (erreur) {
+      expect((erreur as APIError).status).toBe(401);
+    }
   });
 });

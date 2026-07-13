@@ -23,19 +23,15 @@ export const receiptPayloadFields = {
 export const receiptPayloadSchema = vine.object(receiptPayloadFields);
 
 /**
- * Schéma complet du flow direct POST /logistics/receipts.
+ * Schéma de POST /logistics/receipts.
  *
- * `received_by` a disparu du payload : l'auteur d'une réception est scellé dans l'audit WORM, il
- * ne peut pas être choisi par le client. En session, il vient de la session ; en M2M (clé API),
- * `actorUserId` est déclaré PUIS vérifié membre de l'organisation (cf. resolveWritingActor).
- *
- * L'identifiant est une chaîne opaque, sans contrainte de format : l'ancienne règle `uuid()`
- * rejetait les comptes créés avant l'alignement de Better-Auth sur les UUID — dont le compte de
- * démonstration. La sécurité vient de la vérification d'appartenance, pas de la forme de l'id.
+ * Le payload n'a AUCUN champ pour désigner l'auteur — ni `received_by`, ni `actorUserId`. Il vient
+ * de la session, et l'écriture est refusée sans elle. Laisser le champ « au cas où » serait une
+ * arme chargée : la première route remontée derrière une clé rouvrirait l'usurpation, sans qu'un
+ * test ne bronche. Ce qui n'existe pas ne se falsifie pas.
  */
 export const receiptValidationSchema = vine.object({
   ...receiptPayloadFields,
-  actorUserId: vine.string().minLength(1).optional(),
 });
 
 export type ReceiptPayload = Infer<typeof receiptValidationSchema>;
