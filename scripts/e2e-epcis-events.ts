@@ -79,7 +79,7 @@ async function postReceipt() {
     quantite_actuelle: 42,
     unite_code: 'KG',
     statut_controle: 'OK',
-    received_by: USER_ID,
+    actorUserId: USER_ID,
   };
 
   const res = await fetch(`${API_BASE}/api/logistics/receipts`, {

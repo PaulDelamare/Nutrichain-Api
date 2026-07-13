@@ -6,6 +6,8 @@ import { sendSuccess } from '../../../../shared/utils/returnSuccess/returnSucces
 import { catchAsync } from '../../../../shared/utils/errorHandler/catchAsync';
 import { AuthenticatedRequest } from '../../../identity/types/auth.types';
 import { APIError } from '../../../../shared/utils/errorHandler/APIError';
+import { resolveWritingActor } from '../../../../shared/utils/auth/resolveWritingActor';
+import { WRITE_ROLES } from '../../../identity/constants/roles.constants';
 
 export const createReceiptController = catchAsync(
   async (req: AuthenticatedRequest, res: Response) => {
@@ -19,11 +21,14 @@ export const createReceiptController = catchAsync(
       });
     }
 
-    // La session prime sur le payload. `req.user` n'est posé QUE par `requireAuth` — or cette
-    // route passe par `mixedAuth`, qui remplit `req.auth.user` : la garde anti-usurpation
-    // était donc du code mort, et le champ du corps de requête gagnait TOUJOURS.
-    // Autrement dit, l'auteur scellé dans la chaîne d'audit était choisi par le client.
-    const receivedBy = req.auth?.user?.id ?? validatedData.received_by;
+    // L'auteur est scellé dans l'audit WORM : il ne peut pas être choisi par le client.
+    // En M2M, l'acteur déclaré est VÉRIFIÉ membre de l'organisation (il ne l'était pas).
+    const receivedBy = await resolveWritingActor({
+      sessionUserId: req.auth?.user?.id,
+      actorUserId: validatedData.actorUserId,
+      organizationId: activeOrgId,
+      allowedRoles: WRITE_ROLES,
+    });
 
     const result = await receiptService.createReceipt({
       ...validatedData,

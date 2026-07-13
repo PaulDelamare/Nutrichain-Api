@@ -3,6 +3,11 @@ import { Response } from 'express';
 import { createReceiptController } from './receipt.controller';
 import { receiptService } from '../services/receipt.service';
 import { AuthenticatedRequest } from '../../../identity/types/auth.types';
+import { prisma } from '../../../../shared/configs/prismaClient.config';
+
+vi.mock('../../../../shared/configs/prismaClient.config', () => ({
+  prisma: { member: { findFirst: vi.fn() } },
+}));
 
 vi.mock('../services/receipt.service', () => ({
   receiptService: {
@@ -45,26 +50,51 @@ describe('ReceiptController', () => {
       );
     });
 
-    it('doit garder received_by du body quand aucune session ne porte la requête (M2M)', async () => {
-      // Les intégrations machine (connecteurs, IoT) n'ont pas de session : le payload reste
-      // leur seul moyen de désigner l'opérateur. Le service vérifie ensuite son appartenance
-      // à l'organisation.
+    it('en M2M, l acteur declare doit etre membre de l organisation', async () => {
+      // Avant : le `received_by` du corps de requête était scellé tel quel dans l'audit WORM,
+      // sans AUCUNE vérification d'appartenance — n'importe quel utilisateur, y compris d'une
+      // autre organisation, pouvait être désigné comme auteur d'une réception.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(prisma.member.findFirst).mockResolvedValue({ id: 'member-1' } as any);
+
       const req = {
         activeOrgId: 'org-1',
         validatedReceipt: {
           id_fournisseur: 'supp-1',
-          received_by: 'external-system-id',
+          actorUserId: 'operateur-de-l-org',
         },
       } as unknown as AuthenticatedRequest;
-      const res = {} as Response;
 
-      await createReceiptController(req, res);
+      await createReceiptController(req, {} as Response);
 
-      expect(receiptService.createReceipt).toHaveBeenCalledWith(
+      expect(prisma.member.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
-          received_by: 'external-system-id',
+          where: expect.objectContaining({
+            userId: 'operateur-de-l-org',
+            organizationId: 'org-1',
+          }),
         })
       );
+      expect(receiptService.createReceipt).toHaveBeenCalledWith(
+        expect.objectContaining({ received_by: 'operateur-de-l-org' })
+      );
+    });
+
+    it('en M2M, un acteur qui n appartient PAS a l organisation est refuse (403)', async () => {
+      vi.mocked(prisma.member.findFirst).mockResolvedValue(null);
+
+      const req = {
+        activeOrgId: 'org-1',
+        validatedReceipt: {
+          id_fournisseur: 'supp-1',
+          actorUserId: 'utilisateur-d-une-autre-org',
+        },
+      } as unknown as AuthenticatedRequest;
+
+      await expect(createReceiptController(req, {} as Response)).rejects.toMatchObject({
+        status: 403,
+      });
+      expect(receiptService.createReceipt).not.toHaveBeenCalled();
     });
   });
 });
