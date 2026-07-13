@@ -11,6 +11,7 @@ vi.mock('../../../../shared/configs/prismaClient.config', () => ({
       findFirst: vi.fn(),
       update: vi.fn(),
     },
+    batch_Mouvement: { create: vi.fn() },
     // Simule une transaction en passant le mock prisma au callback
     $transaction: vi.fn(async (cb) => cb(prisma)),
   },
@@ -115,6 +116,34 @@ describe('BatchSharedService', () => {
         expect.anything()
       );
       expect(result.statut).toBe('EN_STOCK');
+    });
+
+    it('la levée entre dans l historique du lot, avec son motif', async () => {
+      vi.mocked(prisma.batch.findFirst).mockResolvedValue({
+        id: 'batch-1',
+        organization_id: 'org-1',
+        statut: 'BLOQUE',
+        quantite_actuelle: 42,
+        unite_code: 'KG',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(prisma.batch.update).mockResolvedValue({ id: 'batch-1' } as any);
+
+      await batchService.liftQuarantine('batch-1', 'org-1', 'user-1', '2e contrôle conforme');
+
+      // Sans ce mouvement, la décision qualité n'apparaît nulle part sur la fiche du lot :
+      // le lot redevient « conforme » sans que rien n'explique pourquoi.
+      expect(prisma.batch_Mouvement.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          id_lot: 'batch-1',
+          type_action: 'LEVEE_QUARANTAINE',
+          quantite: 42,
+          unite: 'KG',
+          id_user: 'user-1',
+          metadata: expect.objectContaining({ motif: '2e contrôle conforme' }),
+        }),
+      });
     });
 
     it('doit refuser (404) un lot d une autre organisation', async () => {

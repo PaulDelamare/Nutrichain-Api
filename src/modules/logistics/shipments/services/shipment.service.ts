@@ -9,7 +9,11 @@ import {
   EPCIS_EVENT_TYPE,
   EPCIS_RELATED_ENTITY,
 } from '../../../../shared/constants/epcis.constants';
-import { BATCH_STATUSES, isBatchBlocked } from '../../constants/logistics.constants';
+import {
+  BATCH_STATUSES,
+  MOVEMENT_TYPES,
+  isBatchBlocked,
+} from '../../constants/logistics.constants';
 
 /**
  * Service pour la gestion des Expéditions (Shipments)
@@ -137,7 +141,7 @@ export const shipmentService = {
         await tx.batch_Mouvement.create({
           data: {
             id_lot: item.id_lot,
-            type_action: 'EXPEDITION',
+            type_action: MOVEMENT_TYPES.SHIPMENT,
             quantite: item.quantite,
             unite: batch.unite_code,
             id_expedition: shipment.id,

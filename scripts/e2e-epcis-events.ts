@@ -284,6 +284,7 @@ async function main() {
       await prisma.ePCIS_Event.deleteMany({ where: { related_entity: 'Receipt', related_id: receiptId } });
       await prisma.receipt.deleteMany({ where: { id: receiptId } });
     }
+    if (batchId) await prisma.batch_Mouvement.deleteMany({ where: { id_lot: batchId } });
     if (batchId) await prisma.batch.deleteMany({ where: { id: batchId } });
     if (foreignEventId) await prisma.ePCIS_Event.deleteMany({ where: { id: foreignEventId } });
     if (foreignOrgId) await prisma.organization.deleteMany({ where: { id: foreignOrgId } });

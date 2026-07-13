@@ -10,7 +10,11 @@ import {
   EPCIS_EVENT_TYPE,
   EPCIS_RELATED_ENTITY,
 } from '../../../../shared/constants/epcis.constants';
-import { BATCH_STATUSES, isBatchBlocked } from '../../../logistics/constants/logistics.constants';
+import {
+  BATCH_STATUSES,
+  MOVEMENT_TYPES,
+  isBatchBlocked,
+} from '../../../logistics/constants/logistics.constants';
 
 export interface TransformationInput {
   organization_id: string;
@@ -210,7 +214,7 @@ export const transformationService = {
         await tx.batch_Mouvement.create({
           data: {
             id_lot: input.id_lot_parent,
-            type_action: 'TRANSFORMATION_SORTIE',
+            type_action: MOVEMENT_TYPES.TRANSFORMATION_OUT,
             quantite: input.quantite_prelevee,
             unite: input.unite,
             id_transformation: transformation.id,
@@ -244,7 +248,7 @@ export const transformationService = {
       await tx.batch_Mouvement.create({
         data: {
           id_lot: lotEnfant.id,
-          type_action: 'TRANSFORMATION_ENTREE',
+          type_action: MOVEMENT_TYPES.TRANSFORMATION_IN,
           quantite: data.quantite_produite,
           unite: data.unite_code,
           id_transformation: transformation.id,

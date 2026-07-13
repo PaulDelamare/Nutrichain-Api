@@ -7,7 +7,7 @@ import { escapeHtml } from '../../../shared/utils/html/escapeHtml';
 import { logger } from '../../../shared/utils/logger/logger';
 import { TelemetryModel } from '../models/telemetry.model';
 import { detectExcursion, TelemetryPoint } from './excursionDetection.service';
-import { BATCH_STATUSES } from '../../logistics/constants/logistics.constants';
+import { BATCH_STATUSES, MOVEMENT_TYPES } from '../../logistics/constants/logistics.constants';
 
 /**
  * Service d'alerte chaîne du froid (Objectif SMART n°2).
@@ -122,27 +122,53 @@ export const iotAlertService = {
           // Sûreté sanitaire : les lots EN_STOCK rangés dans l'équipement en excursion
           // sont placés en quarantaine (BLOQUE) — un incident matériel ne doit pas laisser
           // un produit potentiellement altéré partir en transformation ou en expédition.
-          const quarantined = await tx.batch.updateMany({
-            where: {
-              organization_id: cached.equipmentOrgId,
-              id_materiel_actuel: cached.equipmentId,
-              statut: BATCH_STATUSES.IN_STOCK,
-            },
-            data: { statut: BATCH_STATUSES.BLOCKED },
-          });
+          //
+          // UPDATE ... RETURNING (et non SELECT puis UPDATE) : on obtient en UNE requête les
+          // lots réellement bloqués, sans fenêtre TOCTOU, et avec leur quantité — nécessaire
+          // pour tracer le mouvement (quantite/unite sont NOT NULL).
+          const quarantined = await tx.$queryRaw<
+            { id: string; quantite_actuelle: Prisma.Decimal; unite_code: string }[]
+          >`
+            UPDATE "Batch"
+               SET statut = ${BATCH_STATUSES.BLOCKED}
+             WHERE organization_id = ${cached.equipmentOrgId}
+               AND id_materiel_actuel = ${cached.equipmentId}
+               AND statut = ${BATCH_STATUSES.IN_STOCK}
+         RETURNING id, quantite_actuelle, unite_code
+          `;
 
           const created = await tx.alert.create({
             data: {
               organization_id: cached.equipmentOrgId,
               type: 'TEMP_EXCURSION',
               niveau_gravite: 'PANIC',
-              message: `Excursion thermique détectée sur ${sensorId} : pic ${result.peakTemp}°C (seuil ${threshold}°C, ratio ${(result.ratioOverThreshold * 100).toFixed(0)}% sur ${WINDOW_MINUTES}min). ${quarantined.count} lot(s) mis en quarantaine.`,
+              message: `Excursion thermique détectée sur ${sensorId} : pic ${result.peakTemp}°C (seuil ${threshold}°C, ratio ${(result.ratioOverThreshold * 100).toFixed(0)}% sur ${WINDOW_MINUTES}min). ${quarantined.length} lot(s) mis en quarantaine.`,
               id_materiel: cached.equipmentId,
               related_entity: 'Equipment',
               related_id: cached.equipmentId,
               statut: 'ACTIVE',
             },
           });
+
+          // Chaque lot bloqué garde la trace de la CAUSE : sans ça, un lot passe en
+          // quarantaine sans que personne ne puisse dire pourquoi ni quand.
+          // Volume borné : les lots d'un seul équipement, pas une descendance de rappel.
+          if (quarantined.length > 0) {
+            await tx.batch_Mouvement.createMany({
+              data: quarantined.map((b) => ({
+                id_lot: b.id,
+                type_action: MOVEMENT_TYPES.COLD_QUARANTINE,
+                quantite: b.quantite_actuelle,
+                unite: b.unite_code,
+                metadata: {
+                  id_alerte: created.id,
+                  sensorId,
+                  peakTemp: result.peakTemp,
+                  threshold,
+                },
+              })),
+            });
+          }
 
           await auditService.logAction(
             {
@@ -157,7 +183,7 @@ export const iotAlertService = {
                 peakTemp: result.peakTemp,
                 ratioOverThreshold: result.ratioOverThreshold,
                 windowMinutes: WINDOW_MINUTES,
-                quarantinedBatchesCount: quarantined.count,
+                quarantinedBatchesCount: quarantined.length,
               },
             },
             tx

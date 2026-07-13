@@ -200,6 +200,9 @@ async function scenario1_apiKeySpoofing(ctx: Fixtures) {
   }
   ok(`Receipt persisté dans l'org bound (${ORG_ID}) malgré x-org-id=${ctx.foreignOrgId}`);
 
+  await prisma.batch_Mouvement.deleteMany({
+    where: { lot: { organization_id: ORG_ID!, id_produit: ctx.productId } },
+  });
   await prisma.batch.deleteMany({ where: { organization_id: ORG_ID!, id_produit: ctx.productId } });
   await prisma.receipt.delete({ where: { id: created!.id } });
 }
@@ -511,6 +514,9 @@ async function scenario6_genealogyCte(ctx: Fixtures) {
     await prisma.transformation.deleteMany({
       where: { id: { in: [transformationT1Id, transformationT2Id] } },
     });
+    await prisma.batch_Mouvement.deleteMany({
+      where: { id_lot: { in: [batchAId, batchBId, batchCId] } },
+    });
     await prisma.batch.deleteMany({
       where: { id: { in: [batchAId, batchBId, batchCId] } },
     });
@@ -524,6 +530,9 @@ async function scenario6_genealogyCte(ctx: Fixtures) {
 
 async function cleanup(ctx: Fixtures) {
   log('\n🧹 Cleanup...');
+  await prisma.batch_Mouvement.deleteMany({
+    where: { lot: { organization_id: ctx.foreignOrgId } },
+  });
   await prisma.batch.deleteMany({ where: { organization_id: ctx.foreignOrgId } });
   await prisma.product.deleteMany({ where: { organization_id: ctx.foreignOrgId } });
   await prisma.supplier.deleteMany({ where: { organization_id: ctx.foreignOrgId } });

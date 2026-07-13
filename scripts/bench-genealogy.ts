@@ -188,6 +188,9 @@ async function main() {
         where: { id_transformation: { in: seeded.transfoIds } },
       });
       await prisma.transformation.deleteMany({ where: { id: { in: seeded.transfoIds } } });
+      // Les mouvements référencent le lot (FK) : les purger d'abord.
+      await prisma.batch_Mouvement.deleteMany({ where: { id_lot: { in: seeded.batchIds } } });
+      await prisma.batch_Mouvement.deleteMany({ where: { id_lot: { in: seeded.batchIds } } });
       await prisma.batch.deleteMany({ where: { id: { in: seeded.batchIds } } });
       console.log('  fixtures supprimées');
     }

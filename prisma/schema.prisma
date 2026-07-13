@@ -515,6 +515,10 @@ model Batch_Mouvement {
   user              User?           @relation(fields: [id_user], references: [id])
   created_at        DateTime        @default(now())
   metadata          Json?
+
+  // L'historique d'un lot se lit toujours PAR lot et dans l'ordre chronologique.
+  // Sans cet index, la fiche lot fait un seq scan sur une table append-only.
+  @@index([id_lot, created_at])
 }
 
 // --- METRIQUES ---
