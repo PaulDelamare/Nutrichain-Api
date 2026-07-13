@@ -112,6 +112,8 @@ async function cleanup(f: Fixtures) {
     where: { organization_id: ORG_ID!, related_id: { in: f.createdBatchIds } },
   });
   await prisma.receipt.deleteMany({ where: { organization_id: ORG_ID!, id_fournisseur: f.supplierId, shipment_id: { startsWith: 'E2E-QUAR-' } } });
+  // Les mouvements référencent le lot (FK) : les purger d'abord.
+  await prisma.batch_Mouvement.deleteMany({ where: { id_lot: { in: f.createdBatchIds } } });
   await prisma.batch.deleteMany({ where: { id: { in: f.createdBatchIds } } });
   await prisma.customer.delete({ where: { id: f.customerId } });
   console.log('  → fixtures supprimées');

@@ -60,6 +60,29 @@ export function isBatchBlocked(statut: string): boolean {
   return (BLOCKING_BATCH_STATUSES as readonly string[]).includes(statut);
 }
 
+// ========== MOUVEMENTS DE LOT ==========
+/**
+ * Étapes de la vie d'un lot, tracées dans `Batch_Mouvement` (append-only).
+ *
+ * C'est la source UNIQUE de l'historique affiché (la frise de la fiche lot). L'audit WORM
+ * journalise les mêmes décisions, mais il sert de PREUVE d'intégrité, pas d'historique métier :
+ * mélanger les deux afficherait chaque étape en double, avec deux horloges différentes.
+ *
+ * Note : pour un changement de statut (quarantaine, levée, rappel), `quantite`/`unite` portent
+ * la quantité du lot CONCERNÉE par la décision — ce n'est pas un mouvement de matière.
+ */
+export const MOVEMENT_TYPES = {
+  RECEPTION: 'RECEPTION',
+  TRANSFORMATION_IN: 'TRANSFORMATION_ENTREE',
+  TRANSFORMATION_OUT: 'TRANSFORMATION_SORTIE',
+  SHIPMENT: 'EXPEDITION',
+  COLD_QUARANTINE: 'QUARANTAINE_FROID',
+  QUARANTINE_LIFTED: 'LEVEE_QUARANTAINE',
+  RECALL: 'RAPPEL',
+} as const;
+
+export type MovementType = (typeof MOVEMENT_TYPES)[keyof typeof MOVEMENT_TYPES];
+
 /**
  * Contrôles qualité à la réception qui placent immédiatement le lot en quarantaine.
  */

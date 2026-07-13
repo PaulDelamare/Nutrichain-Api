@@ -11,6 +11,8 @@ const { txClient } = vi.hoisted(() => ({
   txClient: {
     alert: { create: vi.fn() },
     batch: { updateMany: vi.fn() },
+    batch_Mouvement: { createMany: vi.fn() },
+    $queryRaw: vi.fn(),
   },
 }));
 
@@ -86,7 +88,8 @@ beforeEach(() => {
   // advisory lock acquis par défaut (renvoie true)
   vi.mocked(prisma.$queryRawUnsafe).mockResolvedValue([{ locked: true }] as never);
   vi.mocked(txClient.alert.create).mockResolvedValue({ id: 'alert-1' } as never);
-  vi.mocked(txClient.batch.updateMany).mockResolvedValue({ count: 0 } as never);
+  vi.mocked(txClient.$queryRaw).mockResolvedValue([] as never);
+  vi.mocked(txClient.batch_Mouvement.createMany).mockResolvedValue({ count: 0 } as never);
   vi.mocked(auditService.logAction).mockResolvedValue({} as never);
   vi.mocked(sendEmail).mockResolvedValue(undefined as never);
   mockMongoFind(Array.from({ length: 10 }, (_, i) => buildPoint(i + 1, 8))); // tous au-dessus de 4
@@ -196,20 +199,18 @@ describe('iotAlertService.checkAndAlert', () => {
   });
 
   it('excursion → lots EN_STOCK de cet équipement mis en quarantaine (BLOQUE)', async () => {
-    vi.mocked(txClient.batch.updateMany).mockResolvedValue({ count: 3 } as never);
+    vi.mocked(txClient.$queryRaw).mockResolvedValue([
+      { id: 'lot-1', quantite_actuelle: 10, unite_code: 'KG' },
+      { id: 'lot-2', quantite_actuelle: 20, unite_code: 'KG' },
+      { id: 'lot-3', quantite_actuelle: 30, unite_code: 'KG' },
+    ] as never);
 
     await iotAlertService.checkAndAlert(baseParams);
 
-    // Seuls les lots EN_STOCK rangés dans l'équipement en excursion sont bloqués,
-    // dans la même transaction que l'alerte.
-    expect(txClient.batch.updateMany).toHaveBeenCalledWith({
-      where: {
-        organization_id: 'org-1',
-        id_materiel_actuel: 'equip-1',
-        statut: 'EN_STOCK',
-      },
-      data: { statut: 'BLOQUE' },
-    });
+    // Le blocage est un UPDATE ... RETURNING : une seule requête, pas de lecture préalable
+    // (pas de fenêtre TOCTOU), et il renvoie les lots réellement bloqués.
+    expect(txClient.$queryRaw).toHaveBeenCalled();
+
     // Le nombre de lots bloqués est tracé dans l'audit.
     expect(auditService.logAction).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -217,6 +218,36 @@ describe('iotAlertService.checkAndAlert', () => {
       }),
       txClient
     );
+  });
+
+  it('chaque lot mis en quarantaine garde la trace de la CAUSE dans son historique', async () => {
+    vi.mocked(txClient.$queryRaw).mockResolvedValue([
+      { id: 'lot-1', quantite_actuelle: 10, unite_code: 'KG' },
+    ] as never);
+
+    await iotAlertService.checkAndAlert(baseParams);
+
+    // Sans ce mouvement, un lot passe en quarantaine sans que personne ne puisse dire
+    // pourquoi ni quand : la fiche du lot n'aurait aucune explication à montrer.
+    expect(txClient.batch_Mouvement.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          id_lot: 'lot-1',
+          type_action: 'QUARANTAINE_FROID',
+          quantite: 10,
+          unite: 'KG',
+          metadata: expect.objectContaining({ id_alerte: 'alert-1', sensorId: 'sensor-A' }),
+        }),
+      ],
+    });
+  });
+
+  it('aucun lot bloqué → aucun mouvement écrit', async () => {
+    vi.mocked(txClient.$queryRaw).mockResolvedValue([] as never);
+
+    await iotAlertService.checkAndAlert(baseParams);
+
+    expect(txClient.batch_Mouvement.createMany).not.toHaveBeenCalled();
   });
 
   it('dédup : Alert ACTIVE existe → skip création (anti-spam)', async () => {

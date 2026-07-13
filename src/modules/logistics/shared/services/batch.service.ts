@@ -3,7 +3,10 @@ import { prisma } from '../../../../shared/configs/prismaClient.config';
 import { APIError } from '../../../../shared/utils/errorHandler/APIError';
 import { auditService } from '../../../../shared/utils/audit/audit.service';
 import { gs1Utils } from '../../../../shared/utils/gs1/gs1.utils';
-import { BATCH_STATUSES, BatchStatus } from '../../constants/logistics.constants';
+import { BATCH_STATUSES, BatchStatus, MOVEMENT_TYPES } from '../../constants/logistics.constants';
+
+/** Plafond de l'historique renvoyé avec un lot (frise de la fiche lot). */
+const BATCH_HISTORY_LIMIT = 50;
 
 export interface CreateBatchInput {
   organization_id: string;
@@ -56,6 +59,16 @@ export const batchService = {
       include: {
         produit: true,
         unite: true,
+        // Emplacement réel et auteur : affichés par la fiche lot, ils n'étaient pas servis.
+        materiel: { include: { lieu: true } },
+        user: { select: { id: true, name: true, email: true } },
+        // L'historique du lot. Borné : un lot très mouvementé ne doit pas faire exploser
+        // la réponse. Les plus récents d'abord.
+        mouvements: {
+          take: BATCH_HISTORY_LIMIT,
+          orderBy: { created_at: 'desc' },
+          include: { user: { select: { name: true } } },
+        },
       },
     });
 
@@ -103,6 +116,19 @@ export const batchService = {
           data: {
             statut: BATCH_STATUSES.IN_STOCK,
             version: { increment: 1 },
+          },
+        });
+
+        // La décision qualité entre dans l'historique du lot. `quantite` porte ici la quantité
+        // concernée par la décision, pas un mouvement de matière (cf. MOVEMENT_TYPES).
+        await tx.batch_Mouvement.create({
+          data: {
+            id_lot: id,
+            type_action: MOVEMENT_TYPES.QUARANTINE_LIFTED,
+            quantite: batch.quantite_actuelle,
+            unite: batch.unite_code,
+            id_user: userId,
+            metadata: { motif, statut_precedent: batch.statut },
           },
         });
 

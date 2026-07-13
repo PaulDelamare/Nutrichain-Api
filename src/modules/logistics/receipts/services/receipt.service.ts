@@ -12,7 +12,11 @@ import {
 } from '../../../../shared/constants/epcis.constants';
 import { gs1Utils } from '../../../../shared/utils/gs1/gs1.utils';
 import { resolveGs1Prefix } from '../../../../shared/utils/gs1/gs1Prefix';
-import { BATCH_STATUSES, QUARANTINE_RECEIPT_CONTROLS } from '../../constants/logistics.constants';
+import {
+  BATCH_STATUSES,
+  MOVEMENT_TYPES,
+  QUARANTINE_RECEIPT_CONTROLS,
+} from '../../constants/logistics.constants';
 
 /**
  * Interface pour les données de création d'une réception.
@@ -109,6 +113,24 @@ async function createReceiptInTx(tx: Prisma.TransactionClient, data: CreateRecei
     created_by: data.received_by,
     statut: isQuarantined ? BATCH_STATUSES.BLOCKED : BATCH_STATUSES.IN_STOCK,
     id_materiel_actuel: data.id_materiel,
+  });
+
+  // Premier maillon de l'historique du lot. Sans lui, un lot reçu et jamais transformé
+  // n'a AUCUNE trace de son arrivée : sa frise commence dans le vide.
+  await tx.batch_Mouvement.create({
+    data: {
+      id_lot: batch.id,
+      type_action: MOVEMENT_TYPES.RECEPTION,
+      quantite: data.quantite_actuelle,
+      unite: data.unite_code,
+      id_user: data.received_by,
+      metadata: {
+        id_receipt: receipt.id,
+        id_fournisseur: data.id_fournisseur,
+        statut_controle: data.statut_controle,
+        quarantaine: isQuarantined,
+      },
+    },
   });
 
   // Événement EPCIS ObjectEvent : entrée du lot dans la chaîne lors de la réception.

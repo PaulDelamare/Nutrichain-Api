@@ -149,6 +149,7 @@ async function cleanup(f: Fixtures): Promise<void> {
     await prisma.alert.deleteMany({ where: { id: f.recallAlertId } });
   }
   if (f.recallBatchId) {
+    await prisma.batch_Mouvement.deleteMany({ where: { id_lot: f.recallBatchId } });
     await prisma.batch.deleteMany({ where: { id: f.recallBatchId } });
   }
   await prisma.equipment.delete({ where: { id: f.equipmentId } });

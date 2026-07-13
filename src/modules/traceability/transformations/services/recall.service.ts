@@ -6,6 +6,7 @@ import { logger } from '../../../../shared/utils/logger/logger';
 import { auditService } from '../../../../shared/utils/audit/audit.service';
 import { notifyOrgAdmins, OrgAdminEmail } from '../../../../shared/utils/mailer/notifyOrgAdmins';
 import { notifyRecallCustomers } from './recallNotifications';
+import { MOVEMENT_TYPES } from '../../../logistics/constants/logistics.constants';
 import { escapeHtml } from '../../../../shared/utils/html/escapeHtml';
 
 /**
@@ -116,6 +117,10 @@ export const recallService = {
         // et la profondeur max atteinte (pour détecter une saturation de la garde anti-cycle).
         // Le filtre `organization_id` sur la cible suffit à l'isolation : une transformation est
         // mono-org (cf. transformation.service), donc la descendance ne franchit jamais le tenant.
+        // Le mouvement de rappel est écrit par un INSERT ... SELECT dans la MÊME requête, et non
+        // par un createMany applicatif : sur un rappel massif, réinsérer N lignes de 6 colonnes
+        // dépasserait le plafond de 65535 paramètres liés de PostgreSQL → throw → rollback →
+        // ZÉRO lot bloqué. Set-based, il n'y a ni plafond, ni aller-retour, ni allongement de la tx.
         const [blockResult] = await tx.$queryRaw<
           { impacted_ids: string[] | null; max_depth: number | null }[]
         >(Prisma.sql`
@@ -125,7 +130,18 @@ export const recallService = {
             SET statut = 'ALERTE', version = version + 1
             WHERE organization_id = ${organizationId}
               AND (id = ${batchId} OR id IN (SELECT DISTINCT id_lot_enfant FROM downstream_trace))
-            RETURNING id
+            RETURNING id, quantite_actuelle, unite_code
+          ),
+          traced AS (
+            INSERT INTO "Batch_Mouvement" (id_lot, type_action, quantite, unite, id_user, metadata)
+            SELECT
+              b.id,
+              ${MOVEMENT_TYPES.RECALL},
+              b.quantite_actuelle,
+              b.unite_code,
+              ${userId},
+              jsonb_build_object('motif', ${reason}::text, 'lot_source', ${batchId}::text)
+            FROM blocked b
           )
           SELECT
             (SELECT array_agg(id) FROM blocked) AS impacted_ids,

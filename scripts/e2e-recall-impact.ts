@@ -187,6 +187,8 @@ async function cleanup(f: Fixtures) {
     where: { id_transformation: f.transformationId },
   });
   await prisma.transformation.delete({ where: { id: f.transformationId } });
+  // Les mouvements référencent le lot (FK) : les purger d'abord.
+  await prisma.batch_Mouvement.deleteMany({ where: { id_lot: { in: [f.sourceBatchId, f.childBatchId] } } });
   await prisma.batch.deleteMany({ where: { id: { in: [f.sourceBatchId, f.childBatchId] } } });
   await prisma.customer.delete({ where: { id: f.customerId } });
   console.log('  → fixtures supprimées');
@@ -400,6 +402,8 @@ async function scenarioBreadthExhaustive() {
     });
     await prisma.transformation.deleteMany({ where: { id: { in: transfoIds } } });
     await prisma.alert.deleteMany({ where: { related_id: source.id } });
+    // Les mouvements référencent le lot (FK) : les purger d'abord.
+    await prisma.batch_Mouvement.deleteMany({ where: { id_lot: { in: [source.id, ...childIds] } } });
     await prisma.batch.deleteMany({ where: { id: { in: [source.id, ...childIds] } } });
   }
 }
@@ -483,6 +487,8 @@ async function scenarioDepthCycleGuard() {
     });
     await prisma.transformation.deleteMany({ where: { id: { in: transfoIds } } });
     await prisma.alert.deleteMany({ where: { related_id: source.id } });
+    // Les mouvements référencent le lot (FK) : les purger d'abord.
+    await prisma.batch_Mouvement.deleteMany({ where: { id_lot: { in: [source.id, b1.id, b2.id] } } });
     await prisma.batch.deleteMany({ where: { id: { in: [source.id, b1.id, b2.id] } } });
   }
 }

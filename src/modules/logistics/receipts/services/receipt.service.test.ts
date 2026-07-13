@@ -20,6 +20,7 @@ vi.mock('../../../../shared/configs/prismaClient.config', () => ({
     batch: { findFirst: vi.fn() },
     audit_Log: { findFirst: vi.fn(), create: vi.fn() },
     ePCIS_Event: { create: vi.fn() },
+    batch_Mouvement: { create: vi.fn() },
   },
 }));
 
@@ -74,6 +75,57 @@ describe('ReceiptService', () => {
       expect(batchService.createBatch).toHaveBeenCalled();
       expect(result.receiptId).toBe('rec-1');
       expect(result.batchId).toBe('bat-1');
+    });
+
+    it('la réception est le premier maillon de l historique du lot', async () => {
+      const payload = {
+        organization_id: 'org-1',
+        id_fournisseur: 'supp-1',
+        shipment_id: 'SHIP-001',
+        id_produit: 'prod-1',
+        quantite_actuelle: 500,
+        unite_code: 'KG',
+        statut_controle: 'OK',
+        received_by: 'user-1',
+      };
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(prisma.supplier.findFirst).mockResolvedValue({ id: 'supp-1' } as any);
+      vi.mocked(prisma.product.findFirst).mockResolvedValue({
+        id: 'prod-1',
+        code_gtin: '3456789012345',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(prisma.user.findUnique).mockResolvedValue({ id: 'user-1' } as any);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(prisma.unit.findUnique).mockResolvedValue({ code: 'KG' } as any);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(prisma.receipt.create).mockResolvedValue({ id: 'rec-1' } as any);
+      vi.mocked(batchService.createBatch).mockResolvedValue({
+        id: 'bat-1',
+        lot_number: '260704-ABC123',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+
+      await receiptService.createReceipt(payload);
+
+      // Sans ce mouvement, un lot reçu et jamais transformé n'a AUCUNE trace de son
+      // arrivée : sa fiche affiche un historique vide alors qu'il existe bel et bien.
+      expect(prisma.batch_Mouvement.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          id_lot: 'bat-1',
+          type_action: 'RECEPTION',
+          quantite: 500,
+          unite: 'KG',
+          id_user: 'user-1',
+          metadata: expect.objectContaining({
+            id_receipt: 'rec-1',
+            id_fournisseur: 'supp-1',
+            quarantaine: false,
+          }),
+        }),
+      });
     });
 
     it('doit émettre un ObjectEvent EPCIS avec URN LGTIN (préfixe GS1 de l organisation)', async () => {
