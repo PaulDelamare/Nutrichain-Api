@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { syncScansController } from '../controllers/syncScans.controller';
 import { validateSyncScans } from '../middlewares/validateSyncScans.middleware';
-import { mixedAuth } from '../../../shared/middlewares/mixedAuth';
+import { sessionAuth } from '../../../shared/middlewares/sessionAuth';
 import { SYNC_WRITE_ROLES } from '../constants/sync.constants';
 
 const router = Router();
@@ -31,7 +31,6 @@ const router = Router();
  *       le workflow de retry mobile et les codes d'erreur.
  *     tags: [Sync]
  *     security:
- *       - apiKeyAuth: []
  *       - bearerAuth: []
  *     requestBody:
  *       required: true
@@ -126,6 +125,6 @@ const router = Router();
  *       403:
  *         description: Rôle insuffisant ou actorUserId non membre de l'org
  */
-router.post('/sync/scans', mixedAuth(SYNC_WRITE_ROLES), validateSyncScans, syncScansController);
+router.post('/sync/scans', sessionAuth(SYNC_WRITE_ROLES), validateSyncScans, syncScansController);
 
 export default router;

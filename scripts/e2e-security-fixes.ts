@@ -2,6 +2,9 @@ import { prisma } from '../src/shared/configs/prismaClient.config';
 import { auditService } from '../src/shared/utils/audit/audit.service';
 import { genealogyService } from '../src/modules/traceability/transformations/services/genealogy.service';
 import crypto from 'crypto';
+// Import manquant sur develop : le script appelait signInAsOperator sans jamais l'importer,
+// l'e2e sécurité échouait donc au setup (« signInAsOperator is not defined »).
+import { signInAsOperator } from './helpers/e2eSession';
 
 /**
  * NUTRICHAIN — E2E Security Fixes
@@ -28,10 +31,14 @@ if (!API_KEY || !ORG_ID) {
   process.exit(1);
 }
 
-const headers = {
-  'Content-Type': 'application/json',
-  'x-api-key': API_KEY,
-};
+/**
+ * Les en-têtes des appels MÉTIER : un jeton de session, comme tout client réel.
+ *
+ * Ce script s'authentifiait avec la seule clé API — le chemin qui permettait justement d'écrire
+ * sans compte. Il « prouvait » donc la sécurité en empruntant la faille qu'il aurait dû dénoncer.
+ * Renseignés par `setup()` une fois la session ouverte.
+ */
+let headers: Record<string, string> = { 'Content-Type': 'application/json' };
 
 const log = (msg: string) => console.log(msg);
 const ok = (msg: string) => console.log(`  ✅ ${msg}`);
@@ -179,8 +186,28 @@ async function setup(): Promise<Fixtures> {
     },
   });
 
-  ok('Fixtures prêtes');
-  return { supplierId, productId, userId, unitCode: 'KG', foreignOrgId, foreignBatchId };
+  // La session est ouverte ICI : les appels métier passent désormais par le même chemin que le
+  // mobile — un jeton porté par un opérateur, membre de l'organisation, avec le droit d'écrire.
+  const session = await signInAsOperator(prisma, {
+    apiBase: API_BASE,
+    apiKey: API_KEY!,
+    organizationId: ORG_ID!,
+  });
+
+  headers = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${session.token}`,
+  };
+
+  ok('Fixtures prêtes, session opérateur ouverte');
+  return {
+    supplierId,
+    productId,
+    userId: session.userId,
+    unitCode: 'KG',
+    foreignOrgId,
+    foreignBatchId,
+  };
 }
 
 async function scenario1_apiKeySpoofing(ctx: Fixtures) {
@@ -197,7 +224,7 @@ async function scenario1_apiKeySpoofing(ctx: Fixtures) {
       quantite_actuelle: 10,
       unite_code: 'KG',
       statut_controle: 'OK',
-      actorUserId: ctx.userId,
+      // Aucun auteur déclaré : la session le porte. C'est le parcours d'un vrai client.
     }),
   });
 

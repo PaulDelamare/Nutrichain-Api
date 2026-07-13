@@ -1,63 +1,34 @@
-import { prisma } from '../../configs/prismaClient.config';
 import { APIError } from '../errorHandler/APIError';
 
 interface ResolveWritingActorParams {
-  /** Identité issue de la session authentifiée. Fait toujours foi. */
+  /** Identité issue de la session authentifiée. C'est la SEULE source admise. */
   sessionUserId?: string;
-  /** Identité déclarée par un client M2M (clé API). Ne fait foi qu'après vérification. */
-  actorUserId?: string;
-  organizationId: string;
-  allowedRoles: readonly string[];
 }
 
 /**
- * Qui signe une écriture ? Cette identité est scellée dans la chaîne d'audit WORM : elle ne peut
- * pas être choisie librement par le client.
+ * Qui signe une écriture ? Cette identité est scellée dans la chaîne d'audit WORM : elle vient de
+ * la session, et de nulle part ailleurs.
  *
- * - En session, elle vient de la session. Le corps de la requête est ignoré.
- * - En M2M (clé API), il n'y a pas de session : le client déclare l'acteur, et on VÉRIFIE qu'il
- *   est bien membre de CETTE organisation avec un rôle autorisé. Sans cette garde, n'importe quel
- *   utilisateur — y compris d'une autre organisation — pouvait être scellé comme auteur.
+ * Le client n'a plus aucun champ pour la déclarer. Il en avait un (`received_by`, puis
+ * `actorUserId`), et une garde vérifiait que l'acteur déclaré était bien membre de l'organisation
+ * avec un rôle autorisé. Cette garde empêchait de désigner un ÉTRANGER — mais pas d'usurper un
+ * collègue légitime, puisque la seule pièce d'identité de ce mode était une clé API… compilée dans
+ * le bundle de l'application mobile, donc extractible par quiconque l'installe.
  *
- * Note : l'identifiant utilisateur est une chaîne opaque (Better-Auth). On ne lui impose aucun
- * format : la sécurité vient de la vérification d'appartenance, pas de la forme de l'id.
+ * Une intégration machine (ERP/WMS) se connecte donc avec un COMPTE DE SERVICE — un utilisateur,
+ * des identifiants, une session, et une révocation possible.
  */
-export async function resolveWritingActor({
-  sessionUserId,
-  actorUserId,
-  organizationId,
-  allowedRoles,
-}: ResolveWritingActorParams): Promise<string> {
-  if (sessionUserId) {
-    return sessionUserId;
-  }
-
-  if (!actorUserId) {
-    throw new APIError(400, {
+export function resolveWritingActor({ sessionUserId }: ResolveWritingActorParams): string {
+  if (!sessionUserId) {
+    throw new APIError(401, {
       error: [
         {
-          field: 'actorUserId',
-          message:
-            "actorUserId requis en mode M2M (clé API). En mode session, l'utilisateur est résolu depuis la session.",
+          field: 'auth',
+          message: 'Auteur non identifié : cette écriture requiert un utilisateur authentifié.',
         },
       ],
     });
   }
 
-  const member = await prisma.member.findFirst({
-    where: {
-      userId: actorUserId,
-      organizationId,
-      role: { in: [...allowedRoles] },
-    },
-    select: { id: true },
-  });
-
-  if (!member) {
-    throw new APIError(403, {
-      error: [{ field: 'actorUserId', message: 'Utilisateur non membre ou rôle insuffisant' }],
-    });
-  }
-
-  return actorUserId;
+  return sessionUserId;
 }

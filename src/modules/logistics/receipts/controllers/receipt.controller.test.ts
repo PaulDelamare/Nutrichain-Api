@@ -50,49 +50,35 @@ describe('ReceiptController', () => {
       );
     });
 
-    it('en M2M, l acteur declare doit etre membre de l organisation', async () => {
-      // Avant : le `received_by` du corps de requête était scellé tel quel dans l'audit WORM,
-      // sans AUCUNE vérification d'appartenance — n'importe quel utilisateur, y compris d'une
-      // autre organisation, pouvait être désigné comme auteur d'une réception.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      vi.mocked(prisma.member.findFirst).mockResolvedValue({ id: 'member-1' } as any);
-
+    it('ignore un auteur déclaré dans le corps, même vraisemblable', async () => {
+      // Vérifier que l'acteur déclaré est bien membre avec le bon rôle — ce que faisait la garde
+      // précédente — empêche de désigner un ÉTRANGER, mais pas d'usurper un COLLÈGUE légitime.
+      // Or la seule pièce d'identité de ce mode était une clé API… compilée dans le bundle mobile.
+      // Le champ n'existe donc plus : ce qui n'existe pas ne se falsifie pas.
       const req = {
         activeOrgId: 'org-1',
+        auth: { user: { id: 'olivia-operatrice' } },
         validatedReceipt: {
           id_fournisseur: 'supp-1',
-          actorUserId: 'operateur-de-l-org',
+          actorUserId: 'le-patron',
         },
       } as unknown as AuthenticatedRequest;
 
       await createReceiptController(req, {} as Response);
 
-      expect(prisma.member.findFirst).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            userId: 'operateur-de-l-org',
-            organizationId: 'org-1',
-          }),
-        })
-      );
       expect(receiptService.createReceipt).toHaveBeenCalledWith(
-        expect.objectContaining({ received_by: 'operateur-de-l-org' })
+        expect.objectContaining({ received_by: 'olivia-operatrice' })
       );
     });
 
-    it('en M2M, un acteur qui n appartient PAS a l organisation est refuse (403)', async () => {
-      vi.mocked(prisma.member.findFirst).mockResolvedValue(null);
-
+    it('refuse une réception sans session : une machine ne signe rien', async () => {
       const req = {
         activeOrgId: 'org-1',
-        validatedReceipt: {
-          id_fournisseur: 'supp-1',
-          actorUserId: 'utilisateur-d-une-autre-org',
-        },
+        validatedReceipt: { id_fournisseur: 'supp-1', actorUserId: 'le-patron' },
       } as unknown as AuthenticatedRequest;
 
       await expect(createReceiptController(req, {} as Response)).rejects.toMatchObject({
-        status: 403,
+        status: 401,
       });
       expect(receiptService.createReceipt).not.toHaveBeenCalled();
     });

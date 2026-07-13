@@ -27,8 +27,7 @@ export const validateSyncScans = catchAsync(
 
     const schema = vine.object({
       items: vine.array(itemSchema).minLength(1).maxLength(100),
-      // Chaine opaque : les comptes anterieurs a l'alignement UUID de Better-Auth restent valides.
-      actorUserId: vine.string().minLength(1).optional(),
+      // Aucun champ d'auteur : l'opérateur vient de la session (cf. receiptPayload.schema).
     });
 
     const validated = (await validateData(schema, req.body)) as SyncScansPayload;

@@ -75,80 +75,35 @@ beforeEach(() => {
 });
 
 describe('SyncScansService — resolveAndAuthorize', () => {
-  it('session : utilise sessionUserId sans toucher Prisma.member', async () => {
+  it("l'opérateur des scans est celui de la SESSION", async () => {
     vi.mocked(receiptService.createReceipt).mockResolvedValue(okReceipt);
 
     const result = await syncScansService.syncScans({
       items: [buildItem('cli-1')],
       organizationId: 'org-1',
       sessionUserId: 'u-session',
-      actorUserId: 'u-attacker', // doit être ignoré
     });
 
     expect(result.results[0].status).toBe('ok');
-    expect(prisma.member.findFirst).not.toHaveBeenCalled();
     expect(receiptService.createReceipt).toHaveBeenCalledWith(
       expect.objectContaining({ received_by: 'u-session' }),
       expect.anything()
     );
   });
 
-  it('M2M sans actorUserId : throws APIError(400)', async () => {
+  it('refuse une synchronisation sans session : personne ne signerait ces scans', async () => {
+    // Le mode machine (« l'appelant déclare l'acteur ») a été retiré : sa seule pièce d'identité
+    // était une clé API compilée dans le bundle mobile — donc publique. Vérifier que l'acteur
+    // déclaré est membre empêchait de désigner un étranger, pas d'usurper un collègue.
     await expect(
       syncScansService.syncScans({
         items: [buildItem('cli-1')],
         organizationId: 'org-1',
         sessionUserId: undefined,
-        actorUserId: undefined,
       })
-    ).rejects.toMatchObject({ status: 400, body: { error: [{ field: 'actorUserId' }] } });
-  });
+    ).rejects.toMatchObject({ status: 401 });
 
-  it('M2M : verifie membership AVEC role ∈ SYNC_WRITE_ROLES', async () => {
-    vi.mocked(prisma.member.findFirst).mockResolvedValue({ id: 'm-1' } as never);
-    vi.mocked(receiptService.createReceipt).mockResolvedValue(okReceipt);
-
-    await syncScansService.syncScans({
-      items: [buildItem('cli-1')],
-      organizationId: 'org-1',
-      sessionUserId: undefined,
-      actorUserId: 'u-m2m',
-    });
-
-    expect(prisma.member.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          userId: 'u-m2m',
-          organizationId: 'org-1',
-          role: { in: expect.any(Array) },
-        }),
-      })
-    );
-  });
-
-  it('M2M : member trouvé avec bon rôle → ok', async () => {
-    vi.mocked(prisma.member.findFirst).mockResolvedValue({ id: 'm-1' } as never);
-    vi.mocked(receiptService.createReceipt).mockResolvedValue(okReceipt);
-
-    const result = await syncScansService.syncScans({
-      items: [buildItem('cli-1')],
-      organizationId: 'org-1',
-      actorUserId: 'u-m2m',
-    });
-
-    expect(result.results[0].status).toBe('ok');
-  });
-
-  it('M2M : member non trouvé OU rôle insuffisant → APIError(403)', async () => {
-    vi.mocked(prisma.member.findFirst).mockResolvedValue(null);
-
-    await expect(
-      syncScansService.syncScans({
-        items: [buildItem('cli-1')],
-        organizationId: 'org-1',
-        actorUserId: 'u-not-member',
-      })
-    ).rejects.toMatchObject({ status: 403, body: { error: [{ field: 'actorUserId' }] } });
+    expect(receiptService.createReceipt).not.toHaveBeenCalled();
   });
 });
 

@@ -22,7 +22,6 @@ router.use('/traceability/batches', requireAuth);
  *     summary: Récupérer la liste des produits du catalogue
  *     tags: [Traçabilité]
  *     security:
- *       - apiKeyAuth: []
  *       - bearerAuth: []
  *     responses:
  *       200:
@@ -72,7 +71,6 @@ router.get('/traceability/products', requireOrgRole(CATALOG_READ_ROLES), getProd
  *     summary: Récupérer la liste de tous les lots (batches) en cours
  *     tags: [Traçabilité]
  *     security:
- *       - apiKeyAuth: []
  *       - bearerAuth: []
  *     responses:
  *       200:

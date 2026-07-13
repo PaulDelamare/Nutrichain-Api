@@ -3,9 +3,9 @@ import request from 'supertest';
 import type { Request, Response, NextFunction } from 'express';
 import { app } from '../../../../app';
 
-// mixedAuth : injecte une org active + un utilisateur de session (comme une vraie session web)
-vi.mock('../../../../shared/middlewares/mixedAuth', () => ({
-  mixedAuth: vi.fn(() => (req: Request, _res: Response, next: NextFunction) => {
+// sessionAuth : injecte une org active + un utilisateur de session (comme une vraie session web)
+vi.mock('../../../../shared/middlewares/sessionAuth', () => ({
+  sessionAuth: vi.fn(() => (req: Request, _res: Response, next: NextFunction) => {
     Object.assign(req, {
       activeOrgId: 'org_test_123',
       user: { id: 'u-123' },
