@@ -150,6 +150,13 @@ async function createReceiptInTx(tx: Prisma.TransactionClient, data: CreateRecei
       error: [{ field: 'id_produit', message: 'Produit introuvable ou accès refusé' }],
     });
   }
+  if (!product.is_active) {
+    throw new APIError(409, {
+      error: [
+        { field: 'id_produit', message: 'Ce produit est archivé : aucune nouvelle réception.' },
+      ],
+    });
+  }
 
   const gs1Prefix = await resolveGs1Prefix(tx, data.organization_id);
 

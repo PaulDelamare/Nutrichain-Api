@@ -47,12 +47,14 @@ describe('ShipmentService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     // Par défaut, le client destinataire appartient bien à l'organisation (cas nominal).
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    vi.mocked(prisma.customer.findFirst).mockResolvedValue({ id: 'client-456' } as any);
+
+    vi.mocked(prisma.customer.findFirst).mockResolvedValue({
+      id: 'client-456',
+      is_active: true,
+    } as never);
     vi.mocked(prisma.organization.findUnique).mockResolvedValue({
       gs1_company_prefix: '3456789',
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } as any);
+    } as never);
     vi.mocked(prisma.shipment.count).mockResolvedValue(10);
   });
 
@@ -81,8 +83,8 @@ describe('ShipmentService', () => {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     vi.mocked(prisma.batch.findFirst).mockResolvedValue(mockBatch as any);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    vi.mocked(prisma.shipment.create).mockResolvedValue({ id: 'ship-1' } as any);
+
+    vi.mocked(prisma.shipment.create).mockResolvedValue({ id: 'ship-1' } as never);
 
     const result = await shipmentService.createShipment(mockShipmentData);
 
@@ -115,8 +117,8 @@ describe('ShipmentService', () => {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     vi.mocked(prisma.batch.findFirst).mockResolvedValue(mockBatch as any);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    vi.mocked(prisma.shipment.create).mockResolvedValue({ id: 'ship-1' } as any);
+
+    vi.mocked(prisma.shipment.create).mockResolvedValue({ id: 'ship-1' } as never);
 
     await shipmentService.createShipment(mockShipmentData);
 
@@ -158,8 +160,8 @@ describe('ShipmentService', () => {
       .mockResolvedValueOnce(makeBatch('batch-1', '260704-LOT001') as any)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .mockResolvedValueOnce(makeBatch('batch-2', '260704-LOT002') as any);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    vi.mocked(prisma.shipment.create).mockResolvedValue({ id: 'ship-1' } as any);
+
+    vi.mocked(prisma.shipment.create).mockResolvedValue({ id: 'ship-1' } as never);
 
     await shipmentService.createShipment({
       ...mockShipmentData,
@@ -203,8 +205,8 @@ describe('ShipmentService', () => {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     vi.mocked(prisma.batch.findFirst).mockResolvedValue(mockBatch as any);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    vi.mocked(prisma.shipment.create).mockResolvedValue({ id: 'ship-1' } as any);
+
+    vi.mocked(prisma.shipment.create).mockResolvedValue({ id: 'ship-1' } as never);
 
     await shipmentService.createShipment({ ...mockShipmentData, shipment_id: 'AUTO' });
 
@@ -239,8 +241,8 @@ describe('ShipmentService', () => {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     vi.mocked(prisma.batch.findFirst).mockResolvedValue(mockBatch as any);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    vi.mocked(prisma.shipment.create).mockResolvedValue({ id: 'ship-1' } as any);
+
+    vi.mocked(prisma.shipment.create).mockResolvedValue({ id: 'ship-1' } as never);
 
     await shipmentService.createShipment(mockShipmentData); // shipment_id: 'SHIP-001'
 

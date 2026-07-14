@@ -4,9 +4,10 @@ export const catalogService = {
   /**
    * Récupère la liste de tous les produits au catalogue d'une organisation
    */
-  async getAllProducts(organization_id: string) {
+  // Actifs seulement par défaut : un produit archivé ne doit plus être proposé (réception, production).
+  async getAllProducts(organization_id: string, includeArchived = false) {
     return await prisma.product.findMany({
-      where: { organization_id },
+      where: includeArchived ? { organization_id } : { organization_id, is_active: true },
       orderBy: { nom: 'asc' },
     });
   },

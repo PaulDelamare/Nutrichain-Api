@@ -75,7 +75,11 @@ export const listSuppliersController = catchAsync(
 
 export const listCustomersController = catchAsync(
   async (req: AuthenticatedRequest, res: Response) => {
-    const customers = await organizationService.listCustomers(req.activeOrgId as string);
+    // Route déjà réservée aux administrateurs (PERSONAL_DATA_ROLES) : includeArchived est sûr ici.
+    const customers = await organizationService.listCustomers(
+      req.activeOrgId as string,
+      req.query.includeArchived === 'true'
+    );
     sendSuccess(res, 200, 'Clients récupérés', customers);
   }
 );
