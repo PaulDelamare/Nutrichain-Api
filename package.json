@@ -42,7 +42,8 @@
     "e2e:org-passthrough": "tsx --env-file=.env scripts/e2e-org-passthrough.ts",
     "e2e:platform": "tsx --env-file=.env scripts/e2e-platform-admin.ts",
     "e2e:reference-data": "tsx --env-file=.env scripts/e2e-reference-data.ts",
-    "e2e:customer-product": "tsx --env-file=.env scripts/e2e-customer-product.ts"
+    "e2e:customer-product": "tsx --env-file=.env scripts/e2e-customer-product.ts",
+    "e2e:members": "tsx --env-file=.env scripts/e2e-member-management.ts"
   },
   "lint-staged": {
     "src/**/*.{ts,js}": [

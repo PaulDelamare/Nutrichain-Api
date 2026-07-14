@@ -53,6 +53,11 @@ import {
   validateUpdateProduct,
 } from '../middlewares/customerProduct.schema';
 import {
+  changeMemberRoleController,
+  revokeMemberController,
+} from '../controllers/member.controller';
+import { validateChangeMemberRole } from '../middlewares/member.schema';
+import {
   validateCreateSupplier,
   validateUpdateSupplier,
   validateCreateLocation,
@@ -227,5 +232,16 @@ router.patch(
   validateSetActive,
   setProductActiveController
 );
+
+// Gestion des membres — changer un rôle, révoquer un accès. Réservé aux administrateurs, journalisé.
+// On ne cible jamais le propriétaire ni soi-même (cf. member.service). Pas de DELETE (le repo n'en
+// utilise aucun) : la révocation est une action POST explicite.
+router.patch(
+  '/organization/members/:id/role',
+  sessionAuth(CONFIG_ROLES),
+  validateChangeMemberRole,
+  changeMemberRoleController
+);
+router.post('/organization/members/:id/revoke', sessionAuth(CONFIG_ROLES), revokeMemberController);
 
 export default router;
