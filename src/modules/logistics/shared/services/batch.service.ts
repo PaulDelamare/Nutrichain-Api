@@ -14,11 +14,58 @@ export interface CreateBatchInput {
   quantite_actuelle: number;
   unite_code: string;
   created_by: string;
+  /**
+   * Numéro imprimé sur l'étiquette du fournisseur (AI 10). Absent, le serveur en génère un.
+   * Le garder est ce qui permet de RETROUVER le lot en le rescannant : sans lui, la même palette
+   * rescannée est un lot inconnu, et l'opérateur la réceptionne une seconde fois.
+   */
+  lot_number?: string;
   date_peremption?: Date;
   /** Statut initial du lot. Défaut EN_STOCK ; BLOQUE pour une réception non-conforme. */
   statut?: BatchStatus;
   /** Emplacement de stockage du lot (matériel) — permet de connaître sa position. */
   id_materiel_actuel?: string;
+}
+
+/**
+ * La fiche d'un lot, servie à l'identique qu'on l'ouvre par son id ou en scannant son étiquette :
+ * le client affiche le même écran dans les deux cas.
+ *
+ * Le `where` EXIGE l'organisation dans son type, pas dans un commentaire : Prisma ignore purement
+ * et simplement un `organization_id: undefined`, donc un appelant distrait ne filtrerait plus rien
+ * — et scanner l'étiquette d'un concurrent ouvrirait la fiche de son lot.
+ */
+async function findBatchOr404(
+  where: Prisma.BatchWhereInput & { organization_id: string },
+  revealAuthor: boolean
+) {
+  const batch = await prisma.batch.findFirst({
+    where,
+    include: {
+      produit: true,
+      unite: true,
+      materiel: { include: { lieu: true } },
+      // Le nom et l'e-mail de l'auteur sont une donnée PERSONNELLE : un opérateur ou un viewer qui
+      // consulte un lot n'a pas à savoir qui l'a créé (cf. PERSONAL_DATA_ROLES). La liste des lots
+      // et le journal d'audit appliquent déjà cette règle ; la fiche, elle, était restée ouverte.
+      ...(revealAuthor ? { user: { select: { id: true, name: true, email: true } } } : {}),
+      // L'historique du lot. Borné : un lot très mouvementé ne doit pas faire exploser
+      // la réponse. Les plus récents d'abord.
+      mouvements: {
+        take: BATCH_HISTORY_LIMIT,
+        orderBy: { created_at: 'desc' },
+        ...(revealAuthor ? { include: { user: { select: { name: true } } } } : {}),
+      },
+    },
+  });
+
+  if (!batch) {
+    throw new APIError(404, {
+      error: [{ field: 'batch', message: 'Lot introuvable dans cette organisation' }],
+    });
+  }
+
+  return batch;
 }
 
 /**
@@ -34,7 +81,7 @@ export const batchService = {
     return tx.batch.create({
       data: {
         organization_id: data.organization_id,
-        lot_number: gs1Utils.generateLotNumber(),
+        lot_number: data.lot_number ?? gs1Utils.generateLotNumber(),
         id_produit: data.id_produit,
         quantite_actuelle: data.quantite_actuelle,
         quantite_base: data.quantite_actuelle, // Initialement, base = actuelle
@@ -50,35 +97,32 @@ export const batchService = {
   /**
    * Récupère un lot par son ID avec isolation multi-tenant.
    */
-  async getBatchById(id: string, activeOrgId: string) {
-    const batch = await prisma.batch.findFirst({
-      where: {
-        id,
+  async getBatchById(id: string, activeOrgId: string, revealAuthor = false) {
+    return findBatchOr404({ id, organization_id: activeOrgId }, revealAuthor);
+  },
+
+  /**
+   * Résout le lot qu'on vient de scanner, à partir du numéro porté par son étiquette (GS1 AI 10).
+   *
+   * Sans ça, un client ne peut identifier un lot qu'en listant le catalogue et en cherchant
+   * lui-même — or `GET /traceability/batches` est plafonné à 100 lots : passé ce seuil, un lot bien
+   * réel est déclaré « inconnu », et l'opérateur réceptionne une seconde fois une palette déjà en
+   * stock. La résolution appartient donc au serveur, qui seul voit tous les lots.
+   */
+  async resolveBatchByLotNumber(lotNumber: string, activeOrgId: string, revealAuthor = false) {
+    return findBatchOr404(
+      {
         organization_id: activeOrgId,
+        // Égalité EXACTE sur le numéro mis en majuscules, comme il est écrit (cf. createBatch).
+        // Un `mode: 'insensitive'` serait plus tolérant en apparence, mais il écarte l'index
+        // `@@unique([organization_id, lot_number])` — donc un balayage à chaque scan — et, la
+        // contrainte d'unicité étant sensible à la casse, `abc123` et `ABC123` pourraient coexister :
+        // un `findFirst` sans tri en aurait alors renvoyé un AU HASARD. Le scanner aurait ouvert la
+        // fiche du mauvais lot.
+        lot_number: lotNumber.toUpperCase(),
       },
-      include: {
-        produit: true,
-        unite: true,
-        // Emplacement réel et auteur : affichés par la fiche lot, ils n'étaient pas servis.
-        materiel: { include: { lieu: true } },
-        user: { select: { id: true, name: true, email: true } },
-        // L'historique du lot. Borné : un lot très mouvementé ne doit pas faire exploser
-        // la réponse. Les plus récents d'abord.
-        mouvements: {
-          take: BATCH_HISTORY_LIMIT,
-          orderBy: { created_at: 'desc' },
-          include: { user: { select: { name: true } } },
-        },
-      },
-    });
-
-    if (!batch) {
-      throw new APIError(404, {
-        error: [{ field: 'batch', message: 'Lot introuvable dans cette organisation' }],
-      });
-    }
-
-    return batch;
+      revealAuthor
+    );
   },
 
   /**

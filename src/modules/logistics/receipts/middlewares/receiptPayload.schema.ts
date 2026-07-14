@@ -18,6 +18,22 @@ export const receiptPayloadFields = {
   statut_controle: vine.enum(['OK', 'ALERTE', 'NONCONFORME', 'CONFORME']),
   // Emplacement de stockage du lot reçu (matériel) — optionnel.
   id_materiel: vine.string().uuid().optional(),
+  // Numéro de lot du fournisseur (GS1 AI 10, ≤ 20 caractères). Absent, le serveur en génère un.
+  // Le jeu GS1 (CSET82) autorise `/` et `#`, mais le numéro est interpolé SANS échappement dans le
+  // QR Digital Link (`/gs1/01/{gtin}/10/{lot}`) et dans l'URN EPCIS : un `/` ajouterait un segment
+  // d'URL, un `#` tronquerait tout le reste — étiquette morte, événement EPCIS invalide. On s'en
+  // tient donc à ce qui traverse une URL et une URN sans dommage.
+  lot_number: vine
+    .string()
+    .trim()
+    .regex(/^[A-Za-z0-9._-]{1,20}$/)
+    .optional(),
+  // DLC du fournisseur (GS1 AI 17). Un JOUR, pas un instant — le service l'ancre en fin de journée
+  // UTC (le 20/07 est consommable jusqu'au 20/07 au soir) et refuse un jour inexistant.
+  date_peremption: vine
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
 };
 
 export const receiptPayloadSchema = vine.object(receiptPayloadFields);

@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../../../shared/configs/prismaClient.config';
-import { batchService } from '../../shared/services/batch.service';
+import { batchService, type CreateBatchInput } from '../../shared/services/batch.service';
 import { auditService } from '../../../../shared/utils/audit/audit.service';
 import { APIError } from '../../../../shared/utils/errorHandler/APIError';
 import {
@@ -32,6 +32,90 @@ export interface CreateReceiptData {
   unite_code: string;
   /** Emplacement de stockage (matériel) où le lot reçu est rangé — optionnel. */
   id_materiel?: string;
+  /** Numéro de lot lu sur l'étiquette du fournisseur (GS1 AI 10). */
+  lot_number?: string;
+  /** DLC lue sur l'étiquette (GS1 AI 17), au format `YYYY-MM-DD`. */
+  date_peremption?: string;
+}
+
+/**
+ * Une DLC est un JOUR, et « à consommer jusqu'au 20/07 » veut dire le 20/07 INCLUS. Les gardes
+ * « lot périmé » (expédition, transformation) comparent `date_peremption < new Date()` : ancrée à
+ * minuit, une DLC au 20/07 rendrait le lot inexpédiable dès 00h01 ce jour-là — un jour de vie perdu
+ * sur CHAQUE lot, et un lot reçu avec une DLC du jour serait mort-né. On ancre donc à la fin de la
+ * journée. (Ce n'est pas une question de fuseau : `new Date('2026-07-20')` est déjà parsé en UTC.)
+ */
+function toEndOfUtcDay(isoDay: string): Date {
+  return new Date(`${isoDay}T23:59:59.999Z`);
+}
+
+/**
+ * `YYYY-MM-DD` bien formé ne veut pas dire jour existant : `2026-02-30` est accepté par le regex,
+ * puis Date le REPORTE au 2 mars — une DLC allongée de deux jours, en silence, sur une donnée
+ * sanitaire. On exige donc que la date relise à l'identique, et qu'elle ne soit pas déjà passée.
+ */
+function parseExpiryDay(isoDay: string): Date {
+  const expiry = toEndOfUtcDay(isoDay);
+
+  if (Number.isNaN(expiry.getTime()) || expiry.toISOString().slice(0, 10) !== isoDay) {
+    throw new APIError(400, {
+      error: [{ field: 'date_peremption', message: `Date de péremption inexistante : ${isoDay}.` }],
+    });
+  }
+
+  if (expiry.getTime() < Date.now()) {
+    throw new APIError(400, {
+      error: [
+        { field: 'date_peremption', message: `Ce lot est déjà périmé (DLC au ${isoDay}).` },
+      ],
+    });
+  }
+
+  return expiry;
+}
+
+/** DLC de repli quand l'étiquette n'en porte pas : la durée de conservation du produit. */
+function shelfLifeFrom(product: { duree_conservation_defaut: number }): Date | undefined {
+  // Une durée nulle ou négative ferait naître le lot périmé, donc immédiatement inexpédiable.
+  // Mieux vaut pas de DLC du tout qu'une DLC fausse.
+  if (!(product.duree_conservation_defaut > 0)) {
+    return undefined;
+  }
+
+  const expiry = new Date();
+  expiry.setUTCDate(expiry.getUTCDate() + product.duree_conservation_defaut);
+  expiry.setUTCHours(23, 59, 59, 999);
+  return expiry;
+}
+
+/**
+ * `@@unique([organization_id, lot_number])` fait déjà barrage au doublon en base ; sans traduction,
+ * l'opérateur reçoit un 500 illisible. Le bon geste, lui, n'est pas de réceptionner à nouveau :
+ * c'est d'ouvrir la fiche du lot déjà reçu.
+ */
+async function createBatchOrRejectDuplicate(
+  tx: Prisma.TransactionClient,
+  input: CreateBatchInput
+) {
+  try {
+    return await batchService.createBatch(tx, input);
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2002' &&
+      input.lot_number
+    ) {
+      throw new APIError(409, {
+        error: [
+          {
+            field: 'lot_number',
+            message: `Le lot ${input.lot_number} a déjà été reçu dans cette organisation.`,
+          },
+        ],
+      });
+    }
+    throw error;
+  }
 }
 
 /**
@@ -105,12 +189,22 @@ async function createReceiptInTx(tx: Prisma.TransactionClient, data: CreateRecei
   // qu'une décision qualité ne l'a pas levé. Sinon il entre en stock normalement.
   const isQuarantined = QUARANTINE_RECEIPT_CONTROLS.includes(data.statut_controle);
 
-  const batch = await batchService.createBatch(tx, {
+  // Sans DLC, la garde « lot périmé » du reste du système est du code mort : jusqu'ici, 100 % des
+  // lots réels naissaient sans date (seuls ceux du seed en avaient, ce qui masquait le trou).
+  const datePeremption = data.date_peremption
+    ? parseExpiryDay(data.date_peremption)
+    : shelfLifeFrom(product);
+
+  const batch = await createBatchOrRejectDuplicate(tx, {
     organization_id: data.organization_id,
     id_produit: data.id_produit,
     quantite_actuelle: data.quantite_actuelle,
     unite_code: data.unite_code,
     created_by: data.received_by,
+    // Casse normalisée : sans ça, `abc123` et `ABC123` sont deux lots distincts pour la contrainte
+    // d'unicité — la même palette serait réceptionnée deux fois selon la façon dont on la saisit.
+    lot_number: data.lot_number?.toUpperCase(),
+    date_peremption: datePeremption,
     statut: isQuarantined ? BATCH_STATUSES.BLOCKED : BATCH_STATUSES.IN_STOCK,
     id_materiel_actuel: data.id_materiel,
   });
@@ -216,8 +310,8 @@ export const receiptService = {
    * Récupérer un lot par son ID
    * Note: La sécurité multi-tenant est déléguée au batchService
    */
-  async getBatchById(id: string, activeOrgId: string) {
-    return batchService.getBatchById(id, activeOrgId);
+  async getBatchById(id: string, activeOrgId: string, revealAuthor = false) {
+    return batchService.getBatchById(id, activeOrgId, revealAuthor);
   },
 
   /**

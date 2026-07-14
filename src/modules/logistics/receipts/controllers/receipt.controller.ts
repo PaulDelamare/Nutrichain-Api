@@ -7,7 +7,15 @@ import { catchAsync } from '../../../../shared/utils/errorHandler/catchAsync';
 import { AuthenticatedRequest } from '../../../identity/types/auth.types';
 import { APIError } from '../../../../shared/utils/errorHandler/APIError';
 import { resolveWritingActor } from '../../../../shared/utils/auth/resolveWritingActor';
-import { WRITE_ROLES } from '../../../identity/constants/roles.constants';
+import { ADMIN_ROLES, Role, WRITE_ROLES } from '../../../identity/constants/roles.constants';
+
+/**
+ * Qui a créé ce lot ? C'est une donnée personnelle (nom, e-mail d'un salarié), pas une donnée
+ * métier : seule l'administration y a droit. Même règle que la liste des lots et le journal d'audit.
+ */
+function revealsAuthor(req: AuthenticatedRequest): boolean {
+  return ADMIN_ROLES.includes(req.auth?.role as Role);
+}
 
 export const createReceiptController = catchAsync(
   async (req: AuthenticatedRequest, res: Response) => {
@@ -51,11 +59,35 @@ export const getReceiptByIdController = catchAsync(
   }
 );
 
+/**
+ * Le lot qu'on vient de scanner. Renvoie la MÊME fiche que `GET /logistics/batches/:id` : le client
+ * ouvre le même écran, qu'il ait cliqué le lot dans une liste ou lu son étiquette.
+ */
+export const resolveBatchByLotNumberController = catchAsync(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const activeOrgId = req.activeOrgId as string;
+
+    const query = req.validatedBatchResolve;
+    if (!query) {
+      throw new APIError(500, {
+        error: [{ field: 'lot_number', message: 'Numéro de lot non validé.' }],
+      });
+    }
+
+    const batch = await batchService.resolveBatchByLotNumber(
+      query.lot_number,
+      activeOrgId,
+      revealsAuthor(req)
+    );
+    sendSuccess(res, 200, 'Lot récupéré', batch);
+  }
+);
+
 export const getBatchByIdController = catchAsync(
   async (req: AuthenticatedRequest, res: Response) => {
     const id = req.params.id as string;
     const activeOrgId = req.activeOrgId as string;
-    const batch = await receiptService.getBatchById(id, activeOrgId);
+    const batch = await receiptService.getBatchById(id, activeOrgId, revealsAuthor(req));
     sendSuccess(res, 200, 'Lot récupéré', batch);
   }
 );
