@@ -75,6 +75,7 @@ import alertRouter from './alert.routes';
 import { alertService } from '../services/alert.service';
 import { alertBatchService } from '../services/alertBatch.service';
 import { ALERT_NOT_FOUND_MSG } from '../constants/alert.constants';
+import { APIError } from '../../../shared/utils/errorHandler/APIError';
 
 const buildAlert = (overrides: Partial<Alert> = {}): Alert =>
   ({
@@ -217,13 +218,36 @@ describe('GET /api/alerts/:id/batches', () => {
     expect(alertBatchService.listBatchesIsolatedByAlert).toHaveBeenCalledWith(authState.alert);
   });
 
-  it('200 : une alerte sans lot isolé renvoie une liste vide (pas une erreur)', async () => {
+  it('200 : une excursion qui ne retient plus aucun lot renvoie une liste vide', async () => {
+    // Légitime pour une excursion : le frigo était vide, ou tous les lots ont été relâchés.
     vi.mocked(alertBatchService.listBatchesIsolatedByAlert).mockResolvedValue([]);
 
     const res = await request(app).get('/api/alerts/alert-1/batches');
 
     expect(res.status).toBe(200);
     expect(res.body.data).toEqual([]);
+  });
+
+  it('409 : un rappel produit est REFUSÉ, il ne répond pas « aucun lot »', async () => {
+    // Un rappel bloque sa descendance en ALERTE via des mouvements RAPPEL : lui répondre « 0 lot
+    // isolé » serait un mensonge silencieux sur l'alerte la plus grave du système. Le service lève
+    // une APIError 409 ; on vérifie ici que la route la propage au lieu de renvoyer 200 [].
+    authState.alert = buildAlert({ type: 'PRODUCT_RECALL' });
+    vi.mocked(alertBatchService.listBatchesIsolatedByAlert).mockRejectedValue(
+      new APIError(409, {
+        error: [
+          {
+            field: 'alert',
+            message: "La notion de lot isolé n'est définie que pour une excursion thermique.",
+          },
+        ],
+      })
+    );
+
+    const res = await request(app).get('/api/alerts/alert-1/batches');
+
+    expect(res.status).toBe(409);
+    expect(res.body.error[0].message).toContain('excursion thermique');
   });
 
   it('401 sans session', async () => {

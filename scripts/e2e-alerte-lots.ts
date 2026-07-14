@@ -246,6 +246,69 @@ async function main() {
       intact?.levable === true,
       'la non-conformité de son voisin ne contamine pas l’autre lot'
     );
+    console.log("\n[4] Le lot est relâché, puis une NOUVELLE excursion le ré-isole");
+    // Le piège que la première version de ce service n'avait pas vu : croiser un fait HISTORIQUE
+    // (« cette alerte a isolé ce lot ») avec un fait PRÉSENT (« ce lot est bloqué ») sans vérifier
+    // que le blocage actuel est bien celui-là. L'alerte A ne doit plus revendiquer un lot que
+    // l'alerte B retient — sinon rouvrir A relâche la marchandise que B protège.
+    await prisma.batch_Mouvement.create({
+      data: {
+        id_lot: fixtures.froidQc,
+        type_action: MOVEMENT_TYPES.QUARANTINE_LIFTED,
+        quantite: 10,
+        unite: batches[0]!.unite_code,
+        metadata: { motif: 'frigo réparé' },
+      },
+    });
+    await prisma.batch.update({
+      where: { id: fixtures.froidQc },
+      data: { statut: BATCH_STATUSES.IN_STOCK },
+    });
+
+    // Nouvelle excursion → nouvelle alerte B (l'ancienne n'est plus ACTIVE, le dédup ne bloque pas).
+    await prisma.alert.updateMany({
+      where: { id: alert.id },
+      data: { statut: 'RESOLVED', resolved_at: new Date() },
+    });
+    _clearThresholdCacheForTests();
+    await TelemetryModel.deleteMany({ 'metadata.sensor_id': fixtures.sensorId });
+    for (let i = 9; i >= 0; i--) await ingestPing(fixtures.sensorId, 9, i);
+
+    const alerteB = await prisma.alert.findFirst({
+      where: { id_materiel: fixtures.equipmentId, type: 'TEMP_EXCURSION', statut: 'ACTIVE' },
+    });
+    assert(alerteB !== null && alerteB.id !== alert.id, 'une SECONDE alerte a bien été créée');
+
+    const sousA = await alertBatchService.listBatchesIsolatedByAlert(alert);
+    assert(
+      !sousA.some((b) => b.id === fixtures!.froidQc),
+      "l'ancienne alerte ne revendique plus le lot que la NOUVELLE retient"
+    );
+    if (alerteB) {
+      const sousB = await alertBatchService.listBatchesIsolatedByAlert(alerteB);
+      assert(
+        sousB.some((b) => b.id === fixtures!.froidQc),
+        "c'est la nouvelle alerte qui le porte désormais"
+      );
+    }
+
+    console.log('\n[5] Un rappel produit ne doit pas répondre « aucun lot »');
+    const rappel = await prisma.alert.create({
+      data: {
+        organization_id: ORG_ID!,
+        type: 'PRODUCT_RECALL',
+        niveau_gravite: 'PANIC',
+        message: 'E2E rappel',
+        statut: 'ACTIVE',
+      },
+    });
+    try {
+      await alertBatchService.listBatchesIsolatedByAlert(rappel);
+      assert(false, 'un rappel produit est refusé (il ne renvoie pas une liste vide)');
+    } catch {
+      assert(true, 'un rappel produit est refusé (il ne renvoie pas une liste vide)');
+    }
+    await prisma.alert.delete({ where: { id: rappel.id } });
   } finally {
     if (fixtures) {
       console.log('\n[Cleanup]');
