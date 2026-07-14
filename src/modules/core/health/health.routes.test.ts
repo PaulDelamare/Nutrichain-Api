@@ -36,6 +36,38 @@ describe('Health route', () => {
     expect(res.body.data).toHaveProperty('memory');
   });
 
+  /**
+   * ⚠️ CONTRAT AVEC LE MOBILE — ne pas retirer, ne pas renommer, ne pas changer de format.
+   *
+   * `data.timestamp` est la SEULE horloge serveur que l'application web peut lire. L'en-tête HTTP
+   * `Date` n'est pas dans la liste blanche CORS : dans un navigateur, JavaScript ne voit que
+   * `content-type` et `content-length`. Le mobile apprend donc l'heure ici, et il en a besoin pour
+   * une garde SANITAIRE : sans elle, la péremption d'un lot serait tranchée sur l'horloge du
+   * téléphone — réglable à la main, et qui, reculée de deux mois, fait accepter un lot périmé en
+   * transformation et en expédition (cf. Nutrichain-Mobile#44).
+   *
+   * Si ce champ disparaît, le mobile cesse de pouvoir juger une péremption. Rien d'autre ne le
+   * signalerait : ce test est le seul garde-fou.
+   */
+  it('expose une horloge serveur lisible : `timestamp` est une date ISO réelle', async () => {
+    const { default: healthRoutes } = await import('./health.routes');
+
+    const app = express();
+    app.use(healthRoutes);
+
+    const res = await request(app).get('/health');
+
+    const timestamp: unknown = res.body.data?.timestamp;
+    expect(typeof timestamp).toBe('string');
+
+    const parsed = Date.parse(timestamp as string);
+    expect(Number.isFinite(parsed)).toBe(true);
+
+    // C'est bien l'heure COURANTE du serveur, pas une constante ni une date de build : une valeur
+    // figée passerait le test « c'est une date » tout en rendant la garde de péremption fausse.
+    expect(Math.abs(Date.now() - parsed)).toBeLessThan(10_000);
+  });
+
   it('readiness returns ready when DB and logs are OK', async () => {
     const tmpDir = path.join(tmpDirBase, `ok-${Date.now()}`);
     process.env.LOG_DIR = tmpDir;
