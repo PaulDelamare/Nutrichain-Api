@@ -1,4 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { Prisma } from '@prisma/client';
 import { receiptService } from './receipt.service';
 import { prisma } from '../../../../shared/configs/prismaClient.config';
 import { batchService } from '../../shared/services/batch.service';
@@ -33,6 +34,11 @@ vi.mock('../../shared/services/batch.service', () => ({
 describe('ReceiptService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   describe('createReceipt', () => {
@@ -322,6 +328,170 @@ describe('ReceiptService', () => {
           where: { id: 'prod-leak', organization_id: 'org-1' },
         })
       );
+    });
+  });
+
+  describe("le lot du fournisseur et sa date de péremption", () => {
+    /** Réception valide, à laquelle chaque test ajoute ce qu'il veut éprouver. */
+    const baseReceipt = {
+      organization_id: 'org-1',
+      id_fournisseur: 'supp-1',
+      shipment_id: 'SHIP-001',
+      id_produit: 'prod-1',
+      quantite_actuelle: 500,
+      unite_code: 'KG',
+      statut_controle: 'OK',
+      received_by: 'user-1',
+    };
+
+    /** `duree_conservation_defaut` est en JOURS : c'est le repli quand le fournisseur n'imprime pas de DLC. */
+    const mockValidReception = (dureeConservationJours = 30) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(prisma.supplier.findFirst).mockResolvedValue({ id: 'supp-1' } as any);
+      vi.mocked(prisma.product.findFirst).mockResolvedValue({
+        id: 'prod-1',
+        code_gtin: '3042040209123',
+        duree_conservation_defaut: dureeConservationJours,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(prisma.user.findUnique).mockResolvedValue({ id: 'user-1' } as any);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(prisma.unit.findUnique).mockResolvedValue({ code: 'KG' } as any);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(prisma.receipt.create).mockResolvedValue({ id: 'rec-1' } as any);
+      vi.mocked(batchService.createBatch).mockResolvedValue({
+        id: 'bat-1',
+        lot_number: '260714-ABC123',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+    };
+
+    it("garde le numéro de lot imprimé par le fournisseur, au lieu d'en inventer un", async () => {
+      mockValidReception();
+
+      await receiptService.createReceipt({ ...baseReceipt, lot_number: 'ABC123' });
+
+      expect(batchService.createBatch).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ lot_number: 'ABC123' })
+      );
+    });
+
+    it("laisse le serveur générer le numéro quand l'étiquette n'en porte pas", async () => {
+      mockValidReception();
+
+      await receiptService.createReceipt(baseReceipt);
+
+      expect(batchService.createBatch).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ lot_number: undefined })
+      );
+    });
+
+    // « À consommer jusqu'au 20/07 » veut dire le 20/07 INCLUS. Les gardes « lot périmé » comparent
+    // `date_peremption < now` : ancrée à minuit, la DLC rendrait le lot inexpédiable dès 00h01 ce
+    // jour-là. Un lot reçu avec une DLC du jour même (lait cru : 4 jours) serait mort-né.
+    it("laisse le lot vivre tout son dernier jour, pas jusqu'à minuit", async () => {
+      mockValidReception();
+      vi.setSystemTime(new Date('2026-07-20T09:00:00.000Z'));
+
+      await receiptService.createReceipt({ ...baseReceipt, date_peremption: '2026-07-20' });
+
+      const [, batchInput] = vi.mocked(batchService.createBatch).mock.calls[0];
+      expect(batchInput.date_peremption?.toISOString()).toBe('2026-07-20T23:59:59.999Z');
+      // La garde d'expédition/transformation ne doit PAS le voir périmé aujourd'hui.
+      expect(batchInput.date_peremption!.getTime()).toBeGreaterThan(Date.now());
+    });
+
+    // `2026-02-30` passe le regex, mais Date le REPORTE au 2 mars : une DLC allongée de deux jours,
+    // en silence, sur une donnée sanitaire.
+    it('refuse un jour qui n’existe pas, au lieu de le décaler en silence', async () => {
+      mockValidReception();
+
+      const action = receiptService.createReceipt({
+        ...baseReceipt,
+        date_peremption: '2026-02-30',
+      });
+
+      await expect(action).rejects.toMatchObject({
+        status: 400,
+        body: { error: [{ field: 'date_peremption' }] },
+      });
+      expect(batchService.createBatch).not.toHaveBeenCalled();
+    });
+
+    it('refuse une DLC déjà passée (AI 17 mal lu, faute de frappe)', async () => {
+      mockValidReception();
+      vi.setSystemTime(new Date('2026-07-14T09:00:00.000Z'));
+
+      const action = receiptService.createReceipt({
+        ...baseReceipt,
+        date_peremption: '2020-01-01',
+      });
+
+      await expect(action).rejects.toMatchObject({
+        status: 400,
+        body: { error: [{ field: 'date_peremption' }] },
+      });
+    });
+
+    it("à défaut de DLC imprimée, applique la durée de conservation du produit", async () => {
+      mockValidReception(30);
+      vi.setSystemTime(new Date('2026-07-14T09:30:00.000Z'));
+
+      await receiptService.createReceipt(baseReceipt);
+
+      const [, batchInput] = vi.mocked(batchService.createBatch).mock.calls[0];
+      expect(batchInput.date_peremption?.toISOString()).toBe('2026-08-13T23:59:59.999Z');
+    });
+
+    // Une durée nulle ou négative ferait naître le lot périmé, donc inexpédiable dans la seconde.
+    it("n'invente pas de DLC quand la durée de conservation du produit est absurde", async () => {
+      mockValidReception(0);
+
+      await receiptService.createReceipt(baseReceipt);
+
+      const [, batchInput] = vi.mocked(batchService.createBatch).mock.calls[0];
+      expect(batchInput.date_peremption).toBeUndefined();
+    });
+
+    it('normalise la casse du numéro de lot (sinon la même palette entre deux fois)', async () => {
+      mockValidReception();
+
+      await receiptService.createReceipt({ ...baseReceipt, lot_number: 'abc123' });
+
+      expect(batchService.createBatch).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ lot_number: 'ABC123' })
+      );
+    });
+
+    // Sans ça, la garde « lot périmé » reste du code mort : 100 % des lots réels naissent sans DLC.
+    it('ne laisse JAMAIS un lot naître sans date de péremption', async () => {
+      mockValidReception(30);
+
+      await receiptService.createReceipt(baseReceipt);
+
+      const [, batchInput] = vi.mocked(batchService.createBatch).mock.calls[0];
+      expect(batchInput.date_peremption).toBeInstanceOf(Date);
+    });
+
+    it('refuse un numéro de lot déjà reçu, en désignant le lot existant', async () => {
+      mockValidReception();
+      vi.mocked(batchService.createBatch).mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+          code: 'P2002',
+          clientVersion: '6.0.0',
+        })
+      );
+
+      const action = receiptService.createReceipt({ ...baseReceipt, lot_number: 'ABC123' });
+
+      await expect(action).rejects.toMatchObject({
+        status: 409,
+        body: { error: [{ field: 'lot_number' }] },
+      });
     });
   });
 });

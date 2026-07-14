@@ -14,6 +14,12 @@ export interface CreateBatchInput {
   quantite_actuelle: number;
   unite_code: string;
   created_by: string;
+  /**
+   * Numéro imprimé sur l'étiquette du fournisseur (AI 10). Absent, le serveur en génère un.
+   * Le garder est ce qui permet de RETROUVER le lot en le rescannant : sans lui, la même palette
+   * rescannée est un lot inconnu, et l'opérateur la réceptionne une seconde fois.
+   */
+  lot_number?: string;
   date_peremption?: Date;
   /** Statut initial du lot. Défaut EN_STOCK ; BLOQUE pour une réception non-conforme. */
   statut?: BatchStatus;
@@ -34,7 +40,7 @@ export const batchService = {
     return tx.batch.create({
       data: {
         organization_id: data.organization_id,
-        lot_number: gs1Utils.generateLotNumber(),
+        lot_number: data.lot_number ?? gs1Utils.generateLotNumber(),
         id_produit: data.id_produit,
         quantite_actuelle: data.quantite_actuelle,
         quantite_base: data.quantite_actuelle, // Initialement, base = actuelle

@@ -4,7 +4,7 @@ import { receiptService } from '../../logistics/receipts/services/receipt.servic
 import { auditService } from '../../../shared/utils/audit/audit.service';
 import { prisma } from '../../../shared/configs/prismaClient.config';
 import { APIError } from '../../../shared/utils/errorHandler/APIError';
-import { SyncItem } from '../types/sync.types';
+import { ReceiptPayload, SyncItem } from '../types/sync.types';
 
 vi.mock('../../logistics/receipts/services/receipt.service', () => ({
   receiptService: {
@@ -41,7 +41,7 @@ vi.mock('../../../shared/configs/prismaClient.config', () => ({
   },
 }));
 
-const validReceiptPayload = {
+const validReceiptPayload: ReceiptPayload = {
   id_fournisseur: '123e4567-e89b-12d3-a456-426614174000',
   shipment_id: 'SHIP-001',
   id_produit: '123e4567-e89b-12d3-a456-426614174001',

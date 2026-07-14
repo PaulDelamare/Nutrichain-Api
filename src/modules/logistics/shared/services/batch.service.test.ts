@@ -57,6 +57,32 @@ describe('BatchSharedService', () => {
       expect(result.id).toBe('batch-123');
     });
 
+    // La promesse centrale : le numéro imprimé par le fournisseur est celui écrit en base. Sans ce
+    // test, retirer le `?? generateLotNumber()` (donc jeter le numéro fournisseur) ne fait rougir
+    // AUCUN test unitaire — la réception mocke `createBatch` et ne voit rien.
+    it("écrit le numéro de lot du fournisseur au lieu d'en générer un", async () => {
+      const mockTx = { batch: { create: vi.fn().mockResolvedValue({ id: 'batch-789' }) } };
+
+      await batchService.createBatch(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        mockTx as any,
+        {
+          organization_id: 'org-1',
+          id_produit: 'prod-1',
+          quantite_actuelle: 100,
+          unite_code: 'KG',
+          created_by: 'user-1',
+          lot_number: 'FRN-ABC123',
+        }
+      );
+
+      expect(mockTx.batch.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ lot_number: 'FRN-ABC123' }),
+        })
+      );
+    });
+
     it('doit créer le lot avec le statut initial fourni (quarantaine BLOQUE)', async () => {
       const mockTx = {
         batch: {
