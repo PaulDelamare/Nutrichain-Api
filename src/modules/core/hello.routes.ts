@@ -1,11 +1,11 @@
 import { router } from '../../shared/configs/router.config';
 import { HelloController } from './hello.controller';
-import { checkApiKey } from '../../shared/utils/checkApiKey/checkApiKey';
 import { requireAuth } from '../identity/middlewares/requireAuth.middleware';
 import { Response } from 'express';
 import { sendSuccess } from '../../shared/utils/returnSuccess/returnSuccess';
 import { AuthenticatedRequest } from '../identity/types/auth.types';
 import { resolveActiveOrgRole } from '../identity/utils/resolveActiveOrgRole';
+import { prisma } from '../../shared/configs/prismaClient.config';
 import { catchAsync } from '../../shared/utils/errorHandler/catchAsync';
 
 // ! Requêtes
@@ -46,15 +46,23 @@ router.get(
   '/me',
   requireAuth,
   catchAsync(async (req: AuthenticatedRequest, res: Response) => {
-    const role = req.auth?.user
-      ? await resolveActiveOrgRole(req.auth.user.id, req.activeOrgId)
-      : null;
+    const userId = req.auth?.user?.id;
+
+    // En parallèle : rôle dans l'org active (métier) et appartenance à la plateforme (gouvernance).
+    // Les deux sont indépendants — un admin de plateforme n'a pas d'org active, donc pas de rôle.
+    const [role, platformAdmin] = userId
+      ? await Promise.all([
+          resolveActiveOrgRole(userId, req.activeOrgId),
+          prisma.platformAdmin.findUnique({ where: { userId }, select: { id: true } }),
+        ])
+      : [null, null];
 
     sendSuccess(res, 200, 'Authentification réussie !', {
       user: req.auth?.user,
       session: req.auth?.session,
       activeOrgId: req.activeOrgId,
       role,
+      isPlatformAdmin: platformAdmin !== null,
     });
   })
 );
