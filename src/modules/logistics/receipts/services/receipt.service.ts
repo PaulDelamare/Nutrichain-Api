@@ -65,9 +65,7 @@ function parseExpiryDay(isoDay: string): Date {
 
   if (expiry.getTime() < Date.now()) {
     throw new APIError(400, {
-      error: [
-        { field: 'date_peremption', message: `Ce lot est déjà périmé (DLC au ${isoDay}).` },
-      ],
+      error: [{ field: 'date_peremption', message: `Ce lot est déjà périmé (DLC au ${isoDay}).` }],
     });
   }
 
@@ -93,10 +91,7 @@ function shelfLifeFrom(product: { duree_conservation_defaut: number }): Date | u
  * l'opérateur reçoit un 500 illisible. Le bon geste, lui, n'est pas de réceptionner à nouveau :
  * c'est d'ouvrir la fiche du lot déjà reçu.
  */
-async function createBatchOrRejectDuplicate(
-  tx: Prisma.TransactionClient,
-  input: CreateBatchInput
-) {
+async function createBatchOrRejectDuplicate(tx: Prisma.TransactionClient, input: CreateBatchInput) {
   try {
     return await batchService.createBatch(tx, input);
   } catch (error) {
@@ -130,6 +125,20 @@ async function createReceiptInTx(tx: Prisma.TransactionClient, data: CreateRecei
   if (!supplier) {
     throw new APIError(404, {
       error: [{ field: 'id_fournisseur', message: 'Fournisseur introuvable ou accès refusé' }],
+    });
+  }
+  // Un fournisseur archivé ne reçoit plus : la désactivation doit bloquer l'écriture, pas seulement
+  // masquer la sélection. Sinon un mobile hors-ligne, dont le cache a gardé le fournisseur, ferait
+  // passer la réception à la synchro.
+  if (!supplier.is_active) {
+    throw new APIError(409, {
+      error: [
+        {
+          field: 'id_fournisseur',
+          message:
+            'Ce fournisseur est archivé : aucune nouvelle réception ne peut lui être associée.',
+        },
+      ],
     });
   }
 

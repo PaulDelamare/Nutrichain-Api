@@ -65,7 +65,10 @@ export const listMovementsController = catchAsync(
 
 export const listSuppliersController = catchAsync(
   async (req: AuthenticatedRequest, res: Response) => {
-    const suppliers = await organizationService.listSuppliers(req.activeOrgId as string);
+    const suppliers = await organizationService.listSuppliers(
+      req.activeOrgId as string,
+      req.query.includeArchived === 'true'
+    );
     sendSuccess(res, 200, 'Fournisseurs récupérés', suppliers);
   }
 );

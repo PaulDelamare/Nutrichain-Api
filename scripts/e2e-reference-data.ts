@@ -1,0 +1,146 @@
+import { prisma } from '../src/shared/configs/prismaClient.config';
+
+/**
+ * NUTRICHAIN — Preuve, contre l'API RÉELLE, du CRUD des données de référence.
+ *
+ * Deux culs-de-sac levés : sans fournisseur aucune réception, sans emplacement `POST /equipment`
+ * echoue. Et la désactivation a un effet RÉEL : un fournisseur archivé ne reçoit plus (garde sur le
+ * chemin d'écriture, pas seulement la liste).
+ *
+ * Prérequis : `npm run dev` sur une base seedée. Lancement : npm run e2e:reference-data
+ */
+
+const API = 'http://localhost:3000/api';
+const KEY = process.env.API_KEY!;
+const ORIGIN = process.env.FRONTEND_URL ?? 'http://localhost:5173';
+
+const ok = (m: string) => console.log(`  ✅ ${m}`);
+const echec = (m: string): never => {
+  throw new Error(m);
+};
+
+async function connexion(email: string): Promise<string> {
+  const res = await fetch(`${API}/auth/sign-in/email`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-api-key': KEY, Origin: ORIGIN },
+    body: JSON.stringify({ email, password: 'NutriChain!2026' }),
+  });
+  const d = (await res.json()) as { token?: string };
+  if (!res.ok || !d.token) echec(`Connexion ${email} impossible (${res.status})`);
+  return d.token!;
+}
+
+const call = (token: string, path: string, method = 'GET', body?: unknown) =>
+  fetch(`${API}${path}`, {
+    method,
+    headers: {
+      'content-type': 'application/json',
+      'x-api-key': KEY,
+      Authorization: `Bearer ${token}`,
+      Origin: ORIGIN,
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+
+async function main() {
+  console.log('\n🏭 CRUD données de référence — fournisseur & emplacement\n');
+
+  const admin = await connexion('admin@nutrichain.local');
+  const operator = await connexion('operator@nutrichain.local');
+
+  const cree: string[] = [];
+
+  // 1. Un opérateur ne configure pas : 403 sur les écritures
+  const refus = await call(operator, '/organization/suppliers', 'POST', {
+    nom_ferme: 'Ferme Pirate',
+    adresse_siege: '1 rue',
+  });
+  if (refus.status !== 403) echec(`Un operator a pu créer un fournisseur (${refus.status})`);
+  ok('Création de fournisseur refusée à un opérateur (403)');
+
+  // 2. L'admin crée un fournisseur et un emplacement
+  const cS = await call(admin, '/organization/suppliers', 'POST', {
+    nom_ferme: `Ferme e2e ${Date.now()}`,
+    adresse_siege: '2 chemin des prés',
+    type_produit: 'Lait cru',
+  });
+  if (cS.status !== 201) echec(`Création fournisseur échouée (${cS.status})`);
+  const supplierId = (await cS.json()).data.id as string;
+  cree.push(supplierId);
+  ok('Fournisseur créé par un admin');
+
+  const cL = await call(admin, '/organization/locations', 'POST', {
+    nom: `Quai e2e ${Date.now()}`,
+    type: 'RECEPTION',
+  });
+  if (cL.status !== 201) echec(`Création emplacement échouée (${cL.status})`);
+  const locationId = (await cL.json()).data.id as string;
+  ok('Emplacement créé par un admin');
+
+  // 3. L'audit a tracé les créations
+  const auditCount = await prisma.audit_Log.count({
+    where: { entity: 'Supplier', entity_id: supplierId, action: 'CREATE_SUPPLIER' },
+  });
+  if (auditCount !== 1) echec(`Création fournisseur non journalisée (${auditCount})`);
+  ok("Création journalisée dans l'audit");
+
+  // 4. Édition (multi-tenancy : par son org, via findFirst)
+  const upd = await call(admin, `/organization/suppliers/${supplierId}`, 'PATCH', {
+    contact_qualite: 'qualite@ferme.fr',
+  });
+  if (upd.status !== 200) echec(`Édition échouée (${upd.status})`);
+  ok('Fournisseur édité');
+
+  // 5. Archivage → disparaît de la liste par défaut, reste avec includeArchived
+  const arch = await call(admin, `/organization/suppliers/${supplierId}/active`, 'PATCH', {
+    active: false,
+  });
+  if (arch.status !== 200) echec(`Archivage échoué (${arch.status})`);
+
+  const listeDefaut = await (await call(admin, '/organization/suppliers')).json();
+  if (listeDefaut.data.some((s: { id: string }) => s.id === supplierId))
+    echec('Le fournisseur archivé apparaît encore dans la liste par défaut');
+  ok('Fournisseur archivé : absent de la liste par défaut');
+
+  const listeArchivees = await (
+    await call(admin, '/organization/suppliers?includeArchived=true')
+  ).json();
+  if (!listeArchivees.data.some((s: { id: string }) => s.id === supplierId))
+    echec('Le fournisseur archivé est invisible même avec includeArchived');
+  ok('Fournisseur archivé : visible avec includeArchived (pour réactivation)');
+
+  // 6. LE POINT CLÉ : recevoir d'un fournisseur archivé est REFUSÉ (garde d'écriture)
+  const recArch = await call(admin, '/logistics/receipts', 'POST', {
+    id_fournisseur: supplierId,
+    id_produit: '44444444-4444-4444-8444-444444444444',
+    quantite_actuelle: 5,
+    unite_code: 'L',
+    statut_controle: 'OK',
+    shipment_id: `E2E-${Date.now()}`,
+  });
+  if (recArch.status !== 409)
+    echec(`Réception sur fournisseur archivé acceptée ou mal refusée (${recArch.status})`);
+  ok('Réception refusée sur un fournisseur archivé (409) — la désactivation a un effet réel');
+
+  // 7. Réactivation
+  const react = await call(admin, `/organization/suppliers/${supplierId}/active`, 'PATCH', {
+    active: true,
+  });
+  if (react.status !== 200) echec(`Réactivation échouée (${react.status})`);
+  ok('Fournisseur réactivé');
+
+  // Nettoyage
+  await prisma.audit_Log.deleteMany({ where: { entity_id: { in: [supplierId, locationId] } } });
+  await prisma.supplier.delete({ where: { id: supplierId } });
+  await prisma.location.delete({ where: { id: locationId } });
+  ok('Données e2e nettoyées');
+
+  console.log('\n✅ CRUD référence : création, édition, archivage effectif, réactivation.\n');
+  await prisma.$disconnect();
+}
+
+main().catch(async (e) => {
+  console.error(`\n❌ ${e instanceof Error ? e.message : String(e)}\n`);
+  await prisma.$disconnect();
+  process.exit(1);
+});

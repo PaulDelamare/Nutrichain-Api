@@ -39,7 +39,8 @@
     "e2e:lot-fournisseur": "tsx --env-file=.env scripts/e2e-lot-fournisseur.ts",
     "e2e:resolution-lot": "tsx --env-file=.env scripts/e2e-resolution-lot.ts",
     "e2e:org-passthrough": "tsx --env-file=.env scripts/e2e-org-passthrough.ts",
-    "e2e:platform": "tsx --env-file=.env scripts/e2e-platform-admin.ts"
+    "e2e:platform": "tsx --env-file=.env scripts/e2e-platform-admin.ts",
+    "e2e:reference-data": "tsx --env-file=.env scripts/e2e-reference-data.ts"
   },
   "lint-staged": {
     "src/**/*.{ts,js}": [

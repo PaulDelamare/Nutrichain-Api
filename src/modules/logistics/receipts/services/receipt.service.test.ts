@@ -42,6 +42,26 @@ describe('ReceiptService', () => {
   });
 
   describe('createReceipt', () => {
+    it('refuse une réception rattachée à un fournisseur ARCHIVÉ', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(prisma.supplier.findFirst).mockResolvedValue({ id: 'supp-1', is_active: false } as any);
+
+      await expect(
+        receiptService.createReceipt({
+          organization_id: 'org-1',
+          id_fournisseur: 'supp-1',
+          shipment_id: 'SHIP-ARCH',
+          id_produit: 'prod-1',
+          quantite_actuelle: 10,
+          unite_code: 'KG',
+          statut_controle: 'OK',
+          received_by: 'user-1',
+        })
+      ).rejects.toMatchObject({ status: 409 });
+
+      expect(batchService.createBatch).not.toHaveBeenCalled();
+    });
+
     it('doit créer une réception et un lot au sein d une transaction', async () => {
       const payload = {
         organization_id: 'org-1',
@@ -56,7 +76,7 @@ describe('ReceiptService', () => {
 
       // Mocks
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      vi.mocked(prisma.supplier.findFirst).mockResolvedValue({ id: 'supp-1' } as any);
+      vi.mocked(prisma.supplier.findFirst).mockResolvedValue({ id: 'supp-1', is_active: true } as any);
       vi.mocked(prisma.product.findFirst).mockResolvedValue({
         id: 'prod-1',
         code_gtin: '3456789012345',
@@ -96,7 +116,7 @@ describe('ReceiptService', () => {
       };
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      vi.mocked(prisma.supplier.findFirst).mockResolvedValue({ id: 'supp-1' } as any);
+      vi.mocked(prisma.supplier.findFirst).mockResolvedValue({ id: 'supp-1', is_active: true } as any);
       vi.mocked(prisma.product.findFirst).mockResolvedValue({
         id: 'prod-1',
         code_gtin: '3456789012345',
@@ -147,7 +167,7 @@ describe('ReceiptService', () => {
       };
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      vi.mocked(prisma.supplier.findFirst).mockResolvedValue({ id: 'supp-1' } as any);
+      vi.mocked(prisma.supplier.findFirst).mockResolvedValue({ id: 'supp-1', is_active: true } as any);
       vi.mocked(prisma.product.findFirst).mockResolvedValue({
         id: 'prod-1',
         code_gtin: '3456789012345',
@@ -199,7 +219,7 @@ describe('ReceiptService', () => {
 
     it('doit utiliser le préfixe GS1 de repli si l organisation n en a pas', async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      vi.mocked(prisma.supplier.findFirst).mockResolvedValue({ id: 'supp-1' } as any);
+      vi.mocked(prisma.supplier.findFirst).mockResolvedValue({ id: 'supp-1', is_active: true } as any);
       vi.mocked(prisma.product.findFirst).mockResolvedValue({
         id: 'prod-1',
         code_gtin: '3456789012345',
@@ -254,7 +274,7 @@ describe('ReceiptService', () => {
       ['OK', 'EN_STOCK'],
       ['CONFORME', 'EN_STOCK'],
     ])('réception %s -> lot créé en %s', async (statut_controle, statutLotAttendu) => {
-      const mockOk = (id: string) => ({ id }) as never;
+      const mockOk = (id: string) => ({ id, is_active: true }) as never;
       vi.mocked(prisma.supplier.findFirst).mockResolvedValue(mockOk('supp-1'));
       vi.mocked(prisma.product.findFirst).mockResolvedValue({
         id: 'prod-1',
@@ -305,7 +325,7 @@ describe('ReceiptService', () => {
     it('doit échouer si le produit n appartient pas à l organisation (Faille Critique #1)', async () => {
       // Le fournisseur est OK
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      vi.mocked(prisma.supplier.findFirst).mockResolvedValue({ id: 'supp-1' } as any);
+      vi.mocked(prisma.supplier.findFirst).mockResolvedValue({ id: 'supp-1', is_active: true } as any);
       // MAIS le produit est introuvable pour cette org
       vi.mocked(prisma.product.findFirst).mockResolvedValue(null);
 
@@ -347,7 +367,7 @@ describe('ReceiptService', () => {
     /** `duree_conservation_defaut` est en JOURS : c'est le repli quand le fournisseur n'imprime pas de DLC. */
     const mockValidReception = (dureeConservationJours = 30) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      vi.mocked(prisma.supplier.findFirst).mockResolvedValue({ id: 'supp-1' } as any);
+      vi.mocked(prisma.supplier.findFirst).mockResolvedValue({ id: 'supp-1', is_active: true } as any);
       vi.mocked(prisma.product.findFirst).mockResolvedValue({
         id: 'prod-1',
         code_gtin: '3042040209123',

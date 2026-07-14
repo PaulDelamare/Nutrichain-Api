@@ -30,6 +30,21 @@ import {
   listShipmentsController,
   listSuppliersController,
 } from '../controllers/organization.controller';
+import {
+  createSupplierController,
+  updateSupplierController,
+  setSupplierActiveController,
+  createLocationController,
+  updateLocationController,
+  setLocationActiveController,
+} from '../controllers/referenceData.controller';
+import {
+  validateCreateSupplier,
+  validateUpdateSupplier,
+  validateCreateLocation,
+  validateUpdateLocation,
+  validateSetActive,
+} from '../middlewares/referenceData.schema';
 
 const router = Router();
 
@@ -116,6 +131,47 @@ router.get(
   '/organization/equipment/:id/label',
   sessionAuth(READ_ROLES),
   getEquipmentLabelController
+);
+
+// Données de référence — fournisseurs et emplacements. Écritures réservées à l'administration
+// (comme le matériel) : l'admin configure l'usine, l'opérateur reçoit. Archiver ≠ supprimer :
+// ces objets sont référencés par des réceptions et du matériel (FK Restrict).
+router.post(
+  '/organization/suppliers',
+  sessionAuth(CONFIG_ROLES),
+  validateCreateSupplier,
+  createSupplierController
+);
+router.patch(
+  '/organization/suppliers/:id',
+  sessionAuth(CONFIG_ROLES),
+  validateUpdateSupplier,
+  updateSupplierController
+);
+router.patch(
+  '/organization/suppliers/:id/active',
+  sessionAuth(CONFIG_ROLES),
+  validateSetActive,
+  setSupplierActiveController
+);
+
+router.post(
+  '/organization/locations',
+  sessionAuth(CONFIG_ROLES),
+  validateCreateLocation,
+  createLocationController
+);
+router.patch(
+  '/organization/locations/:id',
+  sessionAuth(CONFIG_ROLES),
+  validateUpdateLocation,
+  updateLocationController
+);
+router.patch(
+  '/organization/locations/:id/active',
+  sessionAuth(CONFIG_ROLES),
+  validateSetActive,
+  setLocationActiveController
 );
 
 export default router;

@@ -4,10 +4,24 @@ import { sendSuccess } from '../../../shared/utils/returnSuccess/returnSuccess';
 import { AuthenticatedRequest } from '../../identity/types/auth.types';
 import { labelService } from '../../logistics/shared/services/label.service';
 import { equipmentService } from '../services/equipment.service';
+import { ADMIN_ROLES } from '../../identity/constants/roles.constants';
+
+/**
+ * Voir les archivés est un usage d'ADMINISTRATION (pour réactiver). Un rôle en lecture ne doit pas
+ * pouvoir énumérer ce qui a été retiré du service — on ignore alors le paramètre plutôt que de
+ * refuser, pour ne pas casser un appelant qui le passerait par défaut.
+ */
+function wantsArchived(req: AuthenticatedRequest): boolean {
+  const role = req.auth?.role;
+  return req.query.includeArchived === 'true' && (ADMIN_ROLES as string[]).includes(role ?? '');
+}
 
 export const listLocationsController = catchAsync(
   async (req: AuthenticatedRequest, res: Response) => {
-    const locations = await equipmentService.listLocations(req.activeOrgId as string);
+    const locations = await equipmentService.listLocations(
+      req.activeOrgId as string,
+      wantsArchived(req)
+    );
     sendSuccess(res, 200, 'Lieux récupérés', locations);
   }
 );
