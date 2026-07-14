@@ -32,6 +32,12 @@ export const equipmentService = {
         error: [{ field: 'id_lieu', message: 'Lieu introuvable ou accès refusé' }],
       });
     }
+    // Un lieu archivé n'accueille pas de nouveau matériel (le matériel déjà placé reste valable).
+    if (!lieu.is_active) {
+      throw new APIError(409, {
+        error: [{ field: 'id_lieu', message: 'Cet emplacement est archivé.' }],
+      });
+    }
 
     const equipment = await prisma.equipment.create({
       data: {
@@ -87,9 +93,12 @@ export const equipmentService = {
     return { code: updated.qr_code_id as string, nom: updated.nom };
   },
 
-  async listLocations(organizationId: string) {
+  // Actifs seulement par défaut : un lieu archivé ne doit plus être proposé (création de matériel).
+  async listLocations(organizationId: string, includeArchived = false) {
     return prisma.location.findMany({
-      where: { organization_id: organizationId },
+      where: includeArchived
+        ? { organization_id: organizationId }
+        : { organization_id: organizationId, is_active: true },
       orderBy: { nom: 'asc' },
     });
   },

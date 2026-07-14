@@ -16,7 +16,7 @@ vi.mock('../../../shared/utils/audit/audit.service', () => ({
 const ORG = 'org-1';
 const USER = 'user-1';
 
-const LIEU = { id: 'lieu-1', organization_id: ORG, nom: 'Chambre froide A' };
+const LIEU = { id: 'lieu-1', organization_id: ORG, nom: 'Chambre froide A', is_active: true };
 
 describe('equipmentService.createEquipment', () => {
   beforeEach(() => vi.clearAllMocks());
@@ -25,9 +25,11 @@ describe('equipmentService.createEquipment', () => {
     // Sans étiquette, l'opérateur ne peut pas scanner l'emplacement du lot — et un lot sans
     // emplacement n'est JAMAIS mis en quarantaine si son frigo dérive.
     vi.mocked(prisma.location.findFirst).mockResolvedValue(LIEU as never);
-    vi.mocked(prisma.equipment.create).mockImplementation(
-      (async ({ data }: { data: Record<string, unknown> }) => ({ id: 'eq-1', ...data })) as never
-    );
+    vi.mocked(prisma.equipment.create).mockImplementation((async ({
+      data,
+    }: {
+      data: Record<string, unknown>;
+    }) => ({ id: 'eq-1', ...data })) as never);
 
     const created = await equipmentService.createEquipment({
       organization_id: ORG,
@@ -106,13 +108,15 @@ describe('equipmentService.getScannableLabel', () => {
       nom: 'Chambre froide A',
       qr_code_id: null,
     } as never);
-    vi.mocked(prisma.equipment.update).mockImplementation(
-      (async ({ data }: { data: { qr_code_id: string } }) => ({
-        id: 'eq-1',
-        nom: 'Chambre froide A',
-        qr_code_id: data.qr_code_id,
-      })) as never
-    );
+    vi.mocked(prisma.equipment.update).mockImplementation((async ({
+      data,
+    }: {
+      data: { qr_code_id: string };
+    }) => ({
+      id: 'eq-1',
+      nom: 'Chambre froide A',
+      qr_code_id: data.qr_code_id,
+    })) as never);
 
     const label = await equipmentService.getScannableLabel(ORG, 'eq-1');
 

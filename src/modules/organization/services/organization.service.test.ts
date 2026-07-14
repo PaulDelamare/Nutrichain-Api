@@ -156,7 +156,7 @@ describe('OrganizationService (façade de lecture pour le front)', () => {
     await organizationService.listCustomers(ORG);
 
     expect(prisma.supplier.findMany).toHaveBeenCalledWith({
-      where: { organization_id: ORG },
+      where: { organization_id: ORG, is_active: true },
       orderBy: { nom_ferme: 'asc' },
     });
     expect(prisma.customer.findMany).toHaveBeenCalledWith({

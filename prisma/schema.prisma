@@ -205,6 +205,9 @@ model Location {
   nom             String
   type            String
   description     String?
+  // Désactivation douce : un lieu référencé par du matériel ne peut pas être supprimé (FK Restrict).
+  // Archivé, il disparaît des listes de sélection mais reste lisible sur l'historique existant.
+  is_active       Boolean      @default(true)
   materiel        Equipment[]
 
   @@index([organization_id])
@@ -445,6 +448,8 @@ model Supplier {
   type_produit    String?
   contact_qualite String?
   adresse_siege   String
+  // Désactivation douce : un fournisseur référencé par des réceptions ne peut pas être supprimé.
+  is_active       Boolean      @default(true)
   receptions      Receipt[]
 
   @@index([organization_id])

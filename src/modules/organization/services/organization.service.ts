@@ -78,9 +78,13 @@ export const organizationService = {
     });
   },
 
-  async listSuppliers(organizationId: string) {
+  // Actifs seulement par défaut : un fournisseur archivé ne doit plus être proposé (réception).
+  // `includeArchived` sert l'écran d'administration, qui doit les voir pour les réactiver.
+  async listSuppliers(organizationId: string, includeArchived = false) {
     return prisma.supplier.findMany({
-      where: { organization_id: organizationId },
+      where: includeArchived
+        ? { organization_id: organizationId }
+        : { organization_id: organizationId, is_active: true },
       orderBy: { nom_ferme: 'asc' },
     });
   },

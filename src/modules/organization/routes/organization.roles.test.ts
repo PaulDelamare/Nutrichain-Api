@@ -37,12 +37,18 @@ vi.mock('../controllers/equipment.controller', () => ({
   listLocationsController: ok,
 }));
 vi.mock('../middlewares/validateOrganizationQuery.middleware', () => ({
-  validateOrganizationQuery: (_req: express.Request, _res: express.Response, next: express.NextFunction) =>
-    next(),
+  validateOrganizationQuery: (
+    _req: express.Request,
+    _res: express.Response,
+    next: express.NextFunction
+  ) => next(),
 }));
 vi.mock('../middlewares/validateEquipment.middleware', () => ({
-  validateCreateEquipment: (_req: express.Request, _res: express.Response, next: express.NextFunction) =>
-    next(),
+  validateCreateEquipment: (
+    _req: express.Request,
+    _res: express.Response,
+    next: express.NextFunction
+  ) => next(),
 }));
 
 const { default: organizationRoutes } = await import('./organization.routes');
@@ -65,7 +71,12 @@ beforeEach(() => vi.clearAllMocks());
 
 describe('RBAC des lectures organisation (session réelle)', () => {
   // Données personnelles : réservées à l'administration (moindre privilège + RGPD).
-  const PERSONAL = ['/api/organization/members', '/api/organization/audit-logs', '/api/organization/customers', '/api/organization/suppliers'];
+  const PERSONAL = [
+    '/api/organization/members',
+    '/api/organization/audit-logs',
+    '/api/organization/customers',
+    '/api/organization/suppliers',
+  ];
 
   describe('données personnelles → admin/owner seulement', () => {
     for (const url of PERSONAL) {
@@ -87,7 +98,11 @@ describe('RBAC des lectures organisation (session réelle)', () => {
   });
 
   describe('lectures métier → tous les rôles', () => {
-    const BUSINESS = ['/api/organization/alerts', '/api/organization/equipment', '/api/organization/movements'];
+    const BUSINESS = [
+      '/api/organization/alerts',
+      '/api/organization/equipment',
+      '/api/organization/movements',
+    ];
 
     for (const url of BUSINESS) {
       it(`${url} : autorise viewer`, async () => {
