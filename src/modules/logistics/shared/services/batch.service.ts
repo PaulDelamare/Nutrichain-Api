@@ -25,6 +25,8 @@ export interface CreateBatchInput {
   statut?: BatchStatus;
   /** Emplacement de stockage du lot (matériel) — permet de connaître sa position. */
   id_materiel_actuel?: string;
+  /** Réception d'origine, pour les lots de matière première. Absent pour un produit fini. */
+  id_receipt?: string;
 }
 
 /**
@@ -90,6 +92,7 @@ export const batchService = {
         date_peremption: data.date_peremption,
         statut: data.statut ?? BATCH_STATUSES.IN_STOCK,
         id_materiel_actuel: data.id_materiel_actuel,
+        id_receipt: data.id_receipt,
       },
     });
   },

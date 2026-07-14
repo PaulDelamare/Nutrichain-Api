@@ -57,6 +57,27 @@ describe('BatchSharedService', () => {
       expect(result.id).toBe('batch-123');
     });
 
+    it('rattache le lot à sa réception quand id_receipt est fourni', async () => {
+      const mockTx = { batch: { create: vi.fn().mockResolvedValue({ id: 'batch-r' }) } };
+
+      await batchService.createBatch(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        mockTx as any,
+        {
+          organization_id: 'org-1',
+          id_produit: 'prod-1',
+          quantite_actuelle: 100,
+          unite_code: 'KG',
+          created_by: 'user-1',
+          id_receipt: 'rec-1',
+        }
+      );
+
+      expect(mockTx.batch.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ id_receipt: 'rec-1' }),
+      });
+    });
+
     // La promesse centrale : le numéro imprimé par le fournisseur est celui écrit en base. Sans ce
     // test, retirer le `?? generateLotNumber()` (donc jeter le numéro fournisseur) ne fait rougir
     // AUCUN test unitaire — la réception mocke `createBatch` et ne voit rien.

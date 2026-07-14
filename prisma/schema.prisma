@@ -273,6 +273,11 @@ model Batch {
   statut             String       @default("EN_STOCK")
   id_materiel_actuel String?
   materiel           Equipment?   @relation(fields: [id_materiel_actuel], references: [id])
+  // Réception d'origine (matière première). Nul pour un produit fini issu de transformation.
+  // Restrict : une réception qui a produit des lots ne doit pas pouvoir être supprimée en effaçant
+  // le lien amont en silence — la traçabilité vers la ferme resterait alors introuvable.
+  id_receipt         String?
+  receipt            Receipt?     @relation(fields: [id_receipt], references: [id], onDelete: Restrict)
   date_creation      DateTime     @default(now())
   created_by         String
   user               User         @relation(fields: [created_by], references: [id])
@@ -471,6 +476,7 @@ model Receipt {
   statut_controle            String
   received_by                String
   user                       User         @relation(fields: [received_by], references: [id])
+  lots                       Batch[]
 
   @@unique([organization_id, shipment_id])
   @@index([organization_id])

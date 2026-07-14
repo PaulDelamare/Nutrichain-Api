@@ -108,4 +108,55 @@ export const genealogyService = {
 
     return ancestors;
   },
+
+  /**
+   * Origines « ferme » d'un lot : les points d'entrée de matière première dans sa généalogie.
+   *
+   * Un lot porte un `id_receipt` s'il est né d'une réception (matière première) ; un produit fini
+   * issu de transformation n'en a pas. On remonte donc le lot LUI-MÊME (cas d'une réception scannée
+   * directement — sans lui, `getUpstream` ne renvoie que les ancêtres et l'origine serait vide) plus
+   * tous ses ancêtres, et on ne garde que ceux rattachés à une réception, joints à leur fournisseur.
+   */
+  async getOrigins(
+    batchId: string,
+    organizationId: string,
+    tx?: Prisma.TransactionClient
+  ): Promise<
+    {
+      lot_number: string;
+      date_reception: Date;
+      fournisseur: { id: string; nom_ferme: string };
+    }[]
+  > {
+    const db = tx || prisma;
+    const ancestors = await this.getUpstream(batchId, organizationId, tx);
+    const ids = [batchId, ...ancestors.map((a) => a.id)];
+
+    const roots = await db.batch.findMany({
+      where: {
+        id: { in: ids },
+        organization_id: organizationId,
+        id_receipt: { not: null },
+        // Cloisonnement en profondeur : la réception liée doit être de la même organisation.
+        receipt: { organization_id: organizationId },
+      },
+      select: {
+        lot_number: true,
+        receipt: {
+          select: {
+            date_reception: true,
+            fournisseur: { select: { id: true, nom_ferme: true } },
+          },
+        },
+      },
+    });
+
+    return roots
+      .filter((b) => b.receipt)
+      .map((b) => ({
+        lot_number: b.lot_number,
+        date_reception: b.receipt!.date_reception,
+        fournisseur: b.receipt!.fournisseur,
+      }));
+  },
 };
