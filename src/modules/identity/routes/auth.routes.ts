@@ -4,6 +4,7 @@ import { auth } from '../auth.config';
 import { checkApiKey } from '../../../shared/utils/checkApiKey/checkApiKey';
 import { requireInvitationOrFirstUser } from '../middlewares/guardSignUp.middleware';
 import { validateSignInParams, validateSignUpParams } from '../middlewares/validateAuth.middleware';
+import { blockOrgPassthrough } from '../middlewares/blockOrgPassthrough.middleware';
 import invitationRoutes from './invitation.routes';
 
 const router = Router();
@@ -108,6 +109,12 @@ router.post('/auth/sign-up/email', validateSignUpParams, requireInvitationOrFirs
 
 // Validation des champs basique pour la Connexion
 router.post('/auth/sign-in/email', validateSignInParams);
+
+// ==========================================
+// FERMETURE DU PASSTHROUGH SUR LES ORGANISATIONS
+// ==========================================
+// Doit rester AVANT le passthrough ci-dessous : sinon Better-Auth répond avant nous.
+router.all('/auth/organization/*', blockOrgPassthrough);
 
 // ==========================================
 // FORMATTAGE DES ERREURS NATIVES BETTER-AUTH

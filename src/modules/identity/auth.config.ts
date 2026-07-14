@@ -171,6 +171,11 @@ export const auth = betterAuth({
   },
   plugins: [
     organization({
+      // Seconde barrière, derrière `blockOrgPassthrough` : le défaut de Better-Auth est `true`,
+      // donc TOUTE session pouvait créer une organisation et s'en faire `owner` — y compris un
+      // `viewer` en lecture seule (constaté en HTTP réel). Une organisation naît par le seed ou
+      // par une route à nous, gardée et journalisée. Jamais par le plugin.
+      allowUserToCreateOrganization: false,
       sendInvitationEmail: async (data): Promise<void> => {
         // Aligné sur le flow custom : on pointe vers la page /inscription du frontend
         // (SvelteKit), pas vers l'API. FRONTEND_URL garanti par assertEnv.
