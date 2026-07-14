@@ -39,6 +39,20 @@ import {
   setLocationActiveController,
 } from '../controllers/referenceData.controller';
 import {
+  createCustomerController,
+  updateCustomerController,
+  setCustomerActiveController,
+  createProductController,
+  updateProductController,
+  setProductActiveController,
+} from '../controllers/customerProduct.controller';
+import {
+  validateCreateCustomer,
+  validateUpdateCustomer,
+  validateCreateProduct,
+  validateUpdateProduct,
+} from '../middlewares/customerProduct.schema';
+import {
   validateCreateSupplier,
   validateUpdateSupplier,
   validateCreateLocation,
@@ -172,6 +186,46 @@ router.patch(
   sessionAuth(CONFIG_ROLES),
   validateSetActive,
   setLocationActiveController
+);
+
+// Clients et produits — mêmes règles : écritures réservées à l'administration, désactivation douce
+// (référencés par des expéditions / lots — FK Restrict).
+router.post(
+  '/organization/customers',
+  sessionAuth(CONFIG_ROLES),
+  validateCreateCustomer,
+  createCustomerController
+);
+router.patch(
+  '/organization/customers/:id',
+  sessionAuth(CONFIG_ROLES),
+  validateUpdateCustomer,
+  updateCustomerController
+);
+router.patch(
+  '/organization/customers/:id/active',
+  sessionAuth(CONFIG_ROLES),
+  validateSetActive,
+  setCustomerActiveController
+);
+
+router.post(
+  '/organization/products',
+  sessionAuth(CONFIG_ROLES),
+  validateCreateProduct,
+  createProductController
+);
+router.patch(
+  '/organization/products/:id',
+  sessionAuth(CONFIG_ROLES),
+  validateUpdateProduct,
+  updateProductController
+);
+router.patch(
+  '/organization/products/:id/active',
+  sessionAuth(CONFIG_ROLES),
+  validateSetActive,
+  setProductActiveController
 );
 
 export default router;

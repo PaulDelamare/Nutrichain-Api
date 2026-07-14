@@ -15,7 +15,12 @@ export const getProducts = catchAsync(async (req: AuthenticatedRequest, res: Res
     });
   }
 
-  const products = await catalogService.getAllProducts(activeOrgId);
+  // Voir les archivés est un usage d'administration (réactiver) : un rôle en lecture ne les énumère pas.
+  const includeArchived =
+    req.query.includeArchived === 'true' &&
+    (ADMIN_ROLES as string[]).includes(req.auth?.role ?? '');
+
+  const products = await catalogService.getAllProducts(activeOrgId, includeArchived);
   sendSuccess(res, 200, 'Produits récupérés avec succès', products);
 });
 

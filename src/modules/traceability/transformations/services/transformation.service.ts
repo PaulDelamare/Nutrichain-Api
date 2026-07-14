@@ -47,12 +47,22 @@ export const transformationService = {
       // symétrique aux contrôles fournisseur/client) — son GTIN sert aussi à l'URN LGTIN.
       const produitFini = await tx.product.findFirst({
         where: { id: data.id_produit_fini, organization_id: data.organization_id },
-        select: { code_gtin: true },
+        select: { code_gtin: true, is_active: true },
       });
       if (!produitFini) {
         throw new APIError(404, {
           error: [
             { field: 'id_produit_fini', message: 'Produit fini introuvable ou accès refusé.' },
+          ],
+        });
+      }
+      if (!produitFini.is_active) {
+        throw new APIError(409, {
+          error: [
+            {
+              field: 'id_produit_fini',
+              message: 'Ce produit est archivé : aucune nouvelle production.',
+            },
           ],
         });
       }

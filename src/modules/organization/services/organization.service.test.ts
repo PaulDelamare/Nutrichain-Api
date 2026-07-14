@@ -160,7 +160,7 @@ describe('OrganizationService (façade de lecture pour le front)', () => {
       orderBy: { nom_ferme: 'asc' },
     });
     expect(prisma.customer.findMany).toHaveBeenCalledWith({
-      where: { organization_id: ORG },
+      where: { organization_id: ORG, is_active: true },
       orderBy: { nom_enseigne: 'asc' },
     });
   });
