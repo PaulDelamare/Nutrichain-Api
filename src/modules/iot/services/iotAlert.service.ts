@@ -130,15 +130,29 @@ export const iotAlertService = {
           // UPDATE ... RETURNING (et non SELECT puis UPDATE) : on obtient en UNE requête les
           // lots réellement bloqués, sans fenêtre TOCTOU, et avec leur quantité — nécessaire
           // pour tracer le mouvement (quantite/unite sont NOT NULL).
+          // ⚠️ `ancien.statut` (auto-jointure) et non `statut` : le RETURNING d'un UPDATE renvoie la
+          // valeur NOUVELLE — donc BLOQUE pour tout le monde. Or il faut le statut d'AVANT.
+          //
+          // Sans lui, la levée de quarantaine remet le lot `EN_STOCK` en dur : un lot EN_ATTENTE_QC
+          // (qui attend son contrôle de sortie d'usine) et que le froid a isolé ressortirait donc
+          // EN STOCK **sans avoir jamais passé son contrôle**. La barrière qualité ne serait pas
+          // contournée : elle serait effacée — par le geste censé réparer l'incident.
           const quarantined = await tx.$queryRaw<
-            { id: string; quantite_actuelle: Prisma.Decimal; unite_code: string }[]
+            {
+              id: string;
+              quantite_actuelle: Prisma.Decimal;
+              unite_code: string;
+              statut_precedent: string;
+            }[]
           >`
-            UPDATE "Batch"
-               SET statut = ${BATCH_STATUSES.BLOCKED}, version = version + 1
-             WHERE organization_id = ${cached.equipmentOrgId}
-               AND id_materiel_actuel = ${cached.equipmentId}
-               AND statut = ANY(${COLD_QUARANTINABLE_STATUSES as string[]})
-         RETURNING id, quantite_actuelle, unite_code
+            UPDATE "Batch" lot
+               SET statut = ${BATCH_STATUSES.BLOCKED}, version = lot.version + 1
+              FROM "Batch" ancien
+             WHERE ancien.id = lot.id
+               AND lot.organization_id = ${cached.equipmentOrgId}
+               AND lot.id_materiel_actuel = ${cached.equipmentId}
+               AND lot.statut = ANY(${COLD_QUARANTINABLE_STATUSES as string[]})
+         RETURNING lot.id, lot.quantite_actuelle, lot.unite_code, ancien.statut AS statut_precedent
           `;
 
           const created = await tx.alert.create({
@@ -169,6 +183,8 @@ export const iotAlertService = {
                   sensorId,
                   peakTemp: result.peakTemp,
                   threshold,
+                  // Ce que la levée devra RESTAURER — pas `EN_STOCK` par défaut (cf. l'UPDATE).
+                  statut_precedent: b.statut_precedent,
                 },
               })),
             });

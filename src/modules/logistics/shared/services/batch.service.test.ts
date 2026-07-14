@@ -11,7 +11,7 @@ vi.mock('../../../../shared/configs/prismaClient.config', () => ({
       findFirst: vi.fn(),
       update: vi.fn(),
     },
-    batch_Mouvement: { create: vi.fn() },
+    batch_Mouvement: { create: vi.fn(), findFirst: vi.fn() },
     // Simule une transaction en passant le mock prisma au callback
     $transaction: vi.fn(async (cb) => cb(prisma)),
   },
@@ -169,6 +169,69 @@ describe('BatchSharedService', () => {
           id_user: 'user-1',
           metadata: expect.objectContaining({ motif: '2e contrôle conforme' }),
         }),
+      });
+    });
+
+    it('RESTAURE EN_ATTENTE_QC : un lot isolé par le froid ne sort pas sans son contrôle', async () => {
+      // LE cas. Une excursion isole aussi les lots qui attendent leur contrôle de sortie d'usine.
+      // Les rendre EN_STOCK à la levée les ferait sortir sans que ce contrôle ait jamais eu lieu :
+      // le geste censé réparer l'incident effacerait la barrière qualité.
+      vi.mocked(prisma.batch.findFirst).mockResolvedValue(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        { id: 'batch-1', organization_id: 'org-1', statut: 'BLOQUE' } as any
+      );
+      vi.mocked(prisma.batch_Mouvement.findFirst).mockResolvedValue(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        { metadata: { id_alerte: 'a-1', statut_precedent: 'EN_ATTENTE_QC' } } as any
+      );
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(prisma.batch.update).mockResolvedValue({ id: 'batch-1' } as any);
+
+      await batchService.liftQuarantine('batch-1', 'org-1', 'user-1', 'frigo réparé');
+
+      expect(prisma.batch.update).toHaveBeenCalledWith({
+        where: { id: 'batch-1' },
+        data: expect.objectContaining({ statut: 'EN_ATTENTE_QC' }),
+      });
+    });
+
+    it('REFUSE de restaurer un statut qu une quarantaine froid n a pas pu interrompre', async () => {
+      // Une métadonnée corrompue (ou un futur appelant distrait) ne doit pas pouvoir ressusciter un
+      // lot en EXPEDIE — ni, pire, en ALERTE : ce serait sortir de quarantaine un lot sous rappel.
+      vi.mocked(prisma.batch.findFirst).mockResolvedValue(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        { id: 'batch-1', organization_id: 'org-1', statut: 'BLOQUE' } as any
+      );
+      vi.mocked(prisma.batch_Mouvement.findFirst).mockResolvedValue(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        { metadata: { statut_precedent: 'ALERTE' } } as any
+      );
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(prisma.batch.update).mockResolvedValue({ id: 'batch-1' } as any);
+
+      await batchService.liftQuarantine('batch-1', 'org-1', 'user-1', 'motif');
+
+      expect(prisma.batch.update).toHaveBeenCalledWith({
+        where: { id: 'batch-1' },
+        data: expect.objectContaining({ statut: 'EN_STOCK' }),
+      });
+    });
+
+    it('retombe sur EN_STOCK quand aucun isolement froid ne dit d où vient le lot', async () => {
+      // Lot isolé par un contrôle qualité, ou quarantaine froid antérieure à ce correctif.
+      vi.mocked(prisma.batch.findFirst).mockResolvedValue(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        { id: 'batch-1', organization_id: 'org-1', statut: 'BLOQUE' } as any
+      );
+      vi.mocked(prisma.batch_Mouvement.findFirst).mockResolvedValue(null);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(prisma.batch.update).mockResolvedValue({ id: 'batch-1' } as any);
+
+      await batchService.liftQuarantine('batch-1', 'org-1', 'user-1', 'motif');
+
+      expect(prisma.batch.update).toHaveBeenCalledWith({
+        where: { id: 'batch-1' },
+        data: expect.objectContaining({ statut: 'EN_STOCK' }),
       });
     });
 

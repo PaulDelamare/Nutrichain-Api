@@ -28,6 +28,7 @@ import {
   _clearThresholdCacheForTests,
 } from '../src/modules/iot/services/iotAlert.service';
 import { alertBatchService } from '../src/modules/alerts/services/alertBatch.service';
+import { batchService } from '../src/modules/logistics/shared/services/batch.service';
 import {
   BATCH_STATUSES,
   MOVEMENT_TYPES,
@@ -246,24 +247,29 @@ async function main() {
       intact?.levable === true,
       'la non-conformité de son voisin ne contamine pas l’autre lot'
     );
-    console.log("\n[4] Le lot est relâché, puis une NOUVELLE excursion le ré-isole");
-    // Le piège que la première version de ce service n'avait pas vu : croiser un fait HISTORIQUE
+    console.log("\n[4] LA VRAIE LEVÉE : le lot qui attendait son contrôle ne doit pas sortir sans lui");
+    // `liftQuarantine` écrivait `EN_STOCK` en dur. Un lot EN_ATTENTE_QC (qui attend son contrôle de
+    // sortie d'usine) isolé par le froid ressortait donc EN STOCK sans avoir jamais passé ce
+    // contrôle : le geste censé réparer l'incident effaçait la barrière qualité.
+    // ⚠️ Seul l'e2e peut le prouver : le `UPDATE ... FROM` qui capture le statut d'avant est du SQL
+    // brut, que les tests unitaires moquent.
+    const userId = (await prisma.member.findFirstOrThrow({
+      where: { organizationId: ORG_ID! },
+      select: { userId: true },
+    })).userId;
+
+    await batchService.liftQuarantine(fixtures.froidQc, ORG_ID!, userId, 'frigo réparé');
+
+    assert(
+      (await statutOf(fixtures.froidQc)) === BATCH_STATUSES.PENDING_QC,
+      'le lot EN_ATTENTE_QC retrouve sa file de contrôle — il ne part PAS en stock'
+    );
+
+    console.log('\n[5] Le lot relâché est ré-isolé par une NOUVELLE excursion');
+    // Le piège que la première version du service n'avait pas vu : croiser un fait HISTORIQUE
     // (« cette alerte a isolé ce lot ») avec un fait PRÉSENT (« ce lot est bloqué ») sans vérifier
     // que le blocage actuel est bien celui-là. L'alerte A ne doit plus revendiquer un lot que
     // l'alerte B retient — sinon rouvrir A relâche la marchandise que B protège.
-    await prisma.batch_Mouvement.create({
-      data: {
-        id_lot: fixtures.froidQc,
-        type_action: MOVEMENT_TYPES.QUARANTINE_LIFTED,
-        quantite: 10,
-        unite: batches[0]!.unite_code,
-        metadata: { motif: 'frigo réparé' },
-      },
-    });
-    await prisma.batch.update({
-      where: { id: fixtures.froidQc },
-      data: { statut: BATCH_STATUSES.IN_STOCK },
-    });
 
     // Nouvelle excursion → nouvelle alerte B (l'ancienne n'est plus ACTIVE, le dédup ne bloque pas).
     await prisma.alert.updateMany({

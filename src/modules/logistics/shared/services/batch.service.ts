@@ -3,10 +3,50 @@ import { prisma } from '../../../../shared/configs/prismaClient.config';
 import { APIError } from '../../../../shared/utils/errorHandler/APIError';
 import { auditService } from '../../../../shared/utils/audit/audit.service';
 import { gs1Utils } from '../../../../shared/utils/gs1/gs1.utils';
-import { BATCH_STATUSES, BatchStatus, MOVEMENT_TYPES } from '../../constants/logistics.constants';
+import {
+  BATCH_STATUSES,
+  BatchStatus,
+  COLD_QUARANTINABLE_STATUSES,
+  MOVEMENT_TYPES,
+} from '../../constants/logistics.constants';
 
 /** Plafond de l'historique renvoyé avec un lot (frise de la fiche lot). */
 const BATCH_HISTORY_LIMIT = 50;
+
+/** Le dernier isolement froid du lot — c'est lui qui sait d'où le lot a été tiré. */
+async function lastColdQuarantine(tx: Prisma.TransactionClient, batchId: string) {
+  return tx.batch_Mouvement.findFirst({
+    where: { id_lot: batchId, type_action: MOVEMENT_TYPES.COLD_QUARANTINE },
+    orderBy: { id: 'desc' },
+    select: { metadata: true },
+  });
+}
+
+/**
+ * Le statut à rendre au lot à la levée de sa quarantaine.
+ *
+ * ⚠️ On n'accepte QUE les statuts qu'une quarantaine froid a pu interrompre. Faire confiance à la
+ * métadonnée sans la valider laisserait une donnée corrompue (ou un futur appelant distrait)
+ * ressusciter un lot en `EXPEDIE` ou en `ALERTE` — c'est-à-dire sortir de quarantaine un lot sous
+ * rappel produit.
+ *
+ * Défaut : `EN_STOCK`. C'est le comportement d'avant, et le seul possible pour les lots isolés par
+ * un contrôle qualité (dont le mouvement ne porte pas de `statut_precedent` exploitable) ou pour
+ * les quarantaines froid antérieures à ce correctif.
+ */
+function restoredStatusFrom(quarantine: { metadata: Prisma.JsonValue } | null): BatchStatus {
+  const metadata = quarantine?.metadata;
+  if (metadata === null || metadata === undefined || typeof metadata !== 'object') {
+    return BATCH_STATUSES.IN_STOCK;
+  }
+  if (Array.isArray(metadata)) return BATCH_STATUSES.IN_STOCK;
+
+  const previous = (metadata as Prisma.JsonObject).statut_precedent;
+
+  return COLD_QUARANTINABLE_STATUSES.includes(previous as BatchStatus)
+    ? (previous as BatchStatus)
+    : BATCH_STATUSES.IN_STOCK;
+}
 
 export interface CreateBatchInput {
   organization_id: string;
@@ -155,10 +195,18 @@ export const batchService = {
           });
         }
 
+        // ⚠️ On RESTAURE le statut d'avant l'isolement — on ne remet pas `EN_STOCK` en dur.
+        //
+        // Une excursion thermique isole aussi les lots `EN_ATTENTE_QC`, ceux qui attendent leur
+        // contrôle de sortie d'usine. Les rendre `EN_STOCK` à la levée les ferait sortir **sans
+        // qu'ils aient jamais passé ce contrôle** : le geste censé réparer l'incident effacerait la
+        // barrière qualité. Le lot doit retrouver la file d'attente d'où le froid l'a tiré.
+        const restored = restoredStatusFrom(await lastColdQuarantine(tx, id));
+
         const updated = await tx.batch.update({
           where: { id },
           data: {
-            statut: BATCH_STATUSES.IN_STOCK,
+            statut: restored,
             version: { increment: 1 },
           },
         });
@@ -172,7 +220,7 @@ export const batchService = {
             quantite: batch.quantite_actuelle,
             unite: batch.unite_code,
             id_user: userId,
-            metadata: { motif, statut_precedent: batch.statut },
+            metadata: { motif, statut_precedent: batch.statut, statut_restaure: restored },
           },
         });
 
@@ -184,7 +232,7 @@ export const batchService = {
             entity: 'Batch',
             entityId: id,
             oldValue: { statut: batch.statut },
-            newValue: { statut: BATCH_STATUSES.IN_STOCK, motif },
+            newValue: { statut: restored, motif },
           },
           tx
         );
