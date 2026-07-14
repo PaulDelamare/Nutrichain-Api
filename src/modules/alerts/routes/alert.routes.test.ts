@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
 import express, { Request, Response, NextFunction } from 'express';
-import { Alert } from '@prisma/client';
+import { Alert, Prisma } from '@prisma/client';
 import { globalErrorHandler } from '../../../shared/utils/errorHandler/errorHandler';
 import { AuthenticatedRequest, AuthUser, AuthSession } from '../../identity/types/auth.types';
 
@@ -67,9 +67,15 @@ vi.mock('../services/alert.service', () => ({
   alertService: { resolveAlert: vi.fn() },
 }));
 
+vi.mock('../services/alertBatch.service', () => ({
+  alertBatchService: { listBatchesIsolatedByAlert: vi.fn() },
+}));
+
 import alertRouter from './alert.routes';
 import { alertService } from '../services/alert.service';
+import { alertBatchService } from '../services/alertBatch.service';
 import { ALERT_NOT_FOUND_MSG } from '../constants/alert.constants';
+import { APIError } from '../../../shared/utils/errorHandler/APIError';
 
 const buildAlert = (overrides: Partial<Alert> = {}): Alert =>
   ({
@@ -174,5 +180,89 @@ describe('Alert Routes Integration', () => {
 
     expect(res.status).toBe(400);
     expect(res.body.error[0].field).toBe('note');
+  });
+});
+
+describe('GET /api/alerts/:id/batches', () => {
+  const app = express();
+  app.use(express.json());
+  app.use('/api', alertRouter);
+  app.use(globalErrorHandler);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    authState.authenticated = true;
+    authState.rolePass = true;
+    authState.alert = buildAlert();
+  });
+
+  it('200 : renvoie les lots isolés par CETTE alerte, avec leur caractère levable', async () => {
+    vi.mocked(alertBatchService.listBatchesIsolatedByAlert).mockResolvedValue([
+      {
+        id: 'lot-a',
+        lot_number: 'LOT-A',
+        quantite_actuelle: new Prisma.Decimal('3'),
+        unite_code: 'KGM',
+        produit: { nom: 'Saumon' },
+        levable: true,
+        motif_blocage: null,
+      },
+    ]);
+
+    const res = await request(app).get('/api/alerts/alert-1/batches');
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0]).toMatchObject({ id: 'lot-a', levable: true, motif_blocage: null });
+    // L'alerte transmise au service est celle que verifyAlertAccess a scopée à l'organisation.
+    expect(alertBatchService.listBatchesIsolatedByAlert).toHaveBeenCalledWith(authState.alert);
+  });
+
+  it('200 : une excursion qui ne retient plus aucun lot renvoie une liste vide', async () => {
+    // Légitime pour une excursion : le frigo était vide, ou tous les lots ont été relâchés.
+    vi.mocked(alertBatchService.listBatchesIsolatedByAlert).mockResolvedValue([]);
+
+    const res = await request(app).get('/api/alerts/alert-1/batches');
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([]);
+  });
+
+  it('409 : un rappel produit est REFUSÉ, il ne répond pas « aucun lot »', async () => {
+    // Un rappel bloque sa descendance en ALERTE via des mouvements RAPPEL : lui répondre « 0 lot
+    // isolé » serait un mensonge silencieux sur l'alerte la plus grave du système. Le service lève
+    // une APIError 409 ; on vérifie ici que la route la propage au lieu de renvoyer 200 [].
+    authState.alert = buildAlert({ type: 'PRODUCT_RECALL' });
+    vi.mocked(alertBatchService.listBatchesIsolatedByAlert).mockRejectedValue(
+      new APIError(409, {
+        error: [
+          {
+            field: 'alert',
+            message: "La notion de lot isolé n'est définie que pour une excursion thermique.",
+          },
+        ],
+      })
+    );
+
+    const res = await request(app).get('/api/alerts/alert-1/batches');
+
+    expect(res.status).toBe(409);
+    expect(res.body.error[0].message).toContain('excursion thermique');
+  });
+
+  it('401 sans session', async () => {
+    authState.authenticated = false;
+
+    expect((await request(app).get('/api/alerts/alert-1/batches')).status).toBe(401);
+  });
+
+  it("404 cross-org : on n'expose pas les lots d'une alerte d'une autre organisation", async () => {
+    authState.alert = null;
+
+    const res = await request(app).get('/api/alerts/alert-1/batches');
+
+    expect(res.status).toBe(404);
+    expect(res.body.error[0].message).toBe(ALERT_NOT_FOUND_MSG);
+    expect(alertBatchService.listBatchesIsolatedByAlert).not.toHaveBeenCalled();
   });
 });
