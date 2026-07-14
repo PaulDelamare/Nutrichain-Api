@@ -7,8 +7,10 @@ import {
   getBatchLabelController,
   listReceiptsController,
   liftBatchQuarantineController,
+  resolveBatchByLotNumberController,
 } from '../controllers/receipt.controller';
 import { validateReceiptParams } from '../middlewares/validateReceipt.middleware';
+import { validateBatchResolve } from '../middlewares/validateBatchResolve.middleware';
 import { validateQuarantineLift } from '../middlewares/validateQuarantineLift.middleware';
 import { sessionAuth } from '../../../../shared/middlewares/sessionAuth';
 import { verifyReceiptAccess } from '../../middlewares/verifyReceiptAccess.middleware';
@@ -45,6 +47,15 @@ router.get(
   sessionAuth(ALL_ROLES),
   verifyReceiptAccess,
   getReceiptByIdController
+);
+
+// ⚠️ AVANT `/logistics/batches/:id` : Express prend la première route qui matche, et `resolve`
+// serait sinon capturé comme un identifiant de lot (→ 404 systématique).
+router.get(
+  '/logistics/batches/resolve',
+  sessionAuth(ALL_ROLES),
+  validateBatchResolve,
+  resolveBatchByLotNumberController
 );
 
 router.get(

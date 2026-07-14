@@ -310,8 +310,8 @@ export const receiptService = {
    * Récupérer un lot par son ID
    * Note: La sécurité multi-tenant est déléguée au batchService
    */
-  async getBatchById(id: string, activeOrgId: string) {
-    return batchService.getBatchById(id, activeOrgId);
+  async getBatchById(id: string, activeOrgId: string, revealAuthor = false) {
+    return batchService.getBatchById(id, activeOrgId, revealAuthor);
   },
 
   /**
