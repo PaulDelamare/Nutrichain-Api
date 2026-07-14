@@ -89,9 +89,12 @@ export const organizationService = {
     });
   },
 
-  async listCustomers(organizationId: string) {
+  // Actifs seulement par défaut : un client archivé ne doit plus être proposé (expédition).
+  async listCustomers(organizationId: string, includeArchived = false) {
     return prisma.customer.findMany({
-      where: { organization_id: organizationId },
+      where: includeArchived
+        ? { organization_id: organizationId }
+        : { organization_id: organizationId, is_active: true },
       orderBy: { nom_enseigne: 'asc' },
     });
   },

@@ -23,7 +23,7 @@ describe('CatalogService', () => {
       const result = await catalogService.getAllProducts('org-1');
 
       expect(prisma.product.findMany).toHaveBeenCalledWith({
-        where: { organization_id: 'org-1' },
+        where: { organization_id: 'org-1', is_active: true },
         orderBy: { nom: 'asc' },
       });
       expect(result).toBe(products);

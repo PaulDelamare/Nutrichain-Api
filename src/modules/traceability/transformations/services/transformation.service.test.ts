@@ -51,12 +51,14 @@ describe('TransformationService', () => {
     vi.clearAllMocks();
     // Cas nominal : la cuve appartient bien à l'organisation. Les tests qui éprouvent le
     // cloisonnement du matériel la remettent explicitement à `null`.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    vi.mocked(prisma.equipment.findFirst).mockResolvedValue({ id: 'mat-1' } as any);
+
+    vi.mocked(prisma.equipment.findFirst).mockResolvedValue({ id: 'mat-1' } as never);
   });
 
   const buildHappyMockTx = (overrides: { batch?: Record<string, unknown> } = {}) => ({
-    product: { findFirst: vi.fn().mockResolvedValue({ code_gtin: '3456789012345' }) },
+    product: {
+      findFirst: vi.fn().mockResolvedValue({ code_gtin: '3456789012345', is_active: true }),
+    },
     organization: {
       findUnique: vi.fn().mockResolvedValue({ gs1_company_prefix: '3456789' }),
     },
@@ -104,12 +106,14 @@ describe('TransformationService', () => {
     vi.mocked(prisma.$transaction).mockImplementation(
       (callback: (tx: unknown) => Promise<unknown>) => callback(prisma)
     );
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    vi.mocked(prisma.product.findFirst).mockResolvedValue({ code_gtin: '3456789012345' } as any);
+
+    vi.mocked(prisma.product.findFirst).mockResolvedValue({
+      code_gtin: '3456789012345',
+      is_active: true,
+    } as never);
     vi.mocked(prisma.organization.findUnique).mockResolvedValue({
       gs1_company_prefix: '3456789',
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } as any);
+    } as never);
     // La cuve n'existe pas DANS CETTE ORGANISATION.
     vi.mocked(prisma.equipment.findFirst).mockResolvedValue(null);
 
@@ -138,13 +142,15 @@ describe('TransformationService', () => {
     vi.mocked(prisma.$transaction).mockImplementation(
       (callback: (tx: unknown) => Promise<unknown>) => callback(prisma)
     );
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    vi.mocked(prisma.product.findFirst).mockResolvedValue({ code_gtin: '3456789012345' } as any);
+
+    vi.mocked(prisma.product.findFirst).mockResolvedValue({
+      code_gtin: '3456789012345',
+      is_active: true,
+    } as never);
 
     vi.mocked(prisma.organization.findUnique).mockResolvedValue({
       gs1_company_prefix: '3456789',
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } as any);
+    } as never);
     vi.mocked(prisma.batch.findFirst).mockResolvedValue(null);
 
     const data = {
@@ -164,7 +170,9 @@ describe('TransformationService', () => {
 
   it('doit échouer si un lot parent est périmé', async () => {
     const mockTx = {
-      product: { findFirst: vi.fn().mockResolvedValue({ code_gtin: '3456789012345' }) },
+      product: {
+        findFirst: vi.fn().mockResolvedValue({ code_gtin: '3456789012345', is_active: true }),
+      },
       organization: { findUnique: vi.fn().mockResolvedValue({ gs1_company_prefix: '3456789' }) },
       equipment: { findFirst: vi.fn().mockResolvedValue({ id: 'mat-1' }) },
       batch: {
@@ -207,7 +215,9 @@ describe('TransformationService', () => {
 
   it('doit échouer si un lot parent est en ALERTE', async () => {
     const mockTx = {
-      product: { findFirst: vi.fn().mockResolvedValue({ code_gtin: '3456789012345' }) },
+      product: {
+        findFirst: vi.fn().mockResolvedValue({ code_gtin: '3456789012345', is_active: true }),
+      },
       organization: { findUnique: vi.fn().mockResolvedValue({ gs1_company_prefix: '3456789' }) },
       equipment: { findFirst: vi.fn().mockResolvedValue({ id: 'mat-1' }) },
       batch: {
@@ -249,7 +259,9 @@ describe('TransformationService', () => {
 
   it('doit échouer si un lot parent est en quarantaine (BLOQUE)', async () => {
     const mockTx = {
-      product: { findFirst: vi.fn().mockResolvedValue({ code_gtin: '3456789012345' }) },
+      product: {
+        findFirst: vi.fn().mockResolvedValue({ code_gtin: '3456789012345', is_active: true }),
+      },
       organization: { findUnique: vi.fn().mockResolvedValue({ gs1_company_prefix: '3456789' }) },
       equipment: { findFirst: vi.fn().mockResolvedValue({ id: 'mat-1' }) },
       batch: {

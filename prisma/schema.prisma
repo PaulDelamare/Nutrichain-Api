@@ -246,6 +246,9 @@ model Product {
   duree_conservation_defaut Int
   seuil_alerte_stock        Decimal
   unite_reference           String
+  // Désactivation douce : un produit référencé par des lots/transformations ne peut être supprimé
+  // (FK Restrict). Archivé, il disparaît des sélections et n'accepte plus ni réception ni production.
+  is_active                 Boolean             @default(true)
   lots                      Batch[]
   transformations           Transformation[]
   RecipeComposition         RecipeComposition[]
@@ -484,6 +487,8 @@ model Customer {
   adresse_livraison String
   notes             String?
   external_ref      String? // identifiant du client dans l'ERP source (clé d'idempotence d'import)
+  // Désactivation douce : un client référencé par des expéditions ne peut être supprimé.
+  is_active         Boolean      @default(true)
   expeditions       Shipment[]
 
   @@unique([organization_id, external_ref])

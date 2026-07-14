@@ -38,11 +38,19 @@ export const shipmentService = {
       // d'une autre org serait accepté (et notifié lors d'un rappel).
       const customer = await tx.customer.findFirst({
         where: { id: data.id_client, organization_id: data.organization_id },
-        select: { id: true },
+        select: { id: true, is_active: true },
       });
       if (!customer) {
         throw new APIError(404, {
           error: [{ field: 'id_client', message: 'Client introuvable ou accès refusé.' }],
+        });
+      }
+      // Un client archivé ne reçoit plus d'expédition : la désactivation bloque l'écriture.
+      if (!customer.is_active) {
+        throw new APIError(409, {
+          error: [
+            { field: 'id_client', message: 'Ce client est archivé : aucune nouvelle expédition.' },
+          ],
         });
       }
 

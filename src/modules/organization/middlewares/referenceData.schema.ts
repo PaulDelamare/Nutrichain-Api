@@ -37,7 +37,7 @@ const updateLocationSchema = vine.object({
 // L'archivage/réactivation porte l'état cible. VineJS coerce 'true'/'false'/1/0 en booléen.
 const setActiveSchema = vine.object({ active: vine.boolean() });
 
-const make = <T>(schema: T, { rejectEmpty = false } = {}) =>
+export const makeBodyValidator = <T>(schema: T, { rejectEmpty = false } = {}) =>
   catchAsync(async (req: AuthenticatedRequest, _res: Response, next: NextFunction) => {
     const validated = await validateData(schema as never, req.body);
 
@@ -53,8 +53,12 @@ const make = <T>(schema: T, { rejectEmpty = false } = {}) =>
     next();
   });
 
-export const validateCreateSupplier = make(createSupplierSchema);
-export const validateUpdateSupplier = make(updateSupplierSchema, { rejectEmpty: true });
-export const validateCreateLocation = make(createLocationSchema);
-export const validateUpdateLocation = make(updateLocationSchema, { rejectEmpty: true });
-export const validateSetActive = make(setActiveSchema);
+export const validateCreateSupplier = makeBodyValidator(createSupplierSchema);
+export const validateUpdateSupplier = makeBodyValidator(updateSupplierSchema, {
+  rejectEmpty: true,
+});
+export const validateCreateLocation = makeBodyValidator(createLocationSchema);
+export const validateUpdateLocation = makeBodyValidator(updateLocationSchema, {
+  rejectEmpty: true,
+});
+export const validateSetActive = makeBodyValidator(setActiveSchema);
