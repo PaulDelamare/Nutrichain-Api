@@ -338,6 +338,11 @@ model Alert {
   type            String
   niveau_gravite  String
   message         String
+  /// Pic de température de l'excursion (°C) — renseigné pour les alertes TEMP_EXCURSION. Donnée
+  /// sanitaire structurée : le mobile l'affiche sans avoir à parser le `message`.
+  peak_temp       Decimal?
+  /// Seuil max dépassé au moment de la détection (°C).
+  temp_seuil      Decimal?
   id_materiel     String?
   related_entity  String?
   related_id      String?

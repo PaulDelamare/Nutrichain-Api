@@ -151,6 +151,11 @@ export const iotAlertService = {
               related_entity: 'Equipment',
               related_id: cached.equipmentId,
               statut: 'ACTIVE',
+              // ⚠️ La donnée sanitaire N°1 (de combien la chaîne du froid a rompu) en champs
+              // STRUCTURÉS, plus seulement dans le message. Le mobile la lisait sur
+              // `equipment.temp_actuelle` — jamais renseigné par l'ingestion IoT → « — » à l'écran.
+              peak_temp: result.peakTemp,
+              temp_seuil: threshold,
             },
           });
 
