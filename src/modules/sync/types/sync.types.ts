@@ -7,19 +7,15 @@
 
 /**
  * Payload d'une opération de type "receipt" (réception logistique).
- * Aligné sur le schéma VineJS de validateReceiptParams (sans le received_by
- * qui est forcé serveur-side à req.auth.user.id pour empêcher l'usurpation).
+ *
+ * DÉDUIT du schéma VineJS, jamais recopié. Cette interface était maintenue à la main en parallèle
+ * et avait déjà dérivé : le middleware validait des champs que le type ignorait, donc le service ne
+ * pouvait pas les lire — un ajout au schéma se perdait en silence entre la validation et le métier.
+ * (`received_by` n'y figure pas : l'auteur est forcé serveur-side, cf. resolveWritingActor.)
  */
-export interface ReceiptPayload {
-  id_fournisseur: string;
-  shipment_id: string;
-  id_produit: string;
-  quantite_actuelle: number;
-  unite_code: string;
-  statut_controle: string;
-  /** Emplacement de stockage (matériel) où le lot est rangé — optionnel. */
-  id_materiel?: string;
-}
+import type { ReceiptPayload } from '../../logistics/receipts/middlewares/receiptPayload.schema';
+
+export type { ReceiptPayload };
 
 /**
  * Types d'opérations supportées en v1. Extensible sans breaking change

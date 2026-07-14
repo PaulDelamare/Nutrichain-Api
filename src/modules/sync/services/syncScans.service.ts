@@ -163,6 +163,8 @@ async function runOperation(
           unite_code: item.payload.unite_code,
           statut_controle: item.payload.statut_controle,
           id_materiel: item.payload.id_materiel, // emplacement de stockage (scan mobile)
+          lot_number: item.payload.lot_number, // numéro lu sur l'étiquette du fournisseur (AI 10)
+          date_peremption: item.payload.date_peremption, // DLC lue sur l'étiquette (AI 17)
           received_by: userId, // forcé serveur-side (anti-usurpation)
         },
         tx

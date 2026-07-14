@@ -35,7 +35,8 @@
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
     "format": "prettier --write \"src/**/*.ts\"",
-    "e2e:quality-gate": "tsx scripts/e2e-quality-gate.ts"
+    "e2e:quality-gate": "tsx scripts/e2e-quality-gate.ts",
+    "e2e:lot-fournisseur": "tsx --env-file=.env scripts/e2e-lot-fournisseur.ts"
   },
   "lint-staged": {
     "src/**/*.{ts,js}": [
