@@ -5,6 +5,7 @@ import { checkApiKey } from '../../../shared/utils/checkApiKey/checkApiKey';
 import { requireInvitationOrFirstUser } from '../middlewares/guardSignUp.middleware';
 import { validateSignInParams, validateSignUpParams } from '../middlewares/validateAuth.middleware';
 import { blockOrgPassthrough } from '../middlewares/blockOrgPassthrough.middleware';
+import { allowAuthRoutes } from '../middlewares/allowAuthRoutes.middleware';
 import invitationRoutes from './invitation.routes';
 
 const router = Router();
@@ -115,6 +116,13 @@ router.post('/auth/sign-in/email', validateSignInParams);
 // ==========================================
 // Doit rester AVANT le passthrough ci-dessous : sinon Better-Auth répond avant nous.
 router.all('/auth/organization/*', blockOrgPassthrough);
+
+// ==========================================
+// FERMETURE DU RESTE DU PASSTHROUGH (ALLOWLIST)
+// ==========================================
+// Doit rester AVANT le passthrough ci-dessous. Seuls connexion / inscription / déconnexion sont
+// exposés ; le reste du core Better-Auth (gestion utilisateur, sessions, reset MDP, 2FA) est refusé.
+router.all('/auth/*', allowAuthRoutes);
 
 // ==========================================
 // FORMATTAGE DES ERREURS NATIVES BETTER-AUTH
