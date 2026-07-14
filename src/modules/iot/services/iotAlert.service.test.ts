@@ -184,6 +184,10 @@ describe('iotAlertService.checkAndAlert', () => {
           niveau_gravite: 'PANIC',
           id_materiel: 'equip-1',
           statut: 'ACTIVE',
+          // (issue #57) Le pic et le seuil sont exposés en champs STRUCTURÉS sur l'alerte —
+          // plus seulement noyés dans le message. Points à 8°C, seuil 4°C → pic 8, seuil 4.
+          peak_temp: 8,
+          temp_seuil: 4,
         }),
       })
     );
