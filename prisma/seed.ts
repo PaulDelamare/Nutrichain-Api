@@ -87,6 +87,44 @@ async function upsertMember(
   return user.id;
 }
 
+/**
+ * Administrateur de PLATEFORME (personnel NutriChain). Connectable (compte credential), mais
+ * VOLONTAIREMENT sans aucun `Member` : c'est l'absence d'organisation active qui lui interdit
+ * d'atteindre les données métier d'un client. Lui donner un Member ouvrirait cette porte.
+ */
+async function upsertPlatformAdmin(
+  passwordHash: string,
+  { email, name }: { email: string; name: string }
+): Promise<string> {
+  const user = await prisma.user.upsert({
+    where: { email },
+    update: { name },
+    create: { email, name, emailVerified: true },
+  });
+
+  await prisma.account.upsert({
+    where: { id: `account-${user.id}` },
+    update: { password: passwordHash },
+    create: {
+      id: `account-${user.id}`,
+      accountId: user.id,
+      providerId: 'credential',
+      userId: user.id,
+      password: passwordHash,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+  });
+
+  await prisma.platformAdmin.upsert({
+    where: { userId: user.id },
+    update: {},
+    create: { id: `platform-${user.id}`, userId: user.id },
+  });
+
+  return user.id;
+}
+
 async function main() {
   logger.info('🌱 Start seeding Traceability...');
 
@@ -112,6 +150,12 @@ async function main() {
   for (const member of DEMO_MEMBERS) {
     userIdsByRole.set(member.role, await upsertMember(usine.id, passwordHash, member));
   }
+
+  // Admin de plateforme (personnel NutriChain) — hors de toute organisation.
+  await upsertPlatformAdmin(passwordHash, {
+    email: 'platform@nutrichain.local',
+    name: 'Admin Plateforme',
+  });
 
   const ownerId = userIdsByRole.get(ROLES.OWNER)!;
 

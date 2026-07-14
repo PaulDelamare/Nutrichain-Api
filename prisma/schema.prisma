@@ -30,8 +30,21 @@ model User {
   expeditions      Shipment[]
   mouvements       Batch_Mouvement[]
   idempotencyKeys  IdempotencyKey[]
+  platformAdmin    PlatformAdmin?
 
   @@map("user")
+}
+
+// Administrateur de la PLATEFORME (personnel NutriChain), au-dessus des organisations.
+// Il crée et gère les organisations clientes ; il n'est JAMAIS Member d'une organisation et
+// n'accède PAS à leurs données métier — l'isolation repose sur l'absence d'organisation active.
+model PlatformAdmin {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@map("platform_admin")
 }
 
 model Session {
@@ -124,7 +137,10 @@ model Member {
   createdAt      DateTime
 
   @@index([organizationId])
-  @@index([userId])
+  // Un utilisateur appartient à UNE seule organisation (décision produit). Rend déterministe le
+  // choix de l'org active à la connexion (le hook prenait `findFirst` sans ordre) et empêche
+  // qu'accepter une invitation vers une 2e org crée un membre fantôme.
+  @@unique([userId])
   @@map("member")
 }
 
