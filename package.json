@@ -20,6 +20,7 @@
     "e2e:recall": "tsx --env-file=.env scripts/e2e-recall-impact.ts",
     "e2e:iot-alert": "tsx --env-file=.env scripts/e2e-iot-alert.ts",
     "e2e:alert-resolve": "tsx --env-file=.env scripts/e2e-alert-resolve.ts",
+    "e2e:alerte-lots": "tsx --env-file=.env scripts/e2e-alerte-lots.ts",
     "e2e:audit-verify": "tsx --env-file=.env scripts/e2e-audit-verify.ts",
     "e2e:epcis": "tsx --env-file=.env scripts/e2e-epcis-events.ts",
     "e2e:connectors": "tsx --env-file=.env scripts/e2e-connectors.ts",

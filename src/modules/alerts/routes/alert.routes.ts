@@ -4,9 +4,61 @@ import { requireOrgRole } from '../../identity/middlewares/requireOrgRole.middle
 import { verifyAlertAccess } from '../middlewares/verifyAlertAccess.middleware';
 import { validateResolveAlert } from '../middlewares/validateResolveAlert.middleware';
 import { resolveAlertController } from '../controllers/resolveAlert.controller';
-import { QUALITY_ROLES } from '../../identity/constants/roles.constants';
+import { listAlertBatchesController } from '../controllers/listAlertBatches.controller';
+import { ALL_ROLES, QUALITY_ROLES } from '../../identity/constants/roles.constants';
 
 const router = Router();
+
+/**
+ * @swagger
+ * /api/alerts/{id}/batches:
+ *   get:
+ *     summary: Les lots que CETTE alerte a isolés (et qui le sont encore)
+ *     description: |
+ *       Renvoie les lots mis en quarantaine **par cette alerte** (excursion thermique) et encore
+ *       `BLOQUE` — jamais les autres lots bloqués du même équipement.
+ *
+ *       **Pourquoi cet endpoint existe** : les clients reconstituaient cette liste en filtrant
+ *       `GET /api/organization/quarantine-batches` (qui renvoie TOUS les lots `BLOQUE` de
+ *       l'organisation) sur l'équipement de l'alerte. Un lot bloqué par un contrôle qualité sans
+ *       rapport, mais rangé dans le même frigo, s'y retrouvait — et la levée de l'alerte le
+ *       remettait en stock. La liaison lot↔alerte existe en base (`Batch_Mouvement.metadata.id_alerte`
+ *       du mouvement `QUARANTAINE_FROID`) : cet endpoint est le seul à la lire.
+ *
+ *       **`levable`** : faux si le lot porte un contrôle qualité `NON_CONFORME` **postérieur** à son
+ *       isolement (il est alors isolé par le froid ET déclaré impropre). Un tel lot ne doit pas être
+ *       remis en stock parce que la chambre froide est réparée. `motif_blocage` en donne la raison.
+ *
+ *       **Multi-tenant / anti-enumeration** : 404 générique si l'alerte n'existe pas ou appartient à
+ *       une autre organisation.
+ *     tags: [Alertes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: UUID de l'`Alert`
+ *     responses:
+ *       200:
+ *         description: |
+ *           Liste (éventuellement vide) des lots isolés par cette alerte et encore en quarantaine.
+ *       401:
+ *         description: Non authentifié
+ *       403:
+ *         description: Rôle insuffisant
+ *       404:
+ *         description: Alerte introuvable dans l'organisation active (anti-enumeration)
+ */
+router.get(
+  '/alerts/:id/batches',
+  requireAuth,
+  requireOrgRole(ALL_ROLES),
+  verifyAlertAccess,
+  listAlertBatchesController
+);
 
 /**
  * @swagger
