@@ -103,6 +103,12 @@ describe('ReceiptService', () => {
       expect(prisma.$transaction).toHaveBeenCalled();
       expect(prisma.receipt.create).toHaveBeenCalled();
       expect(batchService.createBatch).toHaveBeenCalled();
+      // Le lot est rattaché (FK) à sa réception : c'est ce lien qui fait remonter la généalogie
+      // jusqu'au fournisseur.
+      expect(batchService.createBatch).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ id_receipt: 'rec-1' })
+      );
       expect(result.receiptId).toBe('rec-1');
       expect(result.batchId).toBe('bat-1');
     });

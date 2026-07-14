@@ -223,6 +223,9 @@ async function createReceiptInTx(tx: Prisma.TransactionClient, data: CreateRecei
     date_peremption: datePeremption,
     statut: isQuarantined ? BATCH_STATUSES.BLOCKED : BATCH_STATUSES.IN_STOCK,
     id_materiel_actuel: data.id_materiel,
+    // Lien tracé (FK) vers la réception : c'est lui qui fait remonter la généalogie du lot jusqu'au
+    // fournisseur. Le metadata du mouvement le portait déjà, mais en JSON non contraint.
+    id_receipt: receipt.id,
   });
 
   // Premier maillon de l'historique du lot. Sans lui, un lot reçu et jamais transformé

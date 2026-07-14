@@ -19,15 +19,19 @@ export const getBatchGenealogy = catchAsync(async (req: AuthenticatedRequest, re
     });
   }
 
-  const [upstream, downstream] = await Promise.all([
+  const [upstream, downstream, origines] = await Promise.all([
     genealogyService.getUpstream(id, activeOrgId),
     genealogyService.getDownstream(id, activeOrgId),
+    genealogyService.getOrigins(id, activeOrgId),
   ]);
 
   return sendSuccess(res, 200, 'Généalogie récupérée.', {
     batchId: id,
     upstream,
     downstream,
+    // Points d'entrée matière première (la « ferme » du cahier des charges) : sans ce champ, la
+    // remontée amont s'arrêtait au lot de lait cru sans jamais nommer son fournisseur.
+    origines,
   });
 });
 
