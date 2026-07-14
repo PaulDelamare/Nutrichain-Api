@@ -193,4 +193,81 @@ describe('BatchSharedService', () => {
       expect(auditService.logAction).not.toHaveBeenCalled();
     });
   });
+
+  describe('resolveBatchByLotNumber — le lot qu’on vient de scanner', () => {
+    it('résout le lot par le numéro lu sur son étiquette', async () => {
+      vi.mocked(prisma.batch.findFirst).mockResolvedValue({
+        id: 'bat-1',
+        lot_number: 'FRN-ABC123',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+
+      const batch = await batchService.resolveBatchByLotNumber('FRN-ABC123', 'org-1');
+
+      expect(batch.id).toBe('bat-1');
+    });
+
+    // Le cloisonnement se vérifie sur CHAQUE objet : sans le filtre d'organisation, scanner
+    // l'étiquette d'un concurrent ouvrirait la fiche de SON lot — quantités, DLC, fournisseur.
+    it('ne résout JAMAIS un lot d’une autre organisation', async () => {
+      vi.mocked(prisma.batch.findFirst).mockResolvedValue(null);
+
+      const action = batchService.resolveBatchByLotNumber('FRN-ABC123', 'org-1');
+
+      await expect(action).rejects.toThrow(APIError);
+      await expect(action).rejects.toMatchObject({ status: 404 });
+      expect(prisma.batch.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ organization_id: 'org-1' }),
+        })
+      );
+    });
+
+    // Un code saisi à la main arrive comme il vient. On le met en majuscules — comme il est ÉCRIT —
+    // au lieu d'une recherche insensible à la casse : celle-ci écarterait l'index unique (balayage
+    // à chaque scan) et, l'unicité étant sensible à la casse, `abc123` et `ABC123` pourraient
+    // coexister — un `findFirst` sans tri en aurait renvoyé un AU HASARD.
+    it('retrouve le lot quelle que soit la casse du code saisi', async () => {
+      vi.mocked(prisma.batch.findFirst).mockResolvedValue({
+        id: 'bat-1',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+
+      await batchService.resolveBatchByLotNumber('frn-abc123', 'org-1');
+
+      expect(prisma.batch.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ lot_number: 'FRN-ABC123' }),
+        })
+      );
+    });
+
+    // Le nom et l'e-mail d'un salarié sont une donnée personnelle. La liste des lots et le journal
+    // d'audit les réservent déjà à l'administration ; la fiche du lot, elle, les servait à TOUS —
+    // y compris au `viewer`. Scanner un lot ne doit pas rendre l'annuaire du personnel.
+    it("ne révèle l'auteur du lot qu'à l'administration", async () => {
+      vi.mocked(prisma.batch.findFirst).mockResolvedValue({
+        id: 'bat-1',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+
+      await batchService.resolveBatchByLotNumber('FRN-ABC123', 'org-1');
+
+      const [args] = vi.mocked(prisma.batch.findFirst).mock.calls[0];
+      expect(args?.include).not.toHaveProperty('user');
+      expect(args?.include?.mouvements).not.toHaveProperty('include');
+    });
+
+    it("sert l'auteur du lot quand l'appelant y a droit", async () => {
+      vi.mocked(prisma.batch.findFirst).mockResolvedValue({
+        id: 'bat-1',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+
+      await batchService.resolveBatchByLotNumber('FRN-ABC123', 'org-1', true);
+
+      const [args] = vi.mocked(prisma.batch.findFirst).mock.calls[0];
+      expect(args?.include).toHaveProperty('user');
+    });
+  });
 });

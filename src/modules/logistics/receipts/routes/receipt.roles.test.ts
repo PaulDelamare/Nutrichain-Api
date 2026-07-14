@@ -23,11 +23,23 @@ vi.mock('../controllers/receipt.controller', () => ({
   getReceiptStatsController: (_req: express.Request, res: express.Response) =>
     res.status(200).end(),
   getReceiptByIdController: (_req: express.Request, res: express.Response) => res.status(200).end(),
-  getBatchByIdController: (_req: express.Request, res: express.Response) => res.status(200).end(),
+  // Ces deux-là se distinguent : `/batches/resolve` et `/batches/:id` se disputent la même URL, et
+  // seul l'ordre d'enregistrement les départage.
+  getBatchByIdController: (_req: express.Request, res: express.Response) =>
+    res.status(200).json({ route: 'byId' }),
   getBatchLabelController: (_req: express.Request, res: express.Response) => res.status(200).end(),
   listReceiptsController: (_req: express.Request, res: express.Response) => res.status(200).end(),
   liftBatchQuarantineController: (_req: express.Request, res: express.Response) =>
     res.status(200).end(),
+  resolveBatchByLotNumberController: (_req: express.Request, res: express.Response) =>
+    res.status(200).json({ route: 'resolve' }),
+}));
+vi.mock('../middlewares/validateBatchResolve.middleware', () => ({
+  validateBatchResolve: (
+    _req: express.Request,
+    _res: express.Response,
+    next: express.NextFunction
+  ) => next(),
 }));
 vi.mock('../middlewares/validateReceipt.middleware', () => ({
   validateReceiptParams: (
@@ -104,6 +116,39 @@ describe('RBAC des routes logistiques (session réelle)', () => {
     it('refuse viewer', async () => {
       signedInAs('viewer');
       const res = await request(app).post('/api/logistics/batches/lot-1/release').send({});
+      expect(res.status).toBe(403);
+    });
+  });
+
+  describe('GET /logistics/batches/resolve (le lot qu’on vient de scanner)', () => {
+    // Express prend la PREMIÈRE route qui matche. Enregistrée après `/batches/:id`, la résolution
+    // serait capturée comme un identifiant de lot nommé « resolve » → 404 sur chaque scan.
+    it('n’est pas avalée par /batches/:id', async () => {
+      signedInAs('operator');
+      const res = await request(app)
+        .get('/api/logistics/batches/resolve')
+        .query({ lot_number: 'FRN-ABC123' });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ route: 'resolve' });
+    });
+
+    // Lecture seule : tout le monde peut identifier un lot qu'il a sous les yeux.
+    it.each(['owner', 'admin', 'quality', 'operator', 'viewer'])('autorise %s', async (role) => {
+      signedInAs(role);
+      const res = await request(app)
+        .get('/api/logistics/batches/resolve')
+        .query({ lot_number: 'FRN-ABC123' });
+
+      expect(res.status).toBe(200);
+    });
+
+    it('refuse un rôle inconnu', async () => {
+      signedInAs('stagiaire_curieux');
+      const res = await request(app)
+        .get('/api/logistics/batches/resolve')
+        .query({ lot_number: 'FRN-ABC123' });
+
       expect(res.status).toBe(403);
     });
   });
