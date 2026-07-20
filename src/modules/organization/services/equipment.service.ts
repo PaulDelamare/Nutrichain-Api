@@ -74,13 +74,17 @@ export const equipmentService = {
   },
 
   /**
-   * Rend le code à imprimer sur l'étiquette du matériel, et l'attribue au passage s'il n'en a
-   * pas : les matériels créés avant cette fonctionnalité n'en ont aucun, et un parc à deux
-   * vitesses obligerait l'opérateur à deviner lesquels sont scannables.
+   * Rend le code à imprimer sur l'étiquette du matériel.
+   *
+   * LECTURE SEULE : un GET ne doit jamais muter la base. Le code est posé à la création
+   * (`createEquipment`), par le seed, ou par la migration de rattrapage — jamais ici. Avant, cette
+   * fonction faisait un `update` paresseux : un compte lecture seule mutait la base, sur un GET,
+   * sans audit (issue #99).
    */
   async getScannableLabel(organizationId: string, equipmentId: string) {
     const equipment = await prisma.equipment.findFirst({
       where: { id: equipmentId, organization_id: organizationId },
+      select: { qr_code_id: true, nom: true },
     });
 
     if (!equipment) {
@@ -89,16 +93,7 @@ export const equipmentService = {
       });
     }
 
-    if (equipment.qr_code_id) {
-      return { code: equipment.qr_code_id, nom: equipment.nom };
-    }
-
-    const updated = await prisma.equipment.update({
-      where: { id: equipment.id },
-      data: { qr_code_id: generateScannableCode() },
-    });
-
-    return { code: updated.qr_code_id as string, nom: updated.nom };
+    return { code: equipment.qr_code_id, nom: equipment.nom };
   },
 
   // Actifs seulement par défaut : un lieu archivé ne doit plus être proposé (création de matériel).
