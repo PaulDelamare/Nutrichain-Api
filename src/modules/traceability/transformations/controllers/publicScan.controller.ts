@@ -13,23 +13,41 @@ export const publicScanBatch = catchAsync(async (req: Request, res: Response) =>
   const { id } = req.params;
 
   // Scan B2C : seuls les lots déjà commercialisés (EXPEDIE) ou en rappel (ALERTE) sont exposés.
-  // Résolution par UUID interne OU par numéro de lot GS1 : l'étiquette Digital Link
-  // (AI 10) porte le lot_number court, c'est lui que le consommateur scanne.
-  const batch = await prisma.batch.findFirst({
+  // Résolution par UUID interne OU par numéro de lot GS1 (AI 10, imprimé sur l'étiquette).
+  //
+  // ⚠️ `lot_number` n'est unique que PAR organisation (@@unique([organization_id, lot_number])) et
+  // vient de l'étiquette fournisseur (saisi à la main) : deux organisations peuvent porter le même.
+  // Ce canal public n'a aucun contexte d'organisation → on récupère TOUTES les correspondances et on
+  // tranche par la sécurité, jamais au hasard.
+  const matches = await prisma.batch.findMany({
     where: { OR: [{ id }, { lot_number: id }], statut: { in: ['EXPEDIE', 'ALERTE'] } },
     include: {
-      produit: {
-        select: { nom: true, code_gtin: true },
-      },
-      organization: {
-        select: { name: true },
-      },
+      produit: { select: { nom: true, code_gtin: true } },
+      organization: { select: { name: true } },
     },
   });
 
-  if (!batch) {
+  if (matches.length === 0) {
     throw new APIError(404, {
       error: [{ field: 'id', message: 'Lot introuvable ou code invalide.' }],
+    });
+  }
+
+  // Le RAPPEL PRIME : un lot homonyme sous rappel ne doit jamais être masqué par un lot conforme
+  // d'une autre organisation — sinon l'alerte disparaît du seul canal dont c'est la raison d'être.
+  const recalled = matches.find((b) => b.statut === 'ALERTE');
+  const batch = recalled ?? (matches.length === 1 ? matches[0] : null);
+
+  if (!batch) {
+    // Plusieurs lots homonymes, aucun rappelé : impossible de désigner le bon producteur sans le
+    // GTIN. On refuse plutôt que d'attribuer le produit à un producteur au hasard.
+    throw new APIError(409, {
+      error: [
+        {
+          field: 'id',
+          message: 'Code ambigu : plusieurs lots correspondent. Scannez le code GS1 complet (GTIN et lot).',
+        },
+      ],
     });
   }
 
