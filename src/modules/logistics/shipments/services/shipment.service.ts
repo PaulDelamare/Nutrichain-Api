@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { APIError } from '../../../../shared/utils/errorHandler/APIError';
+import { auditService } from '../../../../shared/utils/audit/audit.service';
 import { retryableTransaction } from '../../../../shared/utils/db/withWriteConflictRetry';
 import { gs1Utils } from '../../../../shared/utils/gs1/gs1.utils';
 import { resolveGs1Prefix } from '../../../../shared/utils/gs1/gs1Prefix';
@@ -232,6 +233,27 @@ export const shipmentService = {
           },
         },
       });
+
+      // 9. Audit WORM — l'expédition est le moment où la marchandise quitte l'usine. Sans ce maillon,
+      // « qui a expédié ce lot, quand, vers qui » ne reposait que sur Batch_Mouvement (mutable, non
+      // chaîné) : la preuve d'intégrité s'arrêtait à la porte du camion. Scellé DANS la transaction.
+      await auditService.logAction(
+        {
+          organizationId: data.organization_id,
+          userId: data.created_by,
+          action: 'CREATE_SHIPMENT',
+          entity: 'Shipment',
+          entityId: shipment.id,
+          newValue: {
+            shipment_id: finalShipmentId,
+            id_client: data.id_client,
+            transporteur: data.transporteur,
+            date_envoi: data.date_envoi,
+            lots: data.items.map((i) => ({ id_lot: i.id_lot, quantite: i.quantite })),
+          },
+        },
+        tx
+      );
 
       return shipment;
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
