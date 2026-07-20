@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { shipmentService } from './shipment.service';
 import { prisma } from '../../../../shared/configs/prismaClient.config';
+import { auditService } from '../../../../shared/utils/audit/audit.service';
 import { APIError } from '../../../../shared/utils/errorHandler/APIError';
 
 vi.mock('../../../../shared/configs/prismaClient.config', () => ({
@@ -30,6 +31,10 @@ vi.mock('../../../../shared/configs/prismaClient.config', () => ({
       create: vi.fn(),
     },
   },
+}));
+
+vi.mock('../../../../shared/utils/audit/audit.service', () => ({
+  auditService: { logAction: vi.fn() },
 }));
 
 describe('ShipmentService', () => {
@@ -110,6 +115,35 @@ describe('ShipmentService', () => {
     expect(prisma.liaison_Shipment.create).toHaveBeenCalled();
     expect(prisma.batch_Mouvement.create).toHaveBeenCalled();
     expect(result).toBeDefined();
+  });
+
+  it('scelle l’expédition dans la chaîne d’audit WORM (CREATE_SHIPMENT, dans la tx)', async () => {
+    const mockBatch = {
+      id: 'batch-1',
+      organization_id: 'org-123',
+      lot_number: '260704-LOT001',
+      produit: { code_gtin: '3456789012345' },
+      quantite_actuelle: { toNumber: () => 100 },
+      unite_code: 'KG',
+      statut: 'EN_STOCK',
+      version: 1,
+      date_peremption: new Date(Date.now() + 1000000),
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(prisma.batch.findFirst).mockResolvedValue(mockBatch as any);
+    vi.mocked(prisma.shipment.create).mockResolvedValue({ id: 'ship-1' } as never);
+
+    await shipmentService.createShipment(mockShipmentData);
+
+    expect(auditService.logAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'CREATE_SHIPMENT',
+        entity: 'Shipment',
+        entityId: 'ship-1',
+        newValue: expect.objectContaining({ id_client: 'client-456' }),
+      }),
+      expect.anything() // la tx : audit scellé dans la même transaction que l'expédition
+    );
   });
 
   it('devrait émettre un ObjectEvent EPCIS avec URN LGTIN lors de l expédition', async () => {
