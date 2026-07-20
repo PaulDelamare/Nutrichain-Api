@@ -3,7 +3,11 @@ import { catchAsync } from '../../../shared/utils/errorHandler/catchAsync';
 import { sendSuccess } from '../../../shared/utils/returnSuccess/returnSuccess';
 import { AuthenticatedRequest } from '../../identity/types/auth.types';
 import { organizationService } from '../services/organization.service';
-import { ADMIN_ROLES, type Role } from '../../identity/constants/roles.constants';
+import {
+  ADMIN_ROLES,
+  PERSONAL_DATA_ROLES,
+  type Role,
+} from '../../identity/constants/roles.constants';
 
 const DEFAULT_AUDIT_LOGS_LIMIT = 30;
 
@@ -65,21 +69,27 @@ export const listMovementsController = catchAsync(
 
 export const listSuppliersController = catchAsync(
   async (req: AuthenticatedRequest, res: Response) => {
-    const suppliers = await organizationService.listSuppliers(
-      req.activeOrgId as string,
-      req.query.includeArchived === 'true'
-    );
+    // L'opérateur terrain lit la liste pour réceptionner, mais ne voit que { id, nom }.
+    // Le contact et l'adresse (données personnelles) sont réservés à l'administration, qui
+    // seule peut aussi demander les archivés (écran de configuration).
+    const revealPersonalData = PERSONAL_DATA_ROLES.includes(req.auth?.role as Role);
+    const suppliers = await organizationService.listSuppliers(req.activeOrgId as string, {
+      includeArchived: revealPersonalData && req.query.includeArchived === 'true',
+      revealPersonalData,
+    });
     sendSuccess(res, 200, 'Fournisseurs récupérés', suppliers);
   }
 );
 
 export const listCustomersController = catchAsync(
   async (req: AuthenticatedRequest, res: Response) => {
-    // Route déjà réservée aux administrateurs (PERSONAL_DATA_ROLES) : includeArchived est sûr ici.
-    const customers = await organizationService.listCustomers(
-      req.activeOrgId as string,
-      req.query.includeArchived === 'true'
-    );
+    // Même règle : l'opérateur expédie et voit { id, nom, adresse_livraison } (donnée
+    // d'exploitation) ; contact, e-mail et notes restent réservés à l'administration.
+    const revealPersonalData = PERSONAL_DATA_ROLES.includes(req.auth?.role as Role);
+    const customers = await organizationService.listCustomers(req.activeOrgId as string, {
+      includeArchived: revealPersonalData && req.query.includeArchived === 'true',
+      revealPersonalData,
+    });
     sendSuccess(res, 200, 'Clients récupérés', customers);
   }
 );

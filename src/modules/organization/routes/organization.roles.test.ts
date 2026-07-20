@@ -71,12 +71,10 @@ beforeEach(() => vi.clearAllMocks());
 
 describe('RBAC des lectures organisation (session réelle)', () => {
   // Données personnelles : réservées à l'administration (moindre privilège + RGPD).
-  const PERSONAL = [
-    '/api/organization/members',
-    '/api/organization/audit-logs',
-    '/api/organization/customers',
-    '/api/organization/suppliers',
-  ];
+  // Fournisseurs et clients n'y sont PLUS : la route est ouverte à tous les rôles, la restriction
+  // (identité métier seule pour les non-admins) se fait sur la PROJECTION, pas sur la garde
+  // (cf. organization.service : select réduit sans revealPersonalData). Issue #116.
+  const PERSONAL = ['/api/organization/members', '/api/organization/audit-logs'];
 
   describe('données personnelles → admin/owner seulement', () => {
     for (const url of PERSONAL) {
@@ -102,11 +100,20 @@ describe('RBAC des lectures organisation (session réelle)', () => {
       '/api/organization/alerts',
       '/api/organization/equipment',
       '/api/organization/movements',
+      // Ouverts par #116 : l'opérateur en a besoin pour réceptionner / expédier. La donnée
+      // personnelle est filtrée dans la projection, pas ici.
+      '/api/organization/suppliers',
+      '/api/organization/customers',
     ];
 
     for (const url of BUSINESS) {
       it(`${url} : autorise viewer`, async () => {
         signedInAs('viewer');
+        expect((await request(app).get(url)).status).toBe(200);
+      });
+
+      it(`${url} : autorise operator`, async () => {
+        signedInAs('operator');
         expect((await request(app).get(url)).status).toBe(200);
       });
     }

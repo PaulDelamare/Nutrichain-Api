@@ -80,21 +80,40 @@ export const organizationService = {
 
   // Actifs seulement par défaut : un fournisseur archivé ne doit plus être proposé (réception).
   // `includeArchived` sert l'écran d'administration, qui doit les voir pour les réactiver.
-  async listSuppliers(organizationId: string, includeArchived = false) {
+  //
+  // `revealPersonalData` : sans lui (opérateur terrain), on ne renvoie que l'identité métier
+  // { id, nom } — ce dont la liste déroulante de réception a besoin. Le contact et l'adresse du
+  // siège (données personnelles) restent réservés à l'administration.
+  async listSuppliers(
+    organizationId: string,
+    { includeArchived = false, revealPersonalData = false } = {}
+  ) {
     return prisma.supplier.findMany({
       where: includeArchived
         ? { organization_id: organizationId }
         : { organization_id: organizationId, is_active: true },
+      ...(revealPersonalData ? {} : { select: { id: true, nom_ferme: true } }),
       orderBy: { nom_ferme: 'asc' },
     });
   },
 
   // Actifs seulement par défaut : un client archivé ne doit plus être proposé (expédition).
-  async listCustomers(organizationId: string, includeArchived = false) {
+  //
+  // `revealPersonalData` : sans lui (opérateur terrain), on renvoie { id, nom, adresse_livraison }.
+  // L'adresse de livraison est une donnée d'EXPLOITATION — elle pré-remplit la destination de
+  // l'expédition, l'opérateur en a besoin. Le contact d'urgence, l'e-mail et les notes (données
+  // personnelles nominatives) restent, eux, réservés à l'administration.
+  async listCustomers(
+    organizationId: string,
+    { includeArchived = false, revealPersonalData = false } = {}
+  ) {
     return prisma.customer.findMany({
       where: includeArchived
         ? { organization_id: organizationId }
         : { organization_id: organizationId, is_active: true },
+      ...(revealPersonalData
+        ? {}
+        : { select: { id: true, nom_enseigne: true, adresse_livraison: true } }),
       orderBy: { nom_enseigne: 'asc' },
     });
   },
