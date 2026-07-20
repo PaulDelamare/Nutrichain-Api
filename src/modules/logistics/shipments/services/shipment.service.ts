@@ -1,5 +1,6 @@
-import { prisma } from '../../../../shared/configs/prismaClient.config';
+import { Prisma } from '@prisma/client';
 import { APIError } from '../../../../shared/utils/errorHandler/APIError';
+import { retryableTransaction } from '../../../../shared/utils/db/withWriteConflictRetry';
 import { gs1Utils } from '../../../../shared/utils/gs1/gs1.utils';
 import { resolveGs1Prefix } from '../../../../shared/utils/gs1/gs1Prefix';
 import {
@@ -11,6 +12,7 @@ import {
 } from '../../../../shared/constants/epcis.constants';
 import {
   BATCH_STATUSES,
+  BLOCKING_BATCH_STATUSES,
   MOVEMENT_TYPES,
   isBatchBlocked,
 } from '../../constants/logistics.constants';
@@ -32,7 +34,11 @@ export const shipmentService = {
     created_by: string;
     items: Array<{ id_lot: string; quantite: number }>;
   }) {
-    return await prisma.$transaction(async (tx) => {
+    // Serializable + verrou optimiste (version) sur la déduction de stock : c'était le SEUL chemin
+    // d'écriture en Read Committed sans garde. Une expédition qui lit un lot EN_STOCK pouvait écraser
+    // un rappel posé entre-temps (le lot repartait chez le client), et deux expéditions concurrentes
+    // du même lot passaient toutes les deux (sur-expédition / stock négatif). Rejoué sur conflit.
+    return await retryableTransaction(async (tx) => {
       // 0.a Le client destinataire doit appartenir à l'organisation (anti-référence cross-tenant).
       // Symétrique au contrôle du fournisseur à la réception : sans cette garde, un id_client
       // d'une autre org serait accepté (et notifié lors d'un rappel).
@@ -123,17 +129,37 @@ export const shipmentService = {
           });
         }
 
-        // 4. Déduire le stock
-        await tx.batch.update({
-          where: { id: item.id_lot },
+        // 4. Déduire le stock — écriture CONDITIONNELLE (verrou optimiste). Le `where` rejoue les
+        // gardes lues plus haut au moment de l'écriture : même version (aucune décision — rappel,
+        // quarantaine, expédition concurrente — intercalée depuis la lecture) et statut non bloquant.
+        // Si l'état a bougé, `count === 0` → 409 : on refuse plutôt que d'écraser la décision récente.
+        const updated = await tx.batch.updateMany({
+          where: {
+            id: item.id_lot,
+            organization_id: data.organization_id,
+            version: batch.version,
+            statut: { notIn: BLOCKING_BATCH_STATUSES as string[] },
+          },
           data: {
             quantite_actuelle: { decrement: item.quantite },
             statut:
               batch.quantite_actuelle.toNumber() === item.quantite
                 ? BATCH_STATUSES.SHIPPED
                 : BATCH_STATUSES.IN_STOCK,
+            version: { increment: 1 },
           },
         });
+
+        if (updated.count === 0) {
+          throw new APIError(409, {
+            error: [
+              {
+                field: 'lots',
+                message: `Le lot ${item.id_lot} a changé d'état pendant l'expédition (rappel, quarantaine ou expédition concurrente). Rechargez la fiche du lot avant de réessayer.`,
+              },
+            ],
+          });
+        }
 
         // 5. Créer la liaison
         await tx.liaison_Shipment.create({
@@ -208,6 +234,6 @@ export const shipmentService = {
       });
 
       return shipment;
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   },
 };
