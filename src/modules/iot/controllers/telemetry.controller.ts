@@ -5,7 +5,6 @@ import { APIError } from '../../../shared/utils/errorHandler/APIError';
 import { AuthenticatedRequest } from '../../identity/types/auth.types';
 import { catchAsync } from '../../../shared/utils/errorHandler/catchAsync';
 import { iotAlertService } from '../services/iotAlert.service';
-import { logger } from '../../../shared/utils/logger/logger';
 
 /**
  * Ingest new telemetry ping from an IoT device.
@@ -43,17 +42,18 @@ export const ingestTelemetry = catchAsync(async (req: AuthenticatedRequest, res:
   });
 
   // Détection d'excursion thermique synchrone (Objectif SMART n°2, ~50ms cache miss).
-  // Encapsulé dans try/catch : une alerte qui échoue ne doit pas faire perdre l'ingest IoT.
-  try {
-    await iotAlertService.checkAndAlert({
-      sensorId: sensor_id,
-      organizationId: organization_id,
-      currentTemp: temperature,
-      timestamp,
-    });
-  } catch (err) {
-    logger.error(`[IoT] checkAndAlert failed for ${sensor_id}: ${(err as Error).message}`);
-  }
+  //
+  // C'est une décision SANITAIRE : si elle échoue, on ne répond PAS « succès ». Sinon le capteur
+  // croit l'excursion traitée alors que l'alerte n'est pas créée et que les lots ne sont PAS mis en
+  // quarantaine (ils restent expédiables) — une rupture de chaîne du froid passerait inaperçue.
+  // On laisse donc l'erreur remonter (500) pour que le capteur ré-émette. Le point brut est déjà
+  // persisté ci-dessus. Les conflits de sérialisation transitoires sont rejoués dans checkAndAlert.
+  await iotAlertService.checkAndAlert({
+    sensorId: sensor_id,
+    organizationId: organization_id,
+    currentTemp: temperature,
+    timestamp,
+  });
 
   sendSuccess(res, 202, 'Telemetry ingested successfully.', { sensor_id });
 });
