@@ -1,9 +1,9 @@
 import { Prisma } from '@prisma/client';
-import { prisma } from '../../../../shared/configs/prismaClient.config';
 import { downstreamTraceCte, MAX_GENEALOGY_DEPTH } from './genealogy.service';
 import { APIError } from '../../../../shared/utils/errorHandler/APIError';
 import { logger } from '../../../../shared/utils/logger/logger';
 import { auditService } from '../../../../shared/utils/audit/audit.service';
+import { retryableTransaction } from '../../../../shared/utils/db/withWriteConflictRetry';
 import { notifyOrgAdmins, OrgAdminEmail } from '../../../../shared/utils/mailer/notifyOrgAdmins';
 import { notifyRecallCustomers } from './recallNotifications';
 import { MOVEMENT_TYPES } from '../../../logistics/constants/logistics.constants';
@@ -98,7 +98,7 @@ export const recallService = {
     userId: string,
     reason: string
   ): Promise<RecallResult> {
-    const result = await prisma.$transaction(
+    const result = await retryableTransaction(
       async (tx) => {
         // 1. Vérifier l'existence du lot source
         const sourceBatch = await tx.batch.findFirst({

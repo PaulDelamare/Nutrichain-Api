@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../../../shared/configs/prismaClient.config';
 import { APIError } from '../../../shared/utils/errorHandler/APIError';
 import { auditService } from '../../../shared/utils/audit/audit.service';
+import { retryableTransaction } from '../../../shared/utils/db/withWriteConflictRetry';
 import {
   BATCH_STATUSES,
   MOVEMENT_TYPES,
@@ -75,7 +76,7 @@ export const qualityControlService = {
    * Le contrôle et le statut du lot ne peuvent pas diverger.
    */
   async createQualityControl(data: CreateQualityControlInput) {
-    return prisma.$transaction(
+    return retryableTransaction(
       async (tx) => {
         // Cloisonnement : le lot doit appartenir à l'organisation de l'appelant.
         const batch = await tx.batch.findFirst({

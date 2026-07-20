@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../../shared/configs/prismaClient.config';
 import { auditService } from '../../../shared/utils/audit/audit.service';
+import { retryableTransaction } from '../../../shared/utils/db/withWriteConflictRetry';
 import { createAndSendInvitation } from '../../identity/services/invitation.service';
 import { APIError } from '../../../shared/utils/errorHandler/APIError';
 import { ROLES } from '../../identity/constants/roles.constants';
@@ -39,7 +40,7 @@ export const platformService = {
     if (existant) throw slugDejaPris();
 
     try {
-      return await prisma.$transaction(async (tx) => {
+      return await retryableTransaction(async (tx) => {
         const org = await tx.organization.create({
           data: {
             id: crypto.randomUUID(),

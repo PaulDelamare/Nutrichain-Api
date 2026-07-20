@@ -1,6 +1,7 @@
 import { prisma } from '../../../shared/configs/prismaClient.config';
 import { APIError } from '../../../shared/utils/errorHandler/APIError';
 import { auditService } from '../../../shared/utils/audit/audit.service';
+import { retryableTransaction } from '../../../shared/utils/db/withWriteConflictRetry';
 import { ROLES } from '../../identity/constants/roles.constants';
 
 const introuvable = () =>
@@ -39,7 +40,7 @@ export const memberService = {
     // Idempotent : réattribuer le rôle déjà en place n'ajoute pas de ligne d'audit fantôme.
     if (membre.role === role) return membre;
 
-    const updated = await prisma.$transaction(async (tx) => {
+    const updated = await retryableTransaction(async (tx) => {
       const m = await tx.member.update({ where: { id: memberId }, data: { role } });
       await auditService.logAction(
         {
@@ -68,7 +69,7 @@ export const memberService = {
   async revoke(memberId: string, organizationId: string, actorUserId: string) {
     const membre = await chargerCible(memberId, organizationId, actorUserId);
 
-    await prisma.$transaction(async (tx) => {
+    await retryableTransaction(async (tx) => {
       await tx.member.delete({ where: { id: memberId } });
       await tx.session.deleteMany({ where: { userId: membre.userId } });
       // L'e-mail vient du membre cible (serveur), jamais de l'appelant : on annule SES invitations.
