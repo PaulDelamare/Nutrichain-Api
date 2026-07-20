@@ -3,6 +3,7 @@ import { createTransformation } from '../controllers/transformation.controller';
 import { getBatchGenealogy, triggerRecall } from '../controllers/recall.controller';
 import { publicScanBatch } from '../controllers/publicScan.controller';
 import { validateTransformationParams } from '../middlewares/validateTransformation.middleware';
+import { validateRecall } from '../middlewares/validateRecall.middleware';
 import { requireAuth } from '../../../identity/middlewares/requireAuth.middleware';
 import { ALL_ROLES, WRITE_ROLES, QUALITY_ROLES } from '../../../identity/constants/roles.constants';
 import { requireOrgRole } from '../../../identity/middlewares/requireOrgRole.middleware';
@@ -117,6 +118,7 @@ router.post(
   '/traceability/batches/:id/recall',
   requireAuth,
   requireOrgRole(QUALITY_ROLES),
+  validateRecall,
   triggerRecall
 );
 
