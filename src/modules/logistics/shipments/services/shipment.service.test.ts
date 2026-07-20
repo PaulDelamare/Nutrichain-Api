@@ -8,7 +8,7 @@ vi.mock('../../../../shared/configs/prismaClient.config', () => ({
     $transaction: vi.fn((callback) => callback(prisma)),
     batch: {
       findFirst: vi.fn(),
-      update: vi.fn(),
+      updateMany: vi.fn(),
     },
     liaison_Shipment: {
       create: vi.fn(),
@@ -56,6 +56,8 @@ describe('ShipmentService', () => {
       gs1_company_prefix: '3456789',
     } as never);
     vi.mocked(prisma.shipment.count).mockResolvedValue(10);
+    // Par défaut, la déduction de stock gardée réussit (verrou optimiste : un seul lot mis à jour).
+    vi.mocked(prisma.batch.updateMany).mockResolvedValue({ count: 1 } as never);
   });
 
   it('devrait échouer (404) si le client destinataire n appartient pas à l organisation', async () => {
@@ -78,6 +80,7 @@ describe('ShipmentService', () => {
       quantite_actuelle: { toNumber: () => 100 },
       unite_code: 'KG',
       statut: 'EN_STOCK',
+      version: 7,
       date_peremption: new Date(Date.now() + 1000000),
     };
 
@@ -92,10 +95,16 @@ describe('ShipmentService', () => {
     expect(prisma.shipment.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ destination_adresse: '12 rue de la Livraison, Paris' }),
     });
-    expect(prisma.batch.update).toHaveBeenCalledWith({
-      where: { id: 'batch-1' },
+    // Déduction gardée : where sur (id, org, version lue, statut non bloquant) + version incrémentée.
+    expect(prisma.batch.updateMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        id: 'batch-1',
+        organization_id: 'org-123',
+        version: 7,
+      }),
       data: expect.objectContaining({
         quantite_actuelle: { decrement: 10 },
+        version: { increment: 1 },
       }),
     });
     expect(prisma.liaison_Shipment.create).toHaveBeenCalled();
@@ -355,6 +364,35 @@ describe('ShipmentService', () => {
       );
     }
   );
+
+  it('REFUSE (409) si le lot a changé d’état entre la lecture et l’écriture (rappel concurrent)', async () => {
+    // Le cœur du correctif #92 : la garde `isBatchBlocked` est passée sur une lecture EN_STOCK, mais
+    // un rappel commit entre-temps. Le verrou optimiste (version + statut) fait `count === 0` → 409,
+    // au lieu d'écraser le rappel et de laisser la marchandise partir chez le client.
+    const mockBatch = {
+      id: 'batch-1',
+      organization_id: 'org-123',
+      lot_number: '260704-LOT001',
+      produit: { code_gtin: '3456789012345' },
+      quantite_actuelle: { toNumber: () => 100 },
+      unite_code: 'KG',
+      statut: 'EN_STOCK',
+      version: 3,
+      date_peremption: new Date(Date.now() + 1000000),
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(prisma.batch.findFirst).mockResolvedValue(mockBatch as any);
+    vi.mocked(prisma.shipment.create).mockResolvedValue({ id: 'ship-1' } as never);
+    // Aucune ligne mise à jour : l'état a bougé depuis la lecture.
+    vi.mocked(prisma.batch.updateMany).mockResolvedValue({ count: 0 } as never);
+
+    await expect(shipmentService.createShipment(mockShipmentData)).rejects.toMatchObject({
+      status: 409,
+      body: { error: [{ field: 'lots' }] },
+    });
+    // La liaison et le mouvement ne sont jamais créés : rien ne part.
+    expect(prisma.liaison_Shipment.create).not.toHaveBeenCalled();
+  });
 
   it('devrait échouer si le lot est périmé', async () => {
     const mockBatch = {
