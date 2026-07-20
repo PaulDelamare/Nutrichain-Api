@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../../../../shared/configs/prismaClient.config';
 import { APIError } from '../../../../shared/utils/errorHandler/APIError';
 import { auditService } from '../../../../shared/utils/audit/audit.service';
+import { retryableTransaction } from '../../../../shared/utils/db/withWriteConflictRetry';
 import { gs1Utils } from '../../../../shared/utils/gs1/gs1.utils';
 import { BATCH_STATUSES, BatchStatus, MOVEMENT_TYPES } from '../../constants/logistics.constants';
 
@@ -135,7 +136,7 @@ export const batchService = {
    * pas un lot sous rappel/alerte par ce canal.
    */
   async liftQuarantine(id: string, activeOrgId: string, userId: string, motif: string) {
-    return prisma.$transaction(
+    return retryableTransaction(
       async (tx) => {
         const batch = await tx.batch.findFirst({
           where: { id, organization_id: activeOrgId },

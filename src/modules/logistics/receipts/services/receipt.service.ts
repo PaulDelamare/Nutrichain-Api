@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../../../../shared/configs/prismaClient.config';
 import { batchService, type CreateBatchInput } from '../../shared/services/batch.service';
 import { auditService } from '../../../../shared/utils/audit/audit.service';
+import { retryableTransaction } from '../../../../shared/utils/db/withWriteConflictRetry';
 import { APIError } from '../../../../shared/utils/errorHandler/APIError';
 import {
   EPCIS_ACTION,
@@ -301,7 +302,7 @@ export const receiptService = {
     if (externalTx) {
       return createReceiptInTx(externalTx, data);
     }
-    return prisma.$transaction((tx) => createReceiptInTx(tx, data), {
+    return retryableTransaction((tx) => createReceiptInTx(tx, data), {
       timeout: 30000,
       isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
     });

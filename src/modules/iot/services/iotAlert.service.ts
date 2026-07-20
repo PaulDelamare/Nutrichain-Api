@@ -2,6 +2,7 @@ import { createHash } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../../shared/configs/prismaClient.config';
 import { auditService } from '../../../shared/utils/audit/audit.service';
+import { retryableTransaction } from '../../../shared/utils/db/withWriteConflictRetry';
 import { notifyOrgAdmins } from '../../../shared/utils/mailer/notifyOrgAdmins';
 import { escapeHtml } from '../../../shared/utils/html/escapeHtml';
 import { logger } from '../../../shared/utils/logger/logger';
@@ -121,7 +122,7 @@ export const iotAlertService = {
 
       // 9. Atomique : mise en quarantaine des lots stockés + Alert.create + Audit
       //    dans une seule tx Serializable.
-      const alert = await prisma.$transaction(
+      const alert = await retryableTransaction(
         async (tx) => {
           // Sûreté sanitaire : les lots EN_STOCK rangés dans l'équipement en excursion
           // sont placés en quarantaine (BLOQUE) — un incident matériel ne doit pas laisser

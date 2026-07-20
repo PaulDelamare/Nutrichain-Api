@@ -45,7 +45,8 @@
     "e2e:reference-data": "tsx --env-file=.env scripts/e2e-reference-data.ts",
     "e2e:customer-product": "tsx --env-file=.env scripts/e2e-customer-product.ts",
     "e2e:members": "tsx --env-file=.env scripts/e2e-member-management.ts",
-    "e2e:batch-receipt": "tsx --env-file=.env scripts/e2e-batch-receipt.ts"
+    "e2e:batch-receipt": "tsx --env-file=.env scripts/e2e-batch-receipt.ts",
+    "e2e:audit-chain": "tsx --env-file=.env scripts/e2e-audit-chain.ts"
   },
   "lint-staged": {
     "src/**/*.{ts,js}": [
