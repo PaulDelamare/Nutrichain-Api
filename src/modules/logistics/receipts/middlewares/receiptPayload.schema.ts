@@ -1,5 +1,6 @@
 import vine from '@vinejs/vine';
 import type { Infer } from '@vinejs/vine/build/src/types';
+import { RECEIPT_STATUSES } from '../../constants/logistics.constants';
 
 /**
  * Champs du payload d'une opération de réception, partagés entre :
@@ -15,7 +16,9 @@ export const receiptPayloadFields = {
   id_produit: vine.string().uuid(),
   quantite_actuelle: vine.number().positive(),
   unite_code: vine.string().maxLength(10),
-  statut_controle: vine.enum(['OK', 'ALERTE', 'NONCONFORME', 'CONFORME']),
+  // Dérivé de RECEIPT_STATUSES (source unique) : recopier la liste à la main avait introduit un
+  // « CONFORME » fantôme, accepté mais qui ne déclenchait rien — le lot partait en stock comme un OK.
+  statut_controle: vine.enum(Object.values(RECEIPT_STATUSES)),
   // Emplacement de stockage du lot reçu (matériel) — optionnel.
   id_materiel: vine.string().uuid().optional(),
   // Numéro de lot du fournisseur (GS1 AI 10, ≤ 20 caractères). Absent, le serveur en génère un.
