@@ -1,7 +1,7 @@
-import { prisma } from '../../../../shared/configs/prismaClient.config';
 import { APIError } from '../../../../shared/utils/errorHandler/APIError';
 import { Batch, Prisma } from '@prisma/client';
 import { auditService } from '../../../../shared/utils/audit/audit.service';
+import { retryableTransaction } from '../../../../shared/utils/db/withWriteConflictRetry';
 import { gs1Utils } from '../../../../shared/utils/gs1/gs1.utils';
 import { resolveGs1Prefix } from '../../../../shared/utils/gs1/gs1Prefix';
 import {
@@ -42,7 +42,7 @@ export const transformationService = {
    * Gère la traçabilité descendante.
    */
   async createTransformation(data: TransformationInput) {
-    return await prisma.$transaction(async (tx) => {
+    return await retryableTransaction(async (tx) => {
       // 0. Le produit fini doit appartenir à l'organisation (anti-référence cross-tenant,
       // symétrique aux contrôles fournisseur/client) — son GTIN sert aussi à l'URN LGTIN.
       const produitFini = await tx.product.findFirst({

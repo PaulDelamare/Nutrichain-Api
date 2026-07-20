@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client';
-import { prisma } from '../../../shared/configs/prismaClient.config';
 import { receiptService } from '../../logistics/receipts/services/receipt.service';
 import { auditService } from '../../../shared/utils/audit/audit.service';
+import { retryableTransaction } from '../../../shared/utils/db/withWriteConflictRetry';
 import { APIError } from '../../../shared/utils/errorHandler/APIError';
 import { logger } from '../../../shared/utils/logger/logger';
 import { idempotencyService } from './idempotency.service';
@@ -57,7 +57,7 @@ async function processItem(
   userId: string
 ): Promise<SyncItemResult> {
   try {
-    const result = await prisma.$transaction(
+    const result = await retryableTransaction(
       async (tx) => {
         const requestHash = idempotencyService.hashPayload(item.payload);
         const compoundKey = {

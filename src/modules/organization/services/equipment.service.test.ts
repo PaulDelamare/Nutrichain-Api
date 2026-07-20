@@ -2,12 +2,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { equipmentService } from './equipment.service';
 import { prisma } from '../../../shared/configs/prismaClient.config';
 
-vi.mock('../../../shared/configs/prismaClient.config', () => ({
-  prisma: {
+vi.mock('../../../shared/configs/prismaClient.config', () => {
+  const prisma = {
     location: { findFirst: vi.fn() },
     equipment: { create: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
-  },
-}));
+    // Exécute le callback avec le mock lui-même comme `tx` : la création et l'audit sont
+    // désormais atomiques (retryableTransaction). `tx.equipment.create` === `prisma.equipment.create`.
+    $transaction: vi.fn((cb: (tx: unknown) => unknown) => cb(prisma)),
+  };
+  return { prisma };
+});
 
 vi.mock('../../../shared/utils/audit/audit.service', () => ({
   auditService: { logAction: vi.fn() },
@@ -78,8 +82,10 @@ describe('equipmentService.createEquipment', () => {
       id_lieu: LIEU.id,
     });
 
+    // Dans la transaction : logAction reçoit la `tx` en second argument (audit atomique).
     expect(auditService.logAction).toHaveBeenCalledWith(
-      expect.objectContaining({ action: 'CREATE_EQUIPMENT', entity: 'Equipment', userId: USER })
+      expect.objectContaining({ action: 'CREATE_EQUIPMENT', entity: 'Equipment', userId: USER }),
+      expect.anything()
     );
   });
 });

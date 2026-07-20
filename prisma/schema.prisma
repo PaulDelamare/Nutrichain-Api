@@ -368,6 +368,10 @@ model Audit_Log {
   signature_hash  String       @db.Char(64)
   horodatage      DateTime     @default(now())
 
+  // Filet d'intégrité WORM : deux lignes d'une même organisation ne peuvent pas chaîner sur le
+  // même prev_hash (fork). Postgres n'a pas de gap lock ; ce sont cet index unique + le retry
+  // sur conflit (withWriteConflictRetry) qui garantissent une chaîne linéaire sous concurrence.
+  @@unique([organization_id, prev_hash])
   @@index([organization_id])
   @@index([id_user])
   @@index([entity, entity_id])

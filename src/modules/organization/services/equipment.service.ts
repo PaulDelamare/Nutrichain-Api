@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { prisma } from '../../../shared/configs/prismaClient.config';
 import { APIError } from '../../../shared/utils/errorHandler/APIError';
 import { auditService } from '../../../shared/utils/audit/audit.service';
+import { retryableTransaction } from '../../../shared/utils/db/withWriteConflictRetry';
 
 export interface CreateEquipmentData {
   organization_id: string;
@@ -39,30 +40,37 @@ export const equipmentService = {
       });
     }
 
-    const equipment = await prisma.equipment.create({
-      data: {
-        organization_id: data.organization_id,
-        nom: data.nom,
-        type: data.type,
-        id_lieu: data.id_lieu,
-        temp_seuil_max: data.temp_seuil_max,
-        sensor_id: data.sensor_id,
-        // Généré dès la création : un matériel sans étiquette est un matériel qu'aucun
-        // opérateur ne peut désigner, donc un lot dont on ignorera toujours l'emplacement.
-        qr_code_id: generateScannableCode(),
-      },
-    });
+    // Création + audit dans une seule transaction : un matériel ne doit jamais exister sans sa
+    // trace WORM (ni l'inverse). Rejouée sur conflit de chaîne d'audit (retryableTransaction).
+    return retryableTransaction(async (tx) => {
+      const equipment = await tx.equipment.create({
+        data: {
+          organization_id: data.organization_id,
+          nom: data.nom,
+          type: data.type,
+          id_lieu: data.id_lieu,
+          temp_seuil_max: data.temp_seuil_max,
+          sensor_id: data.sensor_id,
+          // Généré dès la création : un matériel sans étiquette est un matériel qu'aucun
+          // opérateur ne peut désigner, donc un lot dont on ignorera toujours l'emplacement.
+          qr_code_id: generateScannableCode(),
+        },
+      });
 
-    await auditService.logAction({
-      organizationId: data.organization_id,
-      userId: data.created_by,
-      action: 'CREATE_EQUIPMENT',
-      entity: 'Equipment',
-      entityId: equipment.id,
-      newValue: equipment as unknown as Record<string, unknown>,
-    });
+      await auditService.logAction(
+        {
+          organizationId: data.organization_id,
+          userId: data.created_by,
+          action: 'CREATE_EQUIPMENT',
+          entity: 'Equipment',
+          entityId: equipment.id,
+          newValue: equipment as unknown as Record<string, unknown>,
+        },
+        tx
+      );
 
-    return equipment;
+      return equipment;
+    });
   },
 
   /**

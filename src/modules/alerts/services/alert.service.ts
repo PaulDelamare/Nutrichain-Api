@@ -1,6 +1,6 @@
 import { Alert, Prisma } from '@prisma/client';
-import { prisma } from '../../../shared/configs/prismaClient.config';
 import { auditService } from '../../../shared/utils/audit/audit.service';
+import { retryableTransaction } from '../../../shared/utils/db/withWriteConflictRetry';
 import { APIError } from '../../../shared/utils/errorHandler/APIError';
 
 /**
@@ -38,7 +38,7 @@ export const alertService = {
     // `validateResolveAlert` normalise déjà empty string → undefined avant d'arriver ici.
     const noteNormalized = note ?? null;
 
-    return await prisma.$transaction(
+    return await retryableTransaction(
       async (tx) => {
         const { count } = await tx.alert.updateMany({
           where: { id: alert.id, statut: 'ACTIVE' },

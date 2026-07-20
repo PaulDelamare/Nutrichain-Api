@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { logger } from '../logger/logger';
-import { prisma as prismaClient } from '../../configs/prismaClient.config';
 import { computeAuditHash, GENESIS_PREV_HASH } from './auditHash.util';
+import { retryableTransaction, isRetryableWriteConflict } from '../db/withWriteConflictRetry';
 
 export interface AuditLogParams {
   organizationId: string;
@@ -25,13 +25,25 @@ interface AuditLogRecord {
 export const auditService = {
   /**
    * Enregistre une action dans la table Audit_Log avec chaînage de hash.
-   * Supporte l'utilisation d'une transaction Prisma existante.
+   *
+   * L'écriture DOIT vivre dans une transaction : la lecture du dernier maillon et l'insertion
+   * du suivant forment un tout indivisible. Si l'appelant fournit sa `tx`, on l'y greffe (même
+   * atomicité que l'opération métier) ; sinon on ouvre une transaction dédiée, rejouée sur
+   * conflit. L'intégrité de la chaîne repose sur l'index unique `(organization_id, prev_hash)`
+   * (fork impossible) + le retry (une écriture perdante relit l'état frais et ré-enchaîne).
    */
   async logAction(params: AuditLogParams, tx?: Prisma.TransactionClient) {
-    const db = tx || prismaClient;
+    if (tx) {
+      return this.writeChainedLog(params, tx);
+    }
+    return retryableTransaction((t) => this.writeChainedLog(params, t));
+  },
+
+  /** Écrit un maillon chaîné. À appeler dans une transaction (voir `logAction`). */
+  async writeChainedLog(params: AuditLogParams, db: Prisma.TransactionClient) {
     try {
       const lastLogs = await db.$queryRaw<AuditLogRecord[]>(
-        Prisma.sql`SELECT signature_hash FROM "Audit_Log" WHERE organization_id = ${params.organizationId} ORDER BY id DESC LIMIT 1 FOR UPDATE`
+        Prisma.sql`SELECT signature_hash FROM "Audit_Log" WHERE organization_id = ${params.organizationId} ORDER BY id DESC LIMIT 1`
       );
       const lastLog = lastLogs.length > 0 ? lastLogs[0] : null;
 
@@ -80,7 +92,12 @@ export const auditService = {
 
       return log;
     } catch (error) {
-      logger.error(`[AuditService] Erreur lors de l'enregistrement de l'audit: ${error}`);
+      // Un conflit d'écriture (fork rattrapé par l'index unique, sérialisation) est le chemin
+      // NOMINAL sous concurrence : retryableTransaction va le rejouer. On ne le logge donc pas en
+      // erreur, sinon une rafale d'écritures réussies noierait le journal de fausses erreurs.
+      if (!isRetryableWriteConflict(error)) {
+        logger.error(`[AuditService] Erreur lors de l'enregistrement de l'audit: ${error}`);
+      }
       throw error;
     }
   },
