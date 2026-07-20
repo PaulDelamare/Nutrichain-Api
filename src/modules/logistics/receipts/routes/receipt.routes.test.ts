@@ -120,7 +120,7 @@ describe('Logistics - Receipts Routes', () => {
         id_produit: '123e4567-e89b-12d3-a456-426614174001',
         quantite_actuelle: 500,
         unite_code: 'KG',
-        statut_controle: 'CONFORME',
+        statut_controle: 'OK',
         received_by: '123e4567-e89b-12d3-a456-426614174002',
       };
 
@@ -219,7 +219,7 @@ describe('Logistics - Receipts Routes', () => {
         organization_id: 'org_test_123',
         shipment_id: 'SHIP-123',
         date_reception: new Date(),
-        statut_controle: 'CONFORME',
+        statut_controle: 'OK',
         id_fournisseur: 'f-1',
         received_by: 'u-1',
         temperature_camion_raw: null,
@@ -232,7 +232,7 @@ describe('Logistics - Receipts Routes', () => {
         id_fournisseur: 'f-1',
         shipment_id: 'SHIP-123',
         date_reception: new Date(),
-        statut_controle: 'CONFORME',
+        statut_controle: 'OK',
         received_by: 'u-1',
         temperature_camion_raw: null,
         temperature_camion_summary: null,

@@ -50,6 +50,27 @@ describe('validateReceiptParams Middleware', () => {
     expect(Array.isArray(error.error)).toBe(true);
   });
 
+  it('doit rejeter « CONFORME » — valeur fantôme absente de RECEIPT_STATUSES (#113)', async () => {
+    // Avant, l'énum du validateur recopiait la liste à la main avec un « CONFORME » qui n'existe pas :
+    // il était accepté et ne déclenchait rien. Désormais l'énum dérive de RECEIPT_STATUSES.
+    const req = {
+      body: {
+        id_fournisseur: '123e4567-e89b-12d3-a456-426614174000',
+        shipment_id: 'SHIP-12345',
+        id_produit: '123e4567-e89b-12d3-a456-426614174001',
+        quantite_actuelle: 10,
+        unite_code: 'KG',
+        statut_controle: 'CONFORME',
+      },
+    } as unknown as AuthenticatedRequest;
+    const next = vi.fn();
+
+    await validateReceiptParams(req, {} as Response, next);
+
+    const error = next.mock.calls[0][0];
+    expect(error?.status).toBe(400);
+  });
+
   it('doit rejeter un statut_controle invalide', async () => {
     const req = {
       body: {
