@@ -224,7 +224,9 @@ model Equipment {
   statut          String           @default("PRET")
   temp_actuelle   Decimal?
   temp_seuil_max  Decimal?
-  qr_code_id      String?
+  // Étiquette scannable, posée à la création (jamais sur un GET — cf. #99). NOT NULL : un matériel
+  // sans étiquette est un matériel qu'aucun opérateur ne peut désigner.
+  qr_code_id      String
   sensor_id       String? // Identifiant du capteur IoT lié (mapping vers TelemetryModel.metadata.sensor_id)
   last_cleaned_at DateTime?
   lots            Batch[]
