@@ -146,7 +146,7 @@ describe('OrganizationService (façade de lecture pour le front)', () => {
     );
   });
 
-  it('listSuppliers / listCustomers : cloisonnés, triés par nom', async () => {
+  it('listSuppliers / listCustomers : par défaut (opérateur), projection SANS données personnelles', async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     vi.mocked(prisma.supplier.findMany).mockResolvedValue([] as any);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -155,12 +155,36 @@ describe('OrganizationService (façade de lecture pour le front)', () => {
     await organizationService.listSuppliers(ORG);
     await organizationService.listCustomers(ORG);
 
+    // Fournisseur : identité métier seule. Ni contact_qualite ni adresse_siege ne remontent.
     expect(prisma.supplier.findMany).toHaveBeenCalledWith({
       where: { organization_id: ORG, is_active: true },
+      select: { id: true, nom_ferme: true },
+      orderBy: { nom_ferme: 'asc' },
+    });
+    // Client : identité + adresse de livraison (exploitation). Ni contact_urgence, ni email, ni notes.
+    expect(prisma.customer.findMany).toHaveBeenCalledWith({
+      where: { organization_id: ORG, is_active: true },
+      select: { id: true, nom_enseigne: true, adresse_livraison: true },
+      orderBy: { nom_enseigne: 'asc' },
+    });
+  });
+
+  it('listSuppliers / listCustomers : revealPersonalData (admin) → ligne complète, includeArchived honoré', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(prisma.supplier.findMany).mockResolvedValue([] as any);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(prisma.customer.findMany).mockResolvedValue([] as any);
+
+    await organizationService.listSuppliers(ORG, { includeArchived: true, revealPersonalData: true });
+    await organizationService.listCustomers(ORG, { includeArchived: true, revealPersonalData: true });
+
+    // Pas de `select` → toutes les colonnes (contact, adresse) ; pas de filtre is_active.
+    expect(prisma.supplier.findMany).toHaveBeenCalledWith({
+      where: { organization_id: ORG },
       orderBy: { nom_ferme: 'asc' },
     });
     expect(prisma.customer.findMany).toHaveBeenCalledWith({
-      where: { organization_id: ORG, is_active: true },
+      where: { organization_id: ORG },
       orderBy: { nom_enseigne: 'asc' },
     });
   });

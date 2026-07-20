@@ -103,8 +103,12 @@ router.get(
   validateOrganizationQuery,
   listMovementsController
 );
-router.get('/organization/suppliers', sessionAuth(PERSONAL_DATA_ROLES), listSuppliersController);
-router.get('/organization/customers', sessionAuth(PERSONAL_DATA_ROLES), listCustomersController);
+// Fournisseurs et clients : lecture MÉTIER (tous les rôles) — l'opérateur en a besoin pour
+// réceptionner et expédier. Le contrôleur restreint la projection aux non-administrateurs
+// (identité métier seule) ; contact, e-mail et adresse du siège restent réservés à
+// PERSONAL_DATA_ROLES, dans le service.
+router.get('/organization/suppliers', sessionAuth(READ_ROLES), listSuppliersController);
+router.get('/organization/customers', sessionAuth(READ_ROLES), listCustomersController);
 router.get('/organization/shipments', sessionAuth(READ_ROLES), listShipmentsController);
 router.get('/organization/locations', sessionAuth(READ_ROLES), listLocationsController);
 

@@ -117,6 +117,29 @@ describe('Organization routes (façade de lecture front)', () => {
     });
   });
 
+  it('GET /organization/suppliers : un opérateur ne révèle PAS les données personnelles', async () => {
+    authAs('org-1', 'operator');
+
+    await request(buildApp()).get('/api/organization/suppliers?includeArchived=true');
+
+    // includeArchived est ignoré pour un non-admin, revealPersonalData=false.
+    expect(organizationService.listSuppliers).toHaveBeenCalledWith('org-1', {
+      includeArchived: false,
+      revealPersonalData: false,
+    });
+  });
+
+  it('GET /organization/customers : un admin révèle les données personnelles et honore includeArchived', async () => {
+    authAs('org-1', 'admin');
+
+    await request(buildApp()).get('/api/organization/customers?includeArchived=true');
+
+    expect(organizationService.listCustomers).toHaveBeenCalledWith('org-1', {
+      includeArchived: true,
+      revealPersonalData: true,
+    });
+  });
+
   it("chaque endpoint reste derrière l'auth : 401 quand sessionAuth rejette", async () => {
     sessionAuthMock.mockImplementation((_req, res) => {
       res.status(401).json({ status: 401, error: [{ field: 'auth', message: 'Non authentifié' }] });
