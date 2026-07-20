@@ -156,6 +156,8 @@ async function main() {
       type: 'ETAGERE',
       id_lieu: ID.locReception,
       statut: 'PRET',
+      // Étiquette scannable posée dès le seed (le GET ne la génère plus — cf. #99).
+      qr_code_id: 'EQP-DEMORACK01',
     },
     {
       id: ID.eqFroidSain,
@@ -167,6 +169,7 @@ async function main() {
       temp_actuelle: 3.2,
       temp_seuil_max: 4,
       sensor_id: 'SENSOR-FROID-A1',
+      qr_code_id: 'EQP-DEMOFROID1',
     },
     {
       id: ID.eqFrigo,
@@ -178,6 +181,7 @@ async function main() {
       temp_actuelle: 7.4,
       temp_seuil_max: 4,
       sensor_id: 'SENSOR-FROID-A2',
+      qr_code_id: 'EQP-DEMOFROID2',
     },
     {
       id: ID.eqCuve,
@@ -187,6 +191,7 @@ async function main() {
       id_lieu: ID.locProduction,
       statut: 'PRET',
       temp_actuelle: 72,
+      qr_code_id: 'EQP-DEMOCUVE01',
     },
   ];
   for (const eq of equipements) {

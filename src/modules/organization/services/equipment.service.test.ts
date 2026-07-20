@@ -106,28 +106,18 @@ describe('equipmentService.getScannableLabel', () => {
     expect(prisma.equipment.update).not.toHaveBeenCalled();
   });
 
-  it('attribue une étiquette au matériel qui n’en a pas encore', async () => {
-    // Les matériels créés avant cette fonctionnalité n'ont pas d'étiquette : leur en donner
-    // une à la première impression évite une migration et un parc à deux vitesses.
+  it('lecture seule : ne mute JAMAIS la base (un GET ne doit rien écrire — #99)', async () => {
+    // Avant, un qr_code_id absent déclenchait un update paresseux : un viewer mutait la base sur un
+    // GET, sans audit. Le code est désormais toujours posé à la création / au seed / par migration.
     vi.mocked(prisma.equipment.findFirst).mockResolvedValue({
-      id: 'eq-1',
       nom: 'Chambre froide A',
-      qr_code_id: null,
+      qr_code_id: 'EQP-ABCDEF0123',
     } as never);
-    vi.mocked(prisma.equipment.update).mockImplementation((async ({
-      data,
-    }: {
-      data: { qr_code_id: string };
-    }) => ({
-      id: 'eq-1',
-      nom: 'Chambre froide A',
-      qr_code_id: data.qr_code_id,
-    })) as never);
 
     const label = await equipmentService.getScannableLabel(ORG, 'eq-1');
 
-    expect(label.code).toMatch(/^EQP-[0-9A-F]{10}$/);
-    expect(prisma.equipment.update).toHaveBeenCalled();
+    expect(label.code).toBe('EQP-ABCDEF0123');
+    expect(prisma.equipment.update).not.toHaveBeenCalled();
   });
 
   it('refuse un matériel d’une autre organisation', async () => {
