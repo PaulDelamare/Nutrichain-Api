@@ -50,8 +50,7 @@
   },
   "lint-staged": {
     "src/**/*.{ts,js}": [
-      "eslint --fix",
-      "prettier --write"
+      "eslint --fix"
     ]
   },
   "keywords": [],
