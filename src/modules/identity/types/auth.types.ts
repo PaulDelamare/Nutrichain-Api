@@ -10,6 +10,7 @@ import type { QuarantineLiftPayload } from '../../logistics/receipts/middlewares
 import type { BatchResolveQuery } from '../../logistics/receipts/middlewares/validateBatchResolve.middleware';
 import type { ShipmentPayload } from '../../logistics/shipments/middlewares/shipmentPayload.schema';
 import type { TransformationPayload } from '../../traceability/transformations/middlewares/transformationPayload.schema';
+import type { RecallPayload } from '../../traceability/transformations/middlewares/recallPayload.schema';
 
 /**
  * Interface standard pour un utilisateur Better-Auth
@@ -70,6 +71,8 @@ export interface AuthenticatedRequest extends Request {
   validatedQuarantineLift?: QuarantineLiftPayload;
   validatedShipment?: ShipmentPayload;
   validatedTransformation?: TransformationPayload;
+  // Déclenchement d'un rappel produit (POST /traceability/batches/:id/recall)
+  validatedRecall?: RecallPayload;
   // Sync mobile offline-first
   validatedSyncScans?: SyncScansPayload;
   // Alert resolve endpoint (PATCH /api/alerts/:id/resolve) — typé proprement

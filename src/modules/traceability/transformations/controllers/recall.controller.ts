@@ -41,20 +41,12 @@ export const getBatchGenealogy = catchAsync(async (req: AuthenticatedRequest, re
 export const triggerRecall = catchAsync(async (req: AuthenticatedRequest, res: Response) => {
   const activeOrgId = req.activeOrgId || req.auth?.activeOrgId;
   const userId = req.auth?.user?.id;
-  const { id } = req.params;
-  const { reason } = req.body;
+  // `id` (UUID) et `reason` (chaîne bornée) sont validés en amont par validateRecall.
+  const { id, reason } = req.validatedRecall!;
 
   if (!activeOrgId || !userId) {
     throw new APIError(401, {
       error: [{ field: 'auth', message: 'Authentification requise.' }],
-    });
-  }
-
-  if (!reason) {
-    throw new APIError(400, {
-      error: [
-        { field: 'reason', message: 'Une raison est obligatoire pour déclencher un rappel.' },
-      ],
     });
   }
 
