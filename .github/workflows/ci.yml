@@ -10,10 +10,16 @@ on:
       - main
       - develop
 
+# Une PR qui reçoit plusieurs pushes n'occupe pas un runner par push : seul le dernier compte.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   quality-gates:
     name: Code Quality & Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: 📥 Checkout repository
@@ -25,8 +31,10 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
+      # `npm ci` et non `npm install` : installe EXACTEMENT le lock, comme le Dockerfile. Sinon la
+      # CI peut être verte sur un arbre de dépendances que personne n'a jamais eu.
       - name: 📦 Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: 🗄️ Generate Prisma Client
         run: npx prisma generate
@@ -34,9 +42,18 @@ jobs:
       - name: 🧹 Run Linter (ESLint)
         run: npm run lint
 
+      # Une erreur de typage se mergeait en vert : rien n'appelait `tsc` (Vitest transpile sans
+      # vérifier les types, ESLint ne les regarde pas).
+      - name: 🔎 Type check
+        run: npx tsc -p tsconfig.check.json
+
+      # Le build n'était vérifié que sur `main`, en retard de plusieurs centaines de commits : une
+      # compilation cassée pouvait donc vivre longtemps sur `develop`.
+      - name: 🏗️ Build
+        run: npm run build
+
       - name: 🧪 Run Unit Tests (Vitest)
-        # L'argument --run permet de dire à vitest de se lancer une seule fois sans attendre (sans le mode watch)
         env:
           API_KEY: 'secret-key-pour-les-tests'
           NODE_ENV: 'test'
-        run: npm run unit:test -- --run
+        run: npm run unit:test

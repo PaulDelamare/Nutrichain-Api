@@ -1,0 +1,12 @@
+{
+  // Vérification de types SEULE (aucune émission), pour la CI.
+  //
+  // Le `tsconfig.json` de compilation ne regarde que `src/` : ni les scripts, ni les tests, ni le
+  // seed n'étaient typés par quoi que ce soit — Vitest transpile sans vérifier. Ce fichier existe
+  // pour élargir ce périmètre au fur et à mesure qu'il devient vert (cf. #78) ; il couvre pour
+  // l'instant le même périmètre que la compilation, que la CI ne vérifiait pas du tout.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  }
+}
