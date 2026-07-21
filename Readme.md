@@ -115,10 +115,16 @@ Variables d'environnement requises (validées au démarrage — *fail-fast*) :
 
 ```bash
 npx prisma migrate deploy   # applique les migrations versionnées (non destructif)
-npx prisma db seed          # jeu de données de démo (org, comptes, produits, lots, clients…)
+npx prisma db seed          # socle : organisation, comptes par rôle, catalogue, fournisseur, client
+npm run seed:demo           # jeu de démonstration : sites, capteurs, alerte froid, quarantaine,
+                            # transformations, expéditions
 ```
 
-Le seed est **rejouable** : le relancer rétablit l'état de démonstration sans rien dupliquer.
+**Les deux sont nécessaires pour une démonstration.** Le socle seul laisse Traçabilité, Chaîne du
+froid, Rappels et Généalogie **vides** : ce sont les écrans que verrait un correcteur qui s'arrête au
+premier seed.
+
+Les deux sont **rejouables** : les relancer rétablit l'état de démonstration sans rien dupliquer.
 
 #### Comptes de démonstration
 
@@ -152,11 +158,24 @@ docker compose up --build   # API (port 3000) + PostgreSQL + MongoDB, migrations
 ```
 
 Les valeurs par défaut suffisent pour une démo locale (surchargées par votre `.env` s'il existe).
-Pour seeder la base du conteneur depuis l'hôte (PostgreSQL exposé sur le port 5433) :
+Le conteneur applique les migrations mais **ne seede pas** : sans les deux commandes ci-dessous,
+aucun compte n'existe et la connexion est impossible. PostgreSQL est exposé sur le port 5433 pour
+que le seed puisse être lancé depuis l'hôte.
 
 ```bash
-DATABASE_URL="postgresql://nutrichain:nutrichain@localhost:5433/nutrichain?schema=public" npx prisma db seed
+# bash / zsh
+export DATABASE_URL="postgresql://nutrichain:nutrichain@localhost:5433/nutrichain?schema=public"
+npx prisma db seed && npm run seed:demo
 ```
+
+```powershell
+# PowerShell (Windows) — la syntaxe VAR=... npx ne fonctionne pas ici
+$env:DATABASE_URL = "postgresql://nutrichain:nutrichain@localhost:5433/nutrichain?schema=public"
+npx prisma db seed; npm run seed:demo
+```
+
+Si l'ingestion IoT doit fonctionner dans le conteneur, enregistrer aussi la passerelle :
+`npm run iot:gateway -- --org usine-laitiere-paris --cle "$IOT_API_KEY"`.
 
 ---
 
