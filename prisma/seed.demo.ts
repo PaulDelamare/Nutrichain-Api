@@ -11,7 +11,7 @@
  * Idempotent : IDs fixes, purge des données de démo précédentes avant recréation,
  * + nettoyage des résidus de tests e2e (`E2E-*`).
  *
- * Lancement : npm run seed:demo   (après npm run db:seed)
+ * Lancement : npm run seed:demo   (après `npx prisma db seed`)
  */
 import 'dotenv/config';
 import { prisma } from '../src/shared/configs/prismaClient.config';

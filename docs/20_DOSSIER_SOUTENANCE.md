@@ -63,7 +63,9 @@ Le détail (5 diagrammes) est dans [`19_architecture.md`](19_architecture.md). L
 
 ## 5. Scénario de démonstration (pas-à-pas)
 
-Préparation : `npx prisma migrate deploy && npx prisma db seed`, puis `npm run dev`.
+Préparation : `npx prisma migrate deploy`, `npx prisma db seed`, **`npm run seed:demo`**, puis
+`npm run dev`. Le second seed n'est pas optionnel : sans lui, Traçabilité, Chaîne du froid, Rappels
+et Généalogie s'affichent vides — le socle ne contient ni site, ni capteur, ni transformation.
 Requêtes prêtes dans la collection Bruno (`Nutrichain.json`).
 
 | # | Action | Endpoint | Ce que le jury voit |
