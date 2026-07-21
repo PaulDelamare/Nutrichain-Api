@@ -24,9 +24,29 @@ const MAX_ATTEMPTS = 10;
  * ⚠️ Tout AUTRE `P2002` (GTIN, SSCC, shipment_id…) est une vraie violation métier, PAS retryable :
  * on le relaie tel quel pour que l'appelant le traduise en 409.
  */
+/** SQLSTATE Postgres : conflit de sérialisation, et deadlock détecté. */
+const SERIALIZATION_SQLSTATES = ['40001', '40P01'];
+
+/**
+ * Une requête brute (`$queryRaw`) ne remonte PAS `P2034` : Prisma l'enveloppe dans un `P2010`
+ * « Raw query failed » qui porte le SQLSTATE. La relecture du dernier maillon d'audit passe
+ * justement par une requête brute — sans ce cas, un conflit de sérialisation nominal échappait au
+ * retry et sortait en 500 (constaté à 12 expéditions simultanées).
+ */
+function isRawSerializationFailure(error: Prisma.PrismaClientKnownRequestError): boolean {
+  if (error.code !== 'P2010') return false;
+
+  const sqlstate = String(error.meta?.code ?? '');
+  return (
+    SERIALIZATION_SQLSTATES.includes(sqlstate) ||
+    SERIALIZATION_SQLSTATES.some((code) => error.message.includes(code))
+  );
+}
+
 export function isRetryableWriteConflict(error: unknown): boolean {
   if (!(error instanceof Prisma.PrismaClientKnownRequestError)) return false;
   if (error.code === 'P2034') return true;
+  if (isRawSerializationFailure(error)) return true;
   if (error.code === 'P2002') {
     const target = error.meta?.target;
     const fields = Array.isArray(target) ? target.join(',') : String(target ?? '');
