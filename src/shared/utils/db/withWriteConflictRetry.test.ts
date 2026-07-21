@@ -21,6 +21,30 @@ describe('withWriteConflictRetry', () => {
     expect(op).toHaveBeenCalledTimes(3);
   });
 
+  it("rejoue un conflit de sérialisation remonté par une requête brute (P2010 / SQLSTATE 40001)", async () => {
+    // La relecture du dernier maillon d'audit passe par `$queryRaw` : Prisma n'y remonte pas P2034
+    // mais un P2010 porteur du SQLSTATE. Sans ce cas, un conflit NOMINAL sortait en 500.
+    const rawConflict = new Prisma.PrismaClientKnownRequestError(
+      'Raw query failed. Code: `40001`. Message: `could not serialize access`',
+      { code: 'P2010', clientVersion: 'test', meta: { code: '40001' } }
+    );
+    const op = vi.fn().mockRejectedValueOnce(rawConflict).mockResolvedValueOnce('ok');
+
+    await expect(withWriteConflictRetry(op)).resolves.toBe('ok');
+    expect(op).toHaveBeenCalledTimes(2);
+  });
+
+  it('NE rejoue PAS une requête brute invalide (P2010 sans conflit de sérialisation)', async () => {
+    const erreurSql = new Prisma.PrismaClientKnownRequestError(
+      'Raw query failed. Code: `42601`. Message: `syntax error`',
+      { code: 'P2010', clientVersion: 'test', meta: { code: '42601' } }
+    );
+    const op = vi.fn().mockRejectedValue(erreurSql);
+
+    await expect(withWriteConflictRetry(op)).rejects.toBe(erreurSql);
+    expect(op).toHaveBeenCalledTimes(1);
+  });
+
   it('rejoue sur un fork de la chaîne d’audit (P2002 sur prev_hash)', async () => {
     const op = vi
       .fn()

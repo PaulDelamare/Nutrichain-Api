@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { Prisma } from '@prisma/client';
 import { shipmentService } from './shipment.service';
 import { prisma } from '../../../../shared/configs/prismaClient.config';
 import { auditService } from '../../../../shared/utils/audit/audit.service';
@@ -7,6 +8,7 @@ import { APIError } from '../../../../shared/utils/errorHandler/APIError';
 vi.mock('../../../../shared/configs/prismaClient.config', () => ({
   prisma: {
     $transaction: vi.fn((callback) => callback(prisma)),
+    $queryRaw: vi.fn(),
     batch: {
       findFirst: vi.fn(),
       updateMany: vi.fn(),
@@ -19,7 +21,7 @@ vi.mock('../../../../shared/configs/prismaClient.config', () => ({
     },
     shipment: {
       create: vi.fn(),
-      count: vi.fn().mockResolvedValue(10), // On simule 10 expéditions existantes
+      count: vi.fn(),
     },
     customer: {
       findFirst: vi.fn(),
@@ -60,7 +62,8 @@ describe('ShipmentService', () => {
     vi.mocked(prisma.organization.findUnique).mockResolvedValue({
       gs1_company_prefix: '3456789',
     } as never);
-    vi.mocked(prisma.shipment.count).mockResolvedValue(10);
+    // Le numéro de série d'un SSCC est RÉSERVÉ par la séquence Postgres, jamais compté (#124).
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([{ serial: 11n }] as never);
     // Par défaut, la déduction de stock gardée réussit (verrou optimiste : un seul lot mis à jour).
     vi.mocked(prisma.batch.updateMany).mockResolvedValue({ count: 1 } as never);
   });
@@ -331,9 +334,9 @@ describe('ShipmentService', () => {
       shipment_id: 'AUTO',
     });
 
-    // 10 existants + 1 = 11. Le SSCC doit finir par le check digit.
+    // Le serial 11 vient de la séquence, pas d'un comptage. Le SSCC finit par son check digit.
     expect(result.shipment_id).toHaveLength(18);
-    expect(result.shipment_id.startsWith('03456789')).toBe(true);
+    expect(result.shipment_id.startsWith('03456789000000011')).toBe(true);
     expect(prisma.shipment.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -341,6 +344,63 @@ describe('ShipmentService', () => {
         }),
       })
     );
+  });
+
+  it('réserve le numéro de série au lieu de le compter (deux expéditions ne peuvent pas collisionner)', async () => {
+    // Le cœur de #124 : `count()` est une LECTURE — deux expéditions simultanées lisaient la même
+    // valeur et fabriquaient le MÊME SSCC ; la seconde mourait sur un P2002 en 500.
+    const mockBatch = {
+      id: 'batch-1',
+      organization_id: 'org-123',
+      lot_number: '260704-LOT001',
+      produit: { code_gtin: '3456789012345' },
+      quantite_actuelle: { toNumber: () => 100 },
+      unite_code: 'KG',
+      statut: 'EN_STOCK',
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(prisma.batch.findFirst).mockResolvedValue(mockBatch as any);
+    vi.mocked(prisma.shipment.create).mockImplementation(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      async (args: any) => ({ ...args.data, id: 'ship-new' }) as any
+    );
+    vi.mocked(prisma.$queryRaw)
+      .mockResolvedValueOnce([{ serial: 11n }] as never)
+      .mockResolvedValueOnce([{ serial: 12n }] as never);
+
+    const premiere = await shipmentService.createShipment({
+      ...mockShipmentData,
+      shipment_id: 'AUTO',
+    });
+    const seconde = await shipmentService.createShipment({
+      ...mockShipmentData,
+      shipment_id: 'AUTO',
+    });
+
+    expect(premiere.shipment_id).not.toBe(seconde.shipment_id);
+    expect(prisma.shipment.count).not.toHaveBeenCalled();
+  });
+
+  it("traduit le doublon d'identifiant en 409 au lieu d'un 500 illisible", async () => {
+    const mockBatch = {
+      id: 'batch-1',
+      organization_id: 'org-123',
+      quantite_actuelle: { toNumber: () => 100 },
+      unite_code: 'KG',
+      statut: 'EN_STOCK',
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(prisma.batch.findFirst).mockResolvedValue(mockBatch as any);
+    vi.mocked(prisma.shipment.create).mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'test',
+      })
+    );
+
+    await expect(shipmentService.createShipment(mockShipmentData)).rejects.toMatchObject({
+      status: 409,
+    });
   });
 
   it('devrait échouer si le lot est introuvable', async () => {
