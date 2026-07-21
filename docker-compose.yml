@@ -50,6 +50,10 @@ services:
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-secret-de-demo-docker-32-caracteres-minimum}
       API_KEY: ${API_KEY:-cle-api-de-demo-docker-a-remplacer-en-production}
+      # Secret des capteurs, DISTINCT d'API_KEY (qui, elle, est publique : compilée dans le bundle
+      # mobile). Exigée au démarrage : sans elle le conteneur sortait en boucle de redémarrage.
+      # Elle n'ouvre l'ingestion que si une passerelle la porte en base (`npm run iot:gateway`).
+      IOT_API_KEY: ${IOT_API_KEY:-cle-capteurs-de-demo-docker-a-remplacer-en-production}
       # Doit correspondre à une organisation existante ; celle du seed par défaut.
       API_KEY_ORG_ID: ${API_KEY_ORG_ID:-usine-laitiere-paris}
       SMTP_HOST: ${SMTP_HOST:-smtp.ethereal.email}
