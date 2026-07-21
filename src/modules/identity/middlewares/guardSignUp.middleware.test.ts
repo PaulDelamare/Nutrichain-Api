@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Request, Response, NextFunction } from 'express';
 import { requireInvitationOrFirstUser } from './guardSignUp.middleware';
 import { bdd } from '../../../shared/configs/prismaClient.config';
+import { getValidatedInvitationId } from '../utils/signupInvitationContext';
 
 vi.mock('../../../shared/configs/prismaClient.config', () => ({
   bdd: {
@@ -174,5 +175,35 @@ describe('requireInvitationOrFirstUser', () => {
         where: expect.objectContaining({ id: '00000000-0000-0000-0000-000000000000' }),
       })
     );
+  });
+
+  it("transmet l'invitation VALIDÉE au hook d'enrôlement", async () => {
+    // Le hook ne reçoit que l'utilisateur : sans ce contexte, il re-cherchait par e-mail et
+    // pouvait enrôler l'utilisateur dans l'organisation d'une AUTRE invitation en attente (#95).
+    vi.mocked(bdd.user.count).mockResolvedValue(5);
+    vi.mocked(bdd.invitation.findFirst).mockResolvedValue(
+      buildInvitation({ id: 'inv-de-org-a' }) as never
+    );
+
+    let vuParLeHook: string | undefined;
+    const req = buildReq({ email: 'invited@nutrichain.local', token: 'inv-de-org-a' });
+    await requireInvitationOrFirstUser(req, {} as Response, (() => {
+      vuParLeHook = getValidatedInvitationId();
+    }) as NextFunction);
+
+    expect(vuParLeHook).toBe('inv-de-org-a');
+  });
+
+  it('ne transmet aucune invitation au bootstrap du premier utilisateur', async () => {
+    vi.mocked(bdd.user.count).mockResolvedValue(0);
+
+    let vuParLeHook: string | undefined = 'valeur-parasite';
+    const req = buildReq({ email: 'premier@nutrichain.local' });
+    await requireInvitationOrFirstUser(req, {} as Response, (() => {
+      vuParLeHook = getValidatedInvitationId();
+    }) as NextFunction);
+
+    // Sans invitation, le hook doit bien retomber sur la création d'organisation.
+    expect(vuParLeHook).toBeUndefined();
   });
 });

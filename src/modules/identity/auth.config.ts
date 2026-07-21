@@ -9,6 +9,7 @@ import { APIError } from '../../shared/utils/errorHandler/APIError';
 import { sendEmail } from '../../shared/utils/mailer/mailer';
 import { render } from '@react-email/render';
 import { InvitationEmail } from '../../shared/utils/mailer/templates/InvitationEmail';
+import { getValidatedInvitationId } from './utils/signupInvitationContext';
 import { ResetPasswordEmail } from '../../shared/utils/mailer/templates/ResetPasswordEmail';
 import React from 'react';
 import crypto from 'crypto';
@@ -81,10 +82,26 @@ export const auth = betterAuth({
       create: {
         // Intercepte silencieusement APRÈS la création d'un utilisateur
         after: async (user) => {
-          // Trouver si cet utilisateur avait une invitation en attente
-          const invitation = await prisma.invitation.findFirst({
-            where: { email: user.email, status: 'pending' },
-          });
+          // L'invitation vient du JETON validé à l'inscription, jamais d'une re-recherche par
+          // e-mail : avec deux invitations en attente pour la même adresse, Postgres en rendait une
+          // arbitrairement, et l'utilisateur atterrissait dans une organisation qui n'était pas
+          // celle de son lien (#95). Le filtre sur `email` reste, en défense en profondeur.
+          const validatedInvitationId = getValidatedInvitationId();
+          const invitation = validatedInvitationId
+            ? await prisma.invitation.findFirst({
+                where: { id: validatedInvitationId, email: user.email, status: 'pending' },
+              })
+            : null;
+
+          // Une inscription passée par le jeton n'est JAMAIS un bootstrap : si l'invitation a été
+          // consommée entre-temps, on n'enrôle pas — surtout pas en créant une organisation dont
+          // l'utilisateur deviendrait propriétaire.
+          if (validatedInvitationId && !invitation) {
+            logger.warn(
+              `[BetterAuth Hook] Invitation ${validatedInvitationId} introuvable ou déjà consommée — Member non créé pour ${user.email}`
+            );
+            return;
+          }
 
           if (invitation) {
             try {
