@@ -57,6 +57,12 @@ import {
   revokeMemberController,
 } from '../controllers/member.controller';
 import { validateChangeMemberRole } from '../middlewares/member.schema';
+import { validateCreateIotGateway } from '../middlewares/iotGateway.schema';
+import {
+  createIotGatewayController,
+  listIotGatewaysController,
+  revokeIotGatewayController,
+} from '../controllers/iotGateway.controller';
 import {
   validateCreateSupplier,
   validateUpdateSupplier,
@@ -247,5 +253,21 @@ router.patch(
   changeMemberRoleController
 );
 router.post('/organization/members/:id/revoke', sessionAuth(CONFIG_ROLES), revokeMemberController);
+
+// Passerelles IoT — la clé qui rattache un flux de capteurs à CETTE organisation. Sans ces routes,
+// seule l'organisation seedée pouvait surveiller sa chaîne du froid (#93). Réservé à
+// l'administration : la clé vaut le droit de mettre des lots en quarantaine.
+router.get('/organization/iot-gateways', sessionAuth(CONFIG_ROLES), listIotGatewaysController);
+router.post(
+  '/organization/iot-gateways',
+  sessionAuth(CONFIG_ROLES),
+  validateCreateIotGateway,
+  createIotGatewayController
+);
+router.post(
+  '/organization/iot-gateways/:id/revoke',
+  sessionAuth(CONFIG_ROLES),
+  revokeIotGatewayController
+);
 
 export default router;

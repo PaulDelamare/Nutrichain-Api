@@ -122,6 +122,7 @@ model Organization {
   Shipment           Shipment[]
   IdempotencyKey     IdempotencyKey[]
   EPCIS_Event        EPCIS_Event[]
+  IotGateway         IotGateway[]
 
   @@unique([slug])
   @@map("organization")
@@ -234,6 +235,25 @@ model Equipment {
   Maintenance     Maintenance[]
 
   @@unique([organization_id, sensor_id]) // composite : permet à 2 orgs d'utiliser le même sensor_id sans collision, empêche enumeration cross-tenant
+  @@index([organization_id])
+}
+
+/// Passerelle IoT : le porteur d'une clé capteur, rattaché à SON organisation.
+///
+/// Avant, `machineAuth` retombait sur `API_KEY_ORG_ID` — une variable d'environnement UNIQUE :
+/// toute trame, quelle que soit sa provenance, était estampillée de l'organisation du `.env`.
+/// Une organisation créée après coup n'avait donc aucune chaîne du froid (ingest 202, zéro alerte),
+/// et un `sensor_id` homonyme mettait en quarantaine les lots d'une AUTRE organisation.
+/// La clé porte désormais son tenant en base ; elle est stockée hachée (SHA-256) et révocable.
+model IotGateway {
+  id              String       @id @default(uuid())
+  organization_id String
+  organization    Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  nom             String
+  key_hash        String       @unique
+  revoked_at      DateTime?
+  created_at      DateTime     @default(now())
+
   @@index([organization_id])
 }
 

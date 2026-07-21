@@ -56,30 +56,37 @@ export interface CheckAndAlertParams {
   timestamp: Date;
 }
 
+/**
+ * Ce que la détection a RÉELLEMENT pu faire de la trame. Renvoyé au controller pour que la réponse
+ * cesse de mentir : une trame d'un capteur non rattaché à un matériel était acceptée en 202
+ * « Telemetry ingested successfully » alors qu'aucune surveillance n'était possible (issue #93).
+ */
+export type DetectionOutcome = 'MONITORED' | 'NO_EQUIPMENT' | 'NO_THRESHOLD';
+
 export const iotAlertService = {
   /**
    * Détecte une excursion de température et crée une Alert + email.
    * Appelé depuis le controller telemetry, synchrone, ~50ms cache miss.
-   * Multi-tenant safe : l'organizationId est celui injecté par checkApiKey,
+   * Multi-tenant safe : l'organizationId est celui de la passerelle (`machineAuth`),
    * le sensor_id est résolu dans cette org uniquement.
    */
-  async checkAndAlert(params: CheckAndAlertParams): Promise<void> {
+  async checkAndAlert(params: CheckAndAlertParams): Promise<DetectionOutcome> {
     const { sensorId, organizationId, currentTemp } = params;
 
     // 1-2. Cache lookup + Postgres findFirst si miss
     const cached = await resolveThreshold(sensorId, organizationId);
     if (!cached) {
-      return; // sensor sans mapping (déjà loggué dans resolveThreshold)
+      return 'NO_EQUIPMENT'; // sensor sans mapping (déjà loggué dans resolveThreshold)
     }
 
     // 3. Pas de seuil défini → on ne peut pas détecter
     if (cached.threshold === null) {
-      return;
+      return 'NO_THRESHOLD';
     }
 
     // 4. Fast path : sous le seuil (cas le plus fréquent → ~99% des pings)
     if (currentTemp <= cached.threshold) {
-      return;
+      return 'MONITORED';
     }
 
     // 5. Advisory lock per-equipment (sérialise les checks concurrents pour ce capteur)
@@ -90,7 +97,7 @@ export const iotAlertService = {
     );
     if (!lockResult[0]?.locked) {
       // Une autre détection est déjà en cours pour ce capteur, on laisse faire
-      return;
+      return 'MONITORED';
     }
 
     // try { ... } finally enferme TOUTE la suite, dès la ligne d'après le lock — pas de fenêtre fuite.
@@ -103,7 +110,7 @@ export const iotAlertService = {
       // 7. Détection (logique pure)
       const result = detectExcursion(points, threshold);
       if (!result.isExcursion) {
-        return;
+        return 'MONITORED';
       }
 
       // 8. Dédup : Alert ACTIVE existante pour ce equipment ?
@@ -117,7 +124,7 @@ export const iotAlertService = {
         select: { id: true },
       });
       if (existing) {
-        return; // anti-spam : on attend la résolution de l'alerte courante
+        return 'MONITORED'; // anti-spam : on attend la résolution de l'alerte courante
       }
 
       // 9. Atomique : mise en quarantaine des lots stockés + Alert.create + Audit
@@ -217,6 +224,8 @@ export const iotAlertService = {
         result.peakTemp,
         threshold
       );
+
+      return 'MONITORED';
     } finally {
       // 11. Toujours relâcher le lock — y compris si étape 6-10 throw.
       await prisma.$queryRawUnsafe<unknown>(`SELECT pg_advisory_unlock(${lockKey})`);

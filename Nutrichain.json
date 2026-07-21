@@ -430,7 +430,7 @@
             "vars": {},
             "assertions": [],
             "tests": "",
-            "docs": "Ingestion d'une trame capteur. L'org est resolue cote serveur via API_KEY_ORG_ID.",
+            "docs": "Ingestion d'une trame capteur. L'org est resolue cote serveur depuis la passerelle (IotGateway) qui presente la cle.",
             "auth": {
               "mode": "none"
             }

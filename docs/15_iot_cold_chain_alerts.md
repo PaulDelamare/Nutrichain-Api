@@ -13,11 +13,16 @@ La raison d'être de Nutrichain est de surveiller la chaîne du froid en temps r
 ## 2. Flux
 
 ```
-POST /telemetry/ping → checkApiKey (M2M) → ingestController :
+POST /telemetry/ping → machineAuth (passerelle IotGateway → organisation) → ingestController :
   1. TelemetryModel.create(...) → MongoDB time-series
   2. iotAlertService.checkAndAlert({...}) → détection sync
-  3. res.status(202)
+  3. res.status(202) + `detection` (MONITORED | NO_EQUIPMENT | NO_THRESHOLD)
 ```
+
+L'organisation d'une trame vient de la **passerelle qui présente la clé** (`IotGateway`, empreinte
+SHA-256, révocable), et non plus de `API_KEY_ORG_ID` : sinon une seule organisation — celle du
+`.env` — avait une chaîne du froid, et un `sensor_id` homonyme mettait en quarantaine les lots d'une
+autre (#93). Clé inconnue ou révoquée → 401.
 
 ### Détail de `checkAndAlert`
 
@@ -37,7 +42,7 @@ POST /telemetry/ping → checkApiKey (M2M) → ingestController :
 
 | Risque | Mitigation |
 |---|---|
-| Cross-tenant sensor spoofing | `Equipment.findFirst` filtre par `organization_id: activeOrgId` (injecté par `checkApiKey`) |
+| Cross-tenant sensor spoofing | `Equipment.findFirst` filtre par `organization_id: activeOrgId`, résolu depuis la passerelle (`machineAuth` → `IotGateway`) |
 | Sensor_id collision entre orgs | `@@unique([organization_id, sensor_id])` composite (pas global) |
 | Cache pollution cross-tenant | Cache key = `${orgId}:${sensorId}` |
 | Email cross-tenant | Recipients filtrés par `equipment.organization_id`, jamais par `activeOrgId` direct |

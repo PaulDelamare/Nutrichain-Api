@@ -22,10 +22,14 @@ const router = Router();
  *       **synchrone** la détection d'excursion thermique (Objectif SMART n°2,
  *       alerte chaîne du froid < 30s p95).
  *
+ *       L'organisation vient de la **passerelle** (`IotGateway`) qui présente la clé, jamais d'une
+ *       variable d'environnement ni d'un en-tête : une clé inconnue ou révoquée reçoit un 401.
+ *
  *       Side-effect détection :
  *       - Résout `Equipment` via `(sensor_id, organization_id)` (multi-tenant strict).
- *         Si le capteur n'est lié à aucun Equipment dans l'org bound par la clé API,
- *         l'ingest réussit (202) mais aucune alerte n'est créée (log warn server-side).
+ *         Si le capteur n'est lié à aucun Equipment dans l'org de la passerelle, l'ingest réussit
+ *         (202) mais aucune alerte n'est possible : la réponse le dit (`detection`), et un warn
+ *         est loggué côté serveur.
  *       - Si `temperature > Equipment.temp_seuil_max` et qu'au moins 5 points sur les
  *         15 dernières minutes dépassent le seuil avec un ratio ≥ 80%, crée une `Alert`
  *         de type `TEMP_EXCURSION` (niveau PANIC) et envoie un email aux owners/admins
@@ -81,10 +85,17 @@ const router = Router();
  *                   properties:
  *                     sensor_id:
  *                       type: string
+ *                     detection:
+ *                       type: string
+ *                       enum: [MONITORED, NO_EQUIPMENT, NO_THRESHOLD]
+ *                       description: |
+ *                         Ce que la surveillance a pu faire de la trame. `NO_EQUIPMENT` = capteur
+ *                         non rattaché à un matériel, `NO_THRESHOLD` = matériel sans seuil : dans
+ *                         les deux cas aucune excursion ne peut être détectée.
  *       400:
- *         description: Payload invalide ou organisation manquante
+ *         description: Payload invalide
  *       401:
- *         description: Clé API manquante ou invalide
+ *         description: Passerelle IoT inconnue ou révoquée
  */
 // La SEULE route ouverte à une machine : un capteur ne peut pas ouvrir de session humaine.
 // Elle n'ingère que des mesures — aucune décision, aucune identité d'auteur (cf. machineAuth).

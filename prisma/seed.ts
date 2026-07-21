@@ -3,6 +3,7 @@ import { auth } from '../src/modules/identity/auth.config';
 import { ROLES, type Role } from '../src/modules/identity/constants/roles.constants';
 import { logger } from '../src/shared/utils/logger/logger';
 import { DEFAULT_GS1_COMPANY_PREFIX, gs1Utils } from '../src/shared/utils/gs1/gs1.utils';
+import { hashGatewayKey } from '../src/shared/utils/iotGateway/iotGateway';
 
 const prisma = new PrismaClient();
 
@@ -19,6 +20,7 @@ const IDS = {
   butter: '55555555-5555-4555-8555-555555555555',
   milkBatch: '66666666-6666-4666-8666-666666666666',
   butterBatch: '77777777-7777-4777-8777-777777777777',
+  iotGateway: '88888888-8888-4888-8888-888888888888',
 } as const;
 
 /** Commun à tous les comptes de démonstration : ce seed ne tourne qu'en développement. */
@@ -125,6 +127,35 @@ async function upsertPlatformAdmin(
   return user.id;
 }
 
+/**
+ * Enregistre la passerelle IoT de développement : depuis #93, la clé capteur ne résout plus son
+ * organisation depuis `API_KEY_ORG_ID` mais depuis la table `IotGateway`. Sans cette ligne, la
+ * `IOT_API_KEY` du `.env` n'ouvre plus rien et l'ingestion locale répond 401.
+ */
+async function upsertIotGateway(organizationId: string): Promise<void> {
+  const cle = process.env.IOT_API_KEY;
+
+  if (!cle) {
+    logger.warn('⚠️  IOT_API_KEY absente du .env — aucune passerelle IoT seedée.');
+    return;
+  }
+
+  const key_hash = hashGatewayKey(cle);
+
+  // Upsert par `id` et non par `key_hash` : une clé tournée dans le `.env` REMPLACE l'empreinte de
+  // la passerelle de dev au lieu d'en créer une seconde — l'ancienne clé cesse donc d'ouvrir.
+  await prisma.iotGateway.upsert({
+    where: { id: IDS.iotGateway },
+    update: { organization_id: organizationId, key_hash, revoked_at: null },
+    create: {
+      id: IDS.iotGateway,
+      organization_id: organizationId,
+      nom: 'Passerelle de développement',
+      key_hash,
+    },
+  });
+}
+
 async function main() {
   logger.info('🌱 Start seeding Traceability...');
 
@@ -140,6 +171,8 @@ async function main() {
       gs1_company_prefix: DEFAULT_GS1_COMPANY_PREFIX,
     },
   });
+
+  await upsertIotGateway(usine.id);
 
   // 1. Les comptes, un par rôle. Le hachage est calculé UNE fois : scrypt est volontairement lent.
   const ctx = await auth.$context;
