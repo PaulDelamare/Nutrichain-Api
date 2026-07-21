@@ -1,93 +1,54 @@
-name: API CI/CD
+name: API CD (image Docker)
 
+# Ce workflow ne fait QUE publier l'image. Il ne rejoue plus lint/tests/build : il attend que la
+# barrière de qualité (`CI/CD Pipeline Nutrichain`) soit passée au vert sur `main`.
+#
+# Avant, les deux workflows avaient des trous complémentaires — celui-ci construisait et déployait
+# sans lint, sans typage et sans couverture, sur Node 22 alors que l'image tourne sur Node 20 ;
+# l'autre vérifiait sans déployer. Une image pouvait donc être publiée sur du code que rien n'avait
+# linté. Désormais : une seule barrière, un seul déploiement.
 on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+  workflow_run:
+    workflows: ['CI/CD Pipeline Nutrichain']
+    branches: [main]
+    types: [completed]
 
 jobs:
-  ci:
-    name: API CI
-    runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_USER: nutrichain
-          POSTGRES_PASSWORD: nutrichain-pwd
-          POSTGRES_DB: nutrichain_db
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd="pg_isready"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=5
-
-    env:
-      DATABASE_URL: postgresql://nutrichain:nutrichain-pwd@localhost:5432/nutrichain_db
-      NODE_ENV: test
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Generate Prisma client
-        run: npx prisma generate
-
-      - name: Apply database migrations
-        run: npx prisma migrate deploy
-
-      - name: Run unit tests
-        run: npm run unit:test
-
-      - name: Build API
-        run: npm run build
-
   cd:
-    name: API CD (Docker Build & Push)
+    name: Publier l'image sur GHCR
     runs-on: ubuntu-latest
-    needs: ci
-    if: github.ref == 'refs/heads/main'
+    # Publication uniquement si la barrière de qualité a réussi.
+    if: github.event.workflow_run.conclusion == 'success'
+    timeout-minutes: 20
     permissions:
       contents: read
       packages: write
 
     steps:
-      - name: Checkout code
+      # On construit EXACTEMENT le commit qui a été vérifié, pas la tête de branche.
+      - name: 📥 Checkout du commit vérifié
         uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
         with:
-          node-version: 22
-          cache: npm
+          ref: ${{ github.event.workflow_run.head_sha }}
 
-      - name: Log in to GitHub Container Registry
+      - name: 🔐 Connexion au registre GitHub
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Convert repository name to lowercase
+      - name: 🔡 Nom de dépôt en minuscules
         id: repo
         run: echo "name=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
 
-      - name: Build and Push Docker Image
+      # Deux étiquettes : `latest` pour la commodité, le SHA pour pouvoir revenir en arrière —
+      # « quel commit tourne ? » doit avoir une réponse.
+      - name: 🐳 Construire et publier l'image
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
-          tags: ghcr.io/${{ steps.repo.outputs.name }}/api-nutrichain:latest
+          tags: |
+            ghcr.io/${{ steps.repo.outputs.name }}/api-nutrichain:latest
+            ghcr.io/${{ steps.repo.outputs.name }}/api-nutrichain:${{ github.event.workflow_run.head_sha }}

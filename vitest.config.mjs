@@ -5,7 +5,9 @@ export default defineConfig({
         globals: true,
         coverage: {
             provider: 'v8',
-            reporter: ['text', 'html', 'lcov'],
+            // `json-summary` alimente le récapitulatif publié par la CI : le seuil ne sert à rien
+            // si personne ne voit le chiffre.
+            reporter: ['text', 'html', 'lcov', 'json-summary'],
             include: ['src/**/*.ts'],
             // Exclus du périmètre : fichiers sans logique testable unitairement
             // (bootstrap serveur, déclarations de types, templates d'e-mails JSX,
