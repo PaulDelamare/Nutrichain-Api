@@ -47,7 +47,8 @@
     "e2e:members": "tsx --env-file=.env scripts/e2e-member-management.ts",
     "e2e:batch-receipt": "tsx --env-file=.env scripts/e2e-batch-receipt.ts",
     "e2e:audit-chain": "tsx --env-file=.env scripts/e2e-audit-chain.ts",
-    "e2e:iot-gateway": "tsx --env-file=.env scripts/e2e-iot-gateway-tenant.ts"
+    "e2e:iot-gateway": "tsx --env-file=.env scripts/e2e-iot-gateway-tenant.ts",
+    "iot:gateway": "tsx --env-file=.env scripts/provision-iot-gateway.ts"
   },
   "lint-staged": {
     "src/**/*.{ts,js}": [

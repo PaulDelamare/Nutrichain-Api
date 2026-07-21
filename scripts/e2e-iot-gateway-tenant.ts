@@ -1,5 +1,7 @@
-import { randomBytes, createHash } from 'crypto';
+import { randomBytes } from 'crypto';
 import { prisma } from '../src/shared/configs/prismaClient.config';
+import { hashGatewayKey } from '../src/shared/utils/iotGateway/iotGateway';
+import { signInAsOperator } from './helpers/e2eSession';
 
 /**
  * NUTRICHAIN — Preuve, contre l'API RÉELLE, que la chaîne du froid n'est plus câblée sur UNE
@@ -20,13 +22,18 @@ import { prisma } from '../src/shared/configs/prismaClient.config';
  */
 
 const API_BASE = process.env.API_BASE || 'http://localhost:3000';
+const API_KEY = process.env.API_KEY;
+
+if (!API_KEY) {
+  console.error('[E2E] API_KEY requis dans .env');
+  process.exit(1);
+}
 
 const ok = (msg: string) => console.log(`  ✅ ${msg}`);
 const fail = (msg: string): never => {
   throw new Error(msg);
 };
 
-const hash = (cle: string) => createHash('sha256').update(cle, 'utf8').digest('hex');
 const suffixe = randomBytes(4).toString('hex');
 
 /** Le capteur porte le MÊME identifiant dans les deux organisations — c'est tout l'enjeu. */
@@ -70,12 +77,39 @@ async function creerTenant(nom: string, seuil: number, orgExistante?: string) {
     },
   });
 
-  const cle = `e2e-gw-cle-${nom}-${suffixe}`;
-  await prisma.iotGateway.create({
-    data: { organization_id: orgId, nom: `Passerelle ${nom}`, key_hash: hash(cle) },
-  });
+  const cle = await provisionnerPasserelle(orgId, nom);
 
   return { orgId, cle, equipmentId: materiel.id, lieuId: lieu.id };
+}
+
+/**
+ * Obtient la clé par le VRAI parcours : un administrateur de l'organisation la crée via l'API.
+ * C'est la moitié qui manquait — sans elle, une organisation nouvelle n'avait aucun moyen d'obtenir
+ * une passerelle, et le multi-tenant restait théorique.
+ */
+async function provisionnerPasserelle(orgId: string, nom: string): Promise<string> {
+  const admin = await signInAsOperator(prisma, {
+    apiBase: API_BASE,
+    apiKey: API_KEY!,
+    organizationId: orgId,
+    email: `e2e-gw-admin-${nom}-${suffixe}@nutrichain.local`,
+    role: 'admin',
+  });
+
+  const res = await fetch(`${API_BASE}/api/organization/iot-gateways`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${admin.token}` },
+    // Le suffixe est DANS le nom : c'est ce qui permet au nettoyage de retrouver la passerelle
+    // créée par cette exécution. Sans lui, chaque passage laissait une clé vivante dans l'org réelle.
+    body: JSON.stringify({ nom: `Passerelle ${nom} ${suffixe}` }),
+  });
+  const body = (await res.json()) as { data?: { cle?: string } };
+
+  if (res.status !== 201 || !body.data?.cle) {
+    fail(`Création de passerelle : attendu 201 + clé, reçu ${res.status} ${JSON.stringify(body)}`);
+  }
+
+  return body.data.cle;
 }
 
 async function nettoyer(tenants: { orgId: string; equipmentId: string; lieuId: string }[]) {
@@ -84,8 +118,20 @@ async function nettoyer(tenants: { orgId: string; equipmentId: string; lieuId: s
     await prisma.alert.deleteMany({ where: { id_materiel: t.equipmentId } });
     await prisma.equipment.deleteMany({ where: { id: t.equipmentId } });
     await prisma.location.deleteMany({ where: { id: t.lieuId } });
-    await prisma.iotGateway.deleteMany({ where: { nom: { contains: suffixe } } });
   }
+  // Hors de la boucle : une seule suppression pour toutes les passerelles de cette exécution.
+  await prisma.iotGateway.deleteMany({ where: { nom: { contains: suffixe } } });
+  // Comptes créés pour le parcours (admins et opérateur de la preuve).
+  const comptes = await prisma.user.findMany({
+    where: { email: { contains: suffixe } },
+    select: { id: true },
+  });
+  const userIds = comptes.map((u) => u.id);
+  await prisma.member.deleteMany({ where: { userId: { in: userIds } } });
+  await prisma.session.deleteMany({ where: { userId: { in: userIds } } });
+  await prisma.account.deleteMany({ where: { userId: { in: userIds } } });
+  await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+
   // L'organisation jetable a produit de l'audit (WORM) : il faut le retirer avant elle.
   const jetables = tenants.map((t) => t.orgId).filter((id) => id.startsWith('e2e-gw-'));
   await prisma.audit_Log.deleteMany({ where: { organization_id: { in: jetables } } });
@@ -138,6 +184,31 @@ async function main() {
     }
     ok("Zéro alerte chez la victime : le capteur homonyme de B ne bloque plus les lots d'une autre organisation");
 
+    // La clé ne s'affiche qu'à la création : la liste ne doit jamais permettre de la retrouver.
+    const operateur = await signInAsOperator(prisma, {
+      apiBase: API_BASE,
+      apiKey: API_KEY!,
+      organizationId: b.orgId,
+      email: `e2e-gw-operateur-${suffixe}@nutrichain.local`,
+    });
+    const refus = await fetch(`${API_BASE}/api/organization/iot-gateways`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${operateur.token}` },
+      body: JSON.stringify({ nom: 'Passerelle pirate' }),
+    });
+    if (refus.status !== 403) {
+      fail(`Création de passerelle par un opérateur : attendu 403, reçu ${refus.status}`);
+    }
+    ok("Un opérateur ne peut pas créer de passerelle (403) — la clé vaut le droit de bloquer des lots");
+
+    const liste = await fetch(`${API_BASE}/api/organization/iot-gateways`, {
+      headers: { Authorization: `Bearer ${operateur.token}` },
+    });
+    if (liste.status !== 403) {
+      fail(`Liste des passerelles pour un opérateur : attendu 403, reçu ${liste.status}`);
+    }
+    ok('La liste des passerelles est réservée à l’administration (403)');
+
     const inconnue = await ping(`cle-jamais-enregistree-${suffixe}`, 4);
     if (inconnue.status !== 401) {
       fail(`Clé non enregistrée : attendu 401, reçu ${inconnue.status}`);
@@ -145,7 +216,7 @@ async function main() {
     ok('Clé non enregistrée refusée (401)');
 
     await prisma.iotGateway.updateMany({
-      where: { key_hash: hash(b.cle) },
+      where: { key_hash: hashGatewayKey(b.cle) },
       data: { revoked_at: new Date() },
     });
     const revoquee = await ping(b.cle, 4);

@@ -33,7 +33,8 @@ describe('machineAuth', () => {
 
     expect(resolveGatewayOrg).toHaveBeenCalledWith('cle-de-org-b');
     expect(req.activeOrgId).toBe('org-b');
-    expect(req.auth?.activeOrgId).toBe('org-b');
+    // Une machine n'a ni utilisateur ni session : on ne fabrique pas de faux contexte d'auth.
+    expect(req.auth).toBeUndefined();
     expect(next).toHaveBeenCalledWith();
   });
 

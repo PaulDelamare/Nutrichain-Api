@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { APIError } from '../utils/errorHandler/APIError';
 import { resolveGatewayOrg } from '../utils/iotGateway/iotGateway';
-import { AuthenticatedRequest, AuthContext } from '../../modules/identity/types/auth.types';
+import { AuthenticatedRequest } from '../../modules/identity/types/auth.types';
 
 const cleRefusee = () =>
   new APIError(401, {
@@ -43,12 +43,10 @@ export const machineAuth = () => {
         return next(cleRefusee());
       }
 
-      const authReq = req as AuthenticatedRequest;
-      authReq.activeOrgId = organizationId;
-      authReq.auth = {
-        ...(authReq.auth || {}),
-        activeOrgId: organizationId,
-      } as AuthContext;
+      // Seul `activeOrgId` est posé : une machine n'a ni utilisateur ni session. Fabriquer un
+      // `req.auth` partiel ferait mentir `AuthContext` (dont `user` et `session` sont obligatoires)
+      // et n'importe quel code partagé lisant `req.auth.user.id` casserait à l'exécution.
+      (req as AuthenticatedRequest).activeOrgId = organizationId;
 
       next();
     } catch (erreur) {

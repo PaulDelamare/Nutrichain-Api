@@ -43,6 +43,18 @@ vi.mock('../middlewares/validateOrganizationQuery.middleware', () => ({
     next: express.NextFunction
   ) => next(),
 }));
+vi.mock('../controllers/iotGateway.controller', () => ({
+  listIotGatewaysController: ok,
+  createIotGatewayController: ok,
+  revokeIotGatewayController: ok,
+}));
+vi.mock('../middlewares/iotGateway.schema', () => ({
+  validateCreateIotGateway: (
+    _req: express.Request,
+    _res: express.Response,
+    next: express.NextFunction
+  ) => next(),
+}));
 vi.mock('../middlewares/validateEquipment.middleware', () => ({
   validateCreateEquipment: (
     _req: express.Request,
@@ -115,6 +127,39 @@ describe('RBAC des lectures organisation (session réelle)', () => {
       it(`${url} : autorise operator`, async () => {
         signedInAs('operator');
         expect((await request(app).get(url)).status).toBe(200);
+      });
+    }
+  });
+
+  // La clé d'une passerelle vaut le droit de mettre TOUS les lots d'un frigo en quarantaine :
+  // l'émettre est une action d'administration, pas une opération de terrain (#93).
+  describe('passerelles IoT → administration seule', () => {
+    it('POST /api/organization/iot-gateways : autorise admin', async () => {
+      signedInAs('admin');
+      const res = await request(app)
+        .post('/api/organization/iot-gateways')
+        .send({ nom: 'Passerelle Nord' });
+      expect(res.status).toBe(200);
+    });
+
+    for (const role of ['operator', 'quality', 'viewer']) {
+      it(`POST /api/organization/iot-gateways : REFUSE ${role} (403)`, async () => {
+        signedInAs(role);
+        const res = await request(app)
+          .post('/api/organization/iot-gateways')
+          .send({ nom: 'Passerelle pirate' });
+        expect(res.status).toBe(403);
+      });
+
+      it(`GET /api/organization/iot-gateways : REFUSE ${role} (403)`, async () => {
+        signedInAs(role);
+        expect((await request(app).get('/api/organization/iot-gateways')).status).toBe(403);
+      });
+
+      it(`POST /api/organization/iot-gateways/:id/revoke : REFUSE ${role} (403)`, async () => {
+        signedInAs(role);
+        const res = await request(app).post('/api/organization/iot-gateways/gw-1/revoke');
+        expect(res.status).toBe(403);
       });
     }
   });

@@ -19,3 +19,10 @@ CREATE UNIQUE INDEX "IotGateway_key_hash_key" ON "IotGateway"("key_hash");
 CREATE INDEX "IotGateway_organization_id_idx" ON "IotGateway"("organization_id");
 
 ALTER TABLE "IotGateway" ADD CONSTRAINT "IotGateway_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- ⚠️ REPRISE OBLIGATOIRE SUR UNE BASE DÉJÀ EN SERVICE
+-- La table est créée VIDE : aucune clé n'est reconnue tant qu'une passerelle n'est pas enregistrée,
+-- et un capteur refusé ne se plaint pas. Le hachage se fait côté Node (SHA-256), pas en SQL — d'où
+-- un script plutôt qu'un INSERT ici :
+--     npm run iot:gateway -- --org <organization_id> --cle "$IOT_API_KEY"
+-- En développement, `prisma db seed` le fait déjà pour l'organisation de démonstration.
