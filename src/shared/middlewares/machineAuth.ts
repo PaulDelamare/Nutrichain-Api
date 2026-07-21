@@ -1,28 +1,58 @@
 import { Request, Response, NextFunction } from 'express';
-import { checkApiKey } from '../utils/checkApiKey/checkApiKey';
-import { ensureActiveOrg } from './authGuards';
+import { APIError } from '../utils/errorHandler/APIError';
+import { resolveGatewayOrg } from '../utils/iotGateway/iotGateway';
+import { AuthenticatedRequest, AuthContext } from '../../modules/identity/types/auth.types';
+
+const cleRefusee = () =>
+  new APIError(401, {
+    error: [{ field: 'api_key', message: 'Passerelle IoT inconnue ou révoquée.' }],
+  });
 
 /**
- * Authentifie un **capteur** — une machine, qui ne peut pas ouvrir de session humaine.
+ * Authentifie une **passerelle capteur** — une machine, qui ne peut pas ouvrir de session humaine.
  *
- * Elle utilise `IOT_API_KEY`, **distincte de `API_KEY`**, et c'est le point essentiel : `API_KEY`
- * est compilée dans le bundle de l'application mobile (`EXPO_PUBLIC_API_KEY`), donc extractible par
- * quiconque l'installe. `IOT_API_KEY`, elle, ne quitte jamais le serveur et la passerelle IoT.
+ * La clé présentée est résolue en base (`IotGateway`), et c'est là tout le point : elle porte SON
+ * organisation. Avant, elle retombait sur `API_KEY_ORG_ID`, une variable d'environnement unique —
+ * toute trame était donc estampillée de l'organisation du `.env`. Conséquences (issue #93) : une
+ * organisation créée après coup n'avait aucune chaîne du froid (ingest 202, jamais d'alerte), et un
+ * `sensor_id` homonyme déclenché depuis une autre organisation mettait en quarantaine des lots qui
+ * ne lui appartenaient pas.
  *
- * Pourquoi cette séparation n'est pas de la cérémonie : une trame de télémétrie ne fait PAS
- * qu'écrire une mesure. Elle déclenche `checkAndAlert`, qui met en quarantaine TOUS les lots du
- * matériel visé, lève une alerte PANIC et scelle un maillon d'audit WORM. Avec une clé publique,
- * un inconnu pouvait donc **arrêter la production** en postant une fausse température — un déni de
- * service sanitaire, irréversible depuis l'extérieur.
+ * Une trame de télémétrie ne fait pas qu'écrire une mesure : elle déclenche `checkAndAlert`, qui met
+ * en quarantaine TOUS les lots du matériel visé, lève une alerte PANIC et scelle un maillon d'audit
+ * WORM. D'où la clé dédiée, distincte de l'`API_KEY` compilée dans le bundle mobile.
  *
- * ⚠️ Ce qui reste ouvert, et qu'il faut savoir : la clé IoT est partagée par TOUS les capteurs, et
- * le `sensor_id` est déclaré dans le corps de la requête sans être rattaché à un appareil
- * authentifié. Qui la détient (une passerelle compromise) peut donc encore agir au nom de
- * n'importe quel capteur de l'organisation. Le fermer demande un secret par appareil, ou une
- * signature des trames — hors périmètre ici, et documenté comme limitation.
+ * ⚠️ Ce qui reste ouvert : une passerelle couvre tous les capteurs de son organisation, et le
+ * `sensor_id` est déclaré dans le corps de la requête. Une passerelle compromise peut donc encore
+ * agir au nom de n'importe quel capteur **de son organisation** — plus d'aucune autre. Le fermer
+ * demande un secret par appareil ou une signature des trames : hors périmètre, documenté comme
+ * limitation.
  */
 export const machineAuth = () => {
-  return (req: Request, res: Response, next: NextFunction) => {
-    return checkApiKey(process.env.IOT_API_KEY)(req, res, ensureActiveOrg(req, next));
+  return async (req: Request, res: Response, next: NextFunction) => {
+    const presentedKey = req.header('x-api-key');
+
+    if (!presentedKey) {
+      return next(cleRefusee());
+    }
+
+    try {
+      const organizationId = await resolveGatewayOrg(presentedKey);
+
+      if (!organizationId) {
+        return next(cleRefusee());
+      }
+
+      const authReq = req as AuthenticatedRequest;
+      authReq.activeOrgId = organizationId;
+      authReq.auth = {
+        ...(authReq.auth || {}),
+        activeOrgId: organizationId,
+      } as AuthContext;
+
+      next();
+    } catch (erreur) {
+      next(erreur);
+    }
   };
 };

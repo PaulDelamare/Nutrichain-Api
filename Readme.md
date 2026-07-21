@@ -196,7 +196,7 @@ C'est la règle qui gouverne toutes les routes, et elle tient en une phrase :
 | Middleware | Pour qui | Ce qu'il permet |
 | --- | --- | --- |
 | `sessionAuth(roles)` | tout le métier | Un utilisateur **authentifié**, dont le rôle est **toujours** évalué. |
-| `machineAuth()` | les capteurs IoT | Déposer une mesure, avec `IOT_API_KEY` (secret serveur). |
+| `machineAuth()` | les capteurs IoT | Déposer une mesure, avec la clé d'une **passerelle enregistrée** (`IotGateway`), qui porte son organisation. |
 
 **Deux clés, deux natures** :
 
@@ -204,7 +204,9 @@ C'est la règle qui gouverne toutes les routes, et elle tient en une phrase :
   mobile (`EXPO_PUBLIC_API_KEY`), donc extractible par quiconque l'installe. Elle n'ouvre que
   `/api/auth/*` : elle **identifie une application**, elle n'autorise personne (OWASP API Security :
   *Broken Authentication*).
-- `IOT_API_KEY` — **un vrai secret**, qui ne quitte ni le serveur ni la passerelle IoT. Il lui faut
+- `IOT_API_KEY` — **un vrai secret**, qui ne quitte ni le serveur ni la passerelle IoT, et qui
+  n'ouvre l'ingestion que s'il est enregistré comme passerelle (`IotGateway`, empreinte SHA-256,
+  révocable) : c'est cette ligne qui décide **dans quelle organisation** atterrit la trame. Il lui faut
   ce statut : une trame de télémétrie ne décrit pas, elle **décide** — elle met en quarantaine tous
   les lots du matériel visé, lève une alerte PANIC et scelle un maillon d'audit WORM. Avec une clé
   publique, un inconnu **arrêtait la production** en postant une fausse température.
@@ -245,7 +247,7 @@ Preuve reproductible, contre l'API réelle : `npm run e2e:api-key`.
 
 ## Limitations connues
 
-- **Authenticité des capteurs (trou assumé, et il est sérieux)** : `IOT_API_KEY` est **partagée par tous les capteurs**, et le `sensor_id` est déclaré dans le corps de la requête sans être rattaché à un appareil authentifié. Qui détient cette clé (une passerelle compromise) peut donc agir au nom de **n'importe quel capteur de l'organisation** — et une trame ne fait pas qu'écrire une mesure : elle **met en quarantaine tous les lots du matériel visé** et lève une alerte PANIC. Autrement dit : fabriquer une chaîne du froid conforme, noyer une vraie excursion, **ou arrêter la production**. La séparation des clés met cette capacité hors de portée d'un client public (le bundle mobile) ; la fermer complètement demande un **secret par appareil** ou une **signature des trames** — hors périmètre de ce projet, et c'est le prochain durcissement à faire. La garde multi-tenant, elle, tient : une trame ne peut pas atterrir dans une autre organisation.
+- **Authenticité des capteurs (trou assumé, et il est sérieux)** : la clé d'une passerelle couvre **tous les capteurs de son organisation**, et le `sensor_id` est déclaré dans le corps de la requête sans être rattaché à un appareil authentifié. Qui détient cette clé (une passerelle compromise) peut donc agir au nom de n'importe quel capteur **de cette organisation** — et une trame ne fait pas qu'écrire une mesure : elle **met en quarantaine tous les lots du matériel visé** et lève une alerte PANIC. Autrement dit : fabriquer une chaîne du froid conforme, noyer une vraie excursion, **ou arrêter la production**. La séparation des clés met cette capacité hors de portée d'un client public (le bundle mobile), et l'enregistrement des passerelles la borne à un seul tenant (elle est de plus **révocable** sans redéploiement) ; la fermer complètement demande un **secret par appareil** ou une **signature des trames** — hors périmètre de ce projet, et c'est le prochain durcissement à faire.
 - **Aperçu d'invitation** (`GET /identity/invitations/:token/preview`) : accessible avec la seule clé publique, il expose l'e-mail et le rôle de l'invité — une donnée personnelle. C'est nécessaire (l'écran d'inscription s'affiche avant toute session) et borné par la connaissance du jeton, mais c'est une lecture de PII sans compte, à connaître pour le DPIA.
 - **ABAC** : l'attribution par site (`Location`) prévue par l'objectif sécurité est reportée — les utilisateurs sont rattachés à l'organisation, pas au site.
 - **Préfixe GS1 simulé** : les identifiants GS1 sont conformes (numéro de lot court AI 10, URN LGTIN/SSCC, GS1 Digital Link), mais le préfixe entreprise par défaut (`3456789`) est fictif — projet d'école, aucun préfixe réel acheté auprès de GS1. Chaque organisation peut renseigner le sien (`Organization.gs1_company_prefix`). Les URN sont découpées positionnellement à la longueur du préfixe déclaré, sans vérifier que le GTIN (fictif en démo) encode réellement ce préfixe ; un déploiement réel validerait cette correspondance à l'enregistrement produit. Le `lot_number` (suffixe aléatoire, ~2 Md de combinaisons/jour/org) s'appuie sur la contrainte d'unicité en base sans retry applicatif — une collision (improbable avant ~50 000 lots/jour/org) renverrait un 400.

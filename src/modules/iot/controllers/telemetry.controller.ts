@@ -48,14 +48,17 @@ export const ingestTelemetry = catchAsync(async (req: AuthenticatedRequest, res:
   // quarantaine (ils restent expédiables) — une rupture de chaîne du froid passerait inaperçue.
   // On laisse donc l'erreur remonter (500) pour que le capteur ré-émette. Le point brut est déjà
   // persisté ci-dessus. Les conflits de sérialisation transitoires sont rejoués dans checkAndAlert.
-  await iotAlertService.checkAndAlert({
+  const detection = await iotAlertService.checkAndAlert({
     sensorId: sensor_id,
     organizationId: organization_id,
     currentTemp: temperature,
     timestamp,
   });
 
-  sendSuccess(res, 202, 'Telemetry ingested successfully.', { sensor_id });
+  // La trame est persistée dans tous les cas, mais la surveillance ne tourne QUE si le capteur est
+  // rattaché à un matériel doté d'un seuil. Le taire derrière un « success » laissait une
+  // installation entière se croire surveillée alors qu'aucune alerte n'était possible (#93).
+  sendSuccess(res, 202, 'Telemetry ingested successfully.', { sensor_id, detection });
 });
 
 /**
