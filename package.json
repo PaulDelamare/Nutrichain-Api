@@ -49,7 +49,8 @@
     "e2e:audit-chain": "tsx --env-file=.env scripts/e2e-audit-chain.ts",
     "e2e:iot-gateway": "tsx --env-file=.env scripts/e2e-iot-gateway-tenant.ts",
     "iot:gateway": "tsx --env-file=.env scripts/provision-iot-gateway.ts",
-    "e2e:sscc": "tsx --env-file=.env scripts/e2e-sscc-concurrent.ts"
+    "e2e:sscc": "tsx --env-file=.env scripts/e2e-sscc-concurrent.ts",
+    "e2e:invitation": "tsx --env-file=.env scripts/e2e-invitation-tenant.ts"
   },
   "lint-staged": {
     "src/**/*.{ts,js}": [

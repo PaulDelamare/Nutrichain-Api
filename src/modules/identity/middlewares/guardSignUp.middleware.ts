@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { bdd } from '../../../shared/configs/prismaClient.config';
 import { APIError } from '../../../shared/utils/errorHandler/APIError';
 import { catchAsync } from '../../../shared/utils/errorHandler/catchAsync';
+import { runWithValidatedInvitation } from '../utils/signupInvitationContext';
 
 /**
  * Middleware métier pour sécuriser la création de compte.
@@ -71,6 +72,8 @@ export const requireInvitationOrFirstUser = catchAsync(
       });
     }
 
-    next();
+    // La suite s'exécute en mémorisant CETTE invitation : le hook d'enrôlement ne re-cherchera pas
+    // par e-mail, ce qui attribuait l'organisation d'une autre invitation en attente (#95).
+    runWithValidatedInvitation(invitation.id, () => next());
   }
 );
