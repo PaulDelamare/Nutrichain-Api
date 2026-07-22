@@ -2,12 +2,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { qualityControlService } from './qualityControl.service';
 import { prisma } from '../../../shared/configs/prismaClient.config';
 import { APIError } from '../../../shared/utils/errorHandler/APIError';
+import { auditService } from '../../../shared/utils/audit/audit.service';
 
 vi.mock('../../../shared/configs/prismaClient.config', () => ({
   prisma: {
     batch: { findFirst: vi.fn(), updateMany: vi.fn(), findMany: vi.fn() },
     qualityControl: { create: vi.fn() },
     batch_Mouvement: { create: vi.fn() },
+    member: { findFirst: vi.fn() },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     $transaction: vi.fn(async (cb: any) => cb(prisma)),
   },
@@ -25,6 +27,8 @@ function lot(statut: string) {
     quantite_actuelle: 100,
     unite_code: 'L',
     version: 3,
+    // `Batch.created_by` est NOT NULL en base : un mock sans lui testerait un monde imaginaire.
+    created_by: 'operateur-2',
   };
 }
 
@@ -41,6 +45,9 @@ beforeEach(() => {
   vi.mocked(prisma.qualityControl.create).mockResolvedValue({ id: 'qc-1' } as any);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   vi.mocked(prisma.batch.updateMany).mockResolvedValue({ count: 1 } as any);
+  // Par défaut l'organisation compte un second décideur : la séparation des tâches s'applique.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  vi.mocked(prisma.member.findFirst).mockResolvedValue({ id: 'membre-qualite' } as any);
 });
 
 describe('createQualityControl — la table d’états', () => {
@@ -138,6 +145,96 @@ describe('createQualityControl — la table d’états', () => {
     await expect(
       qualityControlService.createQualityControl({ ...input, resultat: 'CONFORME' })
     ).rejects.toThrow(APIError);
+  });
+
+  /**
+   * Séparation des tâches HACCP : celui qui produit ne signe pas la libération de sa propre
+   * production. La garde ne vise QUE la décision libératoire — un producteur doit rester
+   * capable de bloquer son lot, sinon on décourage la remontée d'une non-conformité.
+   */
+  it("refuse qu'un lot soit libéré par celui qui l'a produit", async () => {
+    vi.mocked(prisma.batch.findFirst).mockResolvedValue(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { ...lot('EN_ATTENTE_QC'), created_by: 'user-qualite' } as any
+    );
+
+    await expect(
+      qualityControlService.createQualityControl({ ...input, resultat: 'CONFORME' })
+    ).rejects.toMatchObject({ status: 403 });
+
+    expect(prisma.qualityControl.create).not.toHaveBeenCalled();
+    expect(prisma.batch.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('laisse le producteur déclarer SON lot non conforme', async () => {
+    vi.mocked(prisma.batch.findFirst).mockResolvedValue(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { ...lot('EN_ATTENTE_QC'), created_by: 'user-qualite' } as any
+    );
+
+    const res = await qualityControlService.createQualityControl({
+      ...input,
+      resultat: 'NON_CONFORME',
+    });
+
+    expect(res.statut_lot).toBe('BLOQUE');
+  });
+
+  /**
+   * Sans cet échappement, une organisation d'un seul membre — l'état de TOUTE organisation à sa
+   * création — verrait ses lots définitivement figés. On laisse passer, et l'audit porte la marque.
+   */
+  it("libère malgré tout, en le traçant, quand personne d'autre ne peut décider", async () => {
+    vi.mocked(prisma.batch.findFirst).mockResolvedValue(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { ...lot('EN_ATTENTE_QC'), created_by: 'user-qualite' } as any
+    );
+    vi.mocked(prisma.member.findFirst).mockResolvedValue(null);
+
+    const res = await qualityControlService.createQualityControl({
+      ...input,
+      resultat: 'CONFORME',
+    });
+
+    expect(res.statut_lot).toBe('EN_STOCK');
+    expect(auditService.logAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        newValue: expect.objectContaining({
+          separation_des_taches: 'AUTO_SIGNEE_AUCUN_AUTRE_DECIDEUR',
+        }),
+      }),
+      expect.anything()
+    );
+  });
+
+  it("n'inscrit aucune mention de séparation quand la décision est prise par un tiers", async () => {
+    vi.mocked(prisma.batch.findFirst).mockResolvedValue(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      lot('EN_ATTENTE_QC') as any
+    );
+
+    await qualityControlService.createQualityControl({ ...input, resultat: 'CONFORME' });
+
+    expect(auditService.logAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        newValue: expect.not.objectContaining({ separation_des_taches: expect.anything() }),
+      }),
+      expect.anything()
+    );
+  });
+
+  it('laisse un tiers libérer le lot', async () => {
+    vi.mocked(prisma.batch.findFirst).mockResolvedValue(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { ...lot('EN_ATTENTE_QC'), created_by: 'un-autre-operateur' } as any
+    );
+
+    const res = await qualityControlService.createQualityControl({
+      ...input,
+      resultat: 'CONFORME',
+    });
+
+    expect(res.statut_lot).toBe('EN_STOCK');
   });
 
   it('trace le contrôle dans l’historique du lot', async () => {

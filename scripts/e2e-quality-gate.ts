@@ -53,6 +53,8 @@ interface Fixtures {
   uniteCode: string;
   equipmentId: string;
   userId: string;
+  /** Décideur qualité, DISTINCT de `userId` : on ne libère pas le lot qu'on a soi-même produit. */
+  qualityUserId: string;
   batchIds: string[];
 }
 
@@ -65,6 +67,22 @@ async function setup(): Promise<Fixtures> {
   const equipment = await prisma.equipment.findFirst({ where: { organization_id: ORG_ID! } });
   if (!member || !product || !supplier || !equipment) {
     throw new Error('member / product / supplier / equipment seedé manquant pour cette org.');
+  }
+
+  // Séparation des tâches HACCP : le contrôle libératoire doit être signé par quelqu'un d'autre
+  // que le producteur du lot.
+  const qualityMember = await prisma.member.findFirst({
+    where: {
+      organizationId: ORG_ID!,
+      userId: { not: member.userId },
+      role: { in: ['owner', 'admin', 'quality'] },
+    },
+  });
+  if (!qualityMember) {
+    throw new Error(
+      'Aucun second membre habilité (owner/admin/quality) : le contrôle libératoire ne peut pas ' +
+        'être joué. Lance `npx prisma db seed` pour créer les comptes par rôle.'
+    );
   }
 
   const customer = await prisma.customer.create({
@@ -83,6 +101,7 @@ async function setup(): Promise<Fixtures> {
     uniteCode: product.unite_reference,
     equipmentId: equipment.id,
     userId: member.userId,
+    qualityUserId: qualityMember.userId,
     batchIds: [],
   };
 }
@@ -179,13 +198,26 @@ async function main() {
       'transformation du lot non contrôlé REFUSÉE'
     );
 
-    console.log('\n3 — Un contrôle CONFORME le libère');
+    console.log('\n3 — Un contrôle CONFORME le libère, signé par un TIERS');
+    assert(
+      await isRejected(
+        qualityControlService.createQualityControl({
+          organization_id: ORG_ID!,
+          id_lot: fini,
+          type_test: 'Analyse microbiologique',
+          resultat: 'CONFORME',
+          id_user_labo: f.userId,
+        })
+      ),
+      'contrôle libératoire signé par le PRODUCTEUR refusé (séparation des tâches)'
+    );
+
     await qualityControlService.createQualityControl({
       organization_id: ORG_ID!,
       id_lot: fini,
       type_test: 'Analyse microbiologique',
       resultat: 'CONFORME',
-      id_user_labo: f.userId,
+      id_user_labo: f.qualityUserId,
     });
     assert((await statutOf(fini)) === BATCH_STATUSES.IN_STOCK, 'lot libéré (EN_STOCK)');
     await ship(f, fini, 10);

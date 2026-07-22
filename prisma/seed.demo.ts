@@ -120,6 +120,30 @@ async function main() {
   if (!member) throw new Error('Aucun member owner/admin. Lance d’abord `npm run seed`.');
   const userId = member.userId;
 
+  // Les lots sont PRODUITS par l'opérateur, pas par l'administrateur qui fera la démonstration.
+  // Sans cela, la levée de quarantaine de l'étape 5 du scénario est refusée en 403 : on ne libère
+  // pas sa propre production (séparation des tâches HACCP).
+  //
+  // On vise le compte de démonstration NOMMÉ, pas « un opérateur » : un `findFirst` sur le rôle
+  // désignait au hasard n'importe quel opérateur de l'organisation — y compris un compte personnel
+  // ou un résidu de test e2e — et le jeu de démonstration cessait d'être reproductible.
+  const demoOperator = await prisma.user.findFirst({
+    where: {
+      email: 'operator@nutrichain.local',
+      // `Batch.created_by` est une FK vers `User` SANS contrainte d'organisation : sans ce filtre,
+      // le seed pourrait attribuer une production à quelqu'un d'extérieur au tenant.
+      members: { some: { organizationId: orgId } },
+    },
+    select: { id: true },
+  });
+  const producerId = demoOperator?.id ?? userId;
+  if (!demoOperator) {
+    logger.warn(
+      '   ⚠️ Compte operator@nutrichain.local absent : les lots sont attribués à l’administrateur, ' +
+        'et la levée de quarantaine de démo sera refusée (403). Relance `npx prisma db seed`.'
+    );
+  }
+
   const milk = await prisma.product.findFirst({
     where: { organization_id: orgId, nom: { contains: 'Lait 1L' } },
   });
@@ -228,7 +252,7 @@ async function main() {
         quantite_base: 2000,
         date_peremption: day(4),
         statut: 'EN_STOCK',
-        created_by: userId,
+        created_by: producerId,
       },
       {
         id: ID.lotCruB,
@@ -241,7 +265,7 @@ async function main() {
         quantite_base: 1500,
         date_peremption: day(4),
         statut: 'EN_STOCK',
-        created_by: userId,
+        created_by: producerId,
       },
       // Lots produits finis (enfants) — créés puis reliés par transformation
       {
@@ -255,7 +279,7 @@ async function main() {
         quantite_base: 3000,
         date_peremption: day(30),
         statut: 'EN_STOCK',
-        created_by: userId,
+        created_by: producerId,
       },
       {
         id: ID.lotBeurre,
@@ -268,7 +292,7 @@ async function main() {
         quantite_base: 200,
         date_peremption: day(90),
         statut: 'EN_STOCK',
-        created_by: userId,
+        created_by: producerId,
       },
       // Lot fraîchement transformé : il ATTEND son contrôle de sortie d'usine.
       // Barrière qualité : il n'est ni expédiable ni transformable tant qu'un contrôle
@@ -284,7 +308,7 @@ async function main() {
         quantite_base: 1200,
         date_peremption: day(28),
         statut: 'EN_ATTENTE_QC',
-        created_by: userId,
+        created_by: producerId,
       },
       // Lot en quarantaine (contrôle non conforme)
       {
@@ -298,7 +322,7 @@ async function main() {
         quantite_base: 30,
         date_peremption: day(60),
         statut: 'BLOQUE',
-        created_by: userId,
+        created_by: producerId,
       },
     ],
   });
@@ -309,7 +333,7 @@ async function main() {
       id: ID.transfoAttenteQc,
       id_lot_enfant: ID.lotAttenteQc,
       id_produit_fini: milk.id,
-      id_user: userId,
+      id_user: producerId,
       id_materiel: ID.eqCuve,
       statut: 'TERMINE',
       compositions: {
@@ -329,7 +353,7 @@ async function main() {
       id: ID.transfoLait,
       id_lot_enfant: ID.lotLait,
       id_produit_fini: milk.id,
-      id_user: userId,
+      id_user: producerId,
       id_materiel: ID.eqCuve,
       statut: 'TERMINE',
       compositions: {
@@ -355,7 +379,7 @@ async function main() {
       id: ID.transfoBeurre,
       id_lot_enfant: ID.lotBeurre,
       id_produit_fini: butter.id,
-      id_user: userId,
+      id_user: producerId,
       id_materiel: ID.eqCuve,
       statut: 'TERMINE',
       compositions: {
@@ -413,15 +437,15 @@ async function main() {
   // 7. Mouvements de lots (réception, transformation, expédition)
   await prisma.batch_Mouvement.createMany({
     data: [
-      { id_lot: ID.lotCruA, type_action: 'RECEPTION', quantite: 2000, unite: 'L', id_user: userId },
-      { id_lot: ID.lotCruB, type_action: 'RECEPTION', quantite: 1500, unite: 'L', id_user: userId },
+      { id_lot: ID.lotCruA, type_action: 'RECEPTION', quantite: 2000, unite: 'L', id_user: producerId },
+      { id_lot: ID.lotCruB, type_action: 'RECEPTION', quantite: 1500, unite: 'L', id_user: producerId },
       {
         id_lot: ID.lotLait,
         type_action: 'TRANSFORMATION',
         quantite: 3000,
         unite: 'L',
         id_transformation: ID.transfoLait,
-        id_user: userId,
+        id_user: producerId,
       },
       {
         id_lot: ID.lotBeurre,
@@ -429,7 +453,7 @@ async function main() {
         quantite: 800,
         unite: 'kg',
         id_transformation: ID.transfoBeurre,
-        id_user: userId,
+        id_user: producerId,
       },
       {
         id_lot: ID.lotLait,
@@ -437,7 +461,7 @@ async function main() {
         quantite: 1500,
         unite: 'L',
         id_expedition: ID.shipLait,
-        id_user: userId,
+        id_user: producerId,
       },
     ],
   });
