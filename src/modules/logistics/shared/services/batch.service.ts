@@ -4,6 +4,7 @@ import { APIError } from '../../../../shared/utils/errorHandler/APIError';
 import { auditService } from '../../../../shared/utils/audit/audit.service';
 import { retryableTransaction } from '../../../../shared/utils/db/withWriteConflictRetry';
 import { gs1Utils } from '../../../../shared/utils/gs1/gs1.utils';
+import { enforceSeparationOfDuties, SELF_RELEASE_TRACE } from '../utils/separationOfDuties';
 import { BATCH_STATUSES, BatchStatus, MOVEMENT_TYPES } from '../../constants/logistics.constants';
 
 /** Plafond de l'historique renvoyé avec un lot (frise de la fiche lot). */
@@ -159,6 +160,13 @@ export const batchService = {
           });
         }
 
+        const autoSignee = await enforceSeparationOfDuties(tx, {
+          organizationId: activeOrgId,
+          batchCreatedBy: batch.created_by,
+          actorUserId: userId,
+          field: 'batch',
+        });
+
         const updated = await tx.batch.update({
           where: { id },
           data: {
@@ -188,7 +196,11 @@ export const batchService = {
             entity: 'Batch',
             entityId: id,
             oldValue: { statut: batch.statut },
-            newValue: { statut: BATCH_STATUSES.IN_STOCK, motif },
+            newValue: {
+              statut: BATCH_STATUSES.IN_STOCK,
+              motif,
+              ...(autoSignee ? { separation_des_taches: SELF_RELEASE_TRACE } : {}),
+            },
           },
           tx
         );

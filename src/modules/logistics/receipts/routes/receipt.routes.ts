@@ -72,8 +72,9 @@ router.get(
   getBatchLabelController
 );
 
-// Levée de quarantaine : décision qualité réservée à Qualité / Admin / Owner
-// (l'opérateur en est exclu — séparation des tâches HACCP).
+// Levée de quarantaine : décision qualité réservée à Qualité / Admin / Owner. Le rôle ne suffit
+// pas — le service refuse en plus que le lot soit libéré par celui qui l'a enregistré
+// (cf. `separationOfDuties`), sauf si l'organisation n'a aucun autre décideur habilité.
 router.post(
   '/logistics/batches/:id/release',
   sessionAuth(QUALITY_ROLES),

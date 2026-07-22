@@ -12,6 +12,7 @@ vi.mock('../../../../shared/configs/prismaClient.config', () => ({
       update: vi.fn(),
     },
     batch_Mouvement: { create: vi.fn() },
+    member: { findFirst: vi.fn() },
     // Simule une transaction en passant le mock prisma au callback
     $transaction: vi.fn(async (cb) => cb(prisma)),
   },
@@ -24,6 +25,9 @@ vi.mock('../../../../shared/utils/audit/audit.service', () => ({
 describe('BatchSharedService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Par défaut l'organisation compte un second décideur : la séparation des tâches s'applique.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(prisma.member.findFirst).mockResolvedValue({ id: 'membre-qualite' } as any);
   });
 
   describe('createBatch', () => {
@@ -133,7 +137,7 @@ describe('BatchSharedService', () => {
     it('doit lever la quarantaine (BLOQUE -> EN_STOCK) et tracer la décision dans l audit', async () => {
       vi.mocked(prisma.batch.findFirst).mockResolvedValue(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        { id: 'batch-1', organization_id: 'org-1', statut: 'BLOQUE' } as any
+        { id: 'batch-1', organization_id: 'org-1', statut: 'BLOQUE', created_by: 'operateur-2' } as any
       );
       vi.mocked(prisma.batch.update).mockResolvedValue({
         id: 'batch-1',
@@ -204,7 +208,7 @@ describe('BatchSharedService', () => {
     it('doit refuser (409) la levée si le lot n est pas en quarantaine', async () => {
       vi.mocked(prisma.batch.findFirst).mockResolvedValue(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        { id: 'batch-1', organization_id: 'org-1', statut: 'EN_STOCK' } as any
+        { id: 'batch-1', organization_id: 'org-1', statut: 'EN_STOCK', created_by: 'operateur-2' } as any
       );
 
       const action = batchService.liftQuarantine('batch-1', 'org-1', 'user-1', 'motif');
@@ -212,6 +216,65 @@ describe('BatchSharedService', () => {
       await expect(action).rejects.toMatchObject({ status: 409 });
       expect(prisma.batch.update).not.toHaveBeenCalled();
       expect(auditService.logAction).not.toHaveBeenCalled();
+    });
+
+    /**
+     * Séparation des tâches HACCP : sans cette garde, un `admin` — présent dans WRITE_ROLES ET
+     * QUALITY_ROLES — produit un lot, le voit partir en quarantaine, et signe lui-même sa remise
+     * en stock. Le contrôle qualité ne serait alors qu'une formalité auto-administrée.
+     */
+    it("doit refuser (403) la levée par celui qui a produit le lot", async () => {
+      vi.mocked(prisma.batch.findFirst).mockResolvedValue(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        { id: 'batch-1', organization_id: 'org-1', statut: 'BLOQUE', created_by: 'user-1' } as any
+      );
+
+      const action = batchService.liftQuarantine('batch-1', 'org-1', 'user-1', 'motif');
+      await expect(action).rejects.toMatchObject({ status: 403 });
+      expect(prisma.batch.update).not.toHaveBeenCalled();
+      expect(auditService.logAction).not.toHaveBeenCalled();
+    });
+
+    /**
+     * Échappement mono-membre : une organisation à un seul décideur ne doit pas se retrouver avec
+     * des lots inlibérables — y compris ceux mis en quarantaine automatiquement par une excursion
+     * de température. On laisse passer, et l'audit dit que la décision est auto-signée.
+     */
+    it("lève malgré tout, en le traçant, quand personne d'autre ne peut décider", async () => {
+      vi.mocked(prisma.batch.findFirst).mockResolvedValue(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        { id: 'batch-1', organization_id: 'org-1', statut: 'BLOQUE', created_by: 'user-1' } as any
+      );
+      vi.mocked(prisma.member.findFirst).mockResolvedValue(null);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(prisma.batch.update).mockResolvedValue({ id: 'batch-1' } as any);
+
+      await batchService.liftQuarantine('batch-1', 'org-1', 'user-1', 'seul habilité');
+
+      expect(auditService.logAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          newValue: expect.objectContaining({
+            separation_des_taches: 'AUTO_SIGNEE_AUCUN_AUTRE_DECIDEUR',
+          }),
+        }),
+        expect.anything()
+      );
+    });
+
+    it('laisse un tiers lever la quarantaine du lot', async () => {
+      vi.mocked(prisma.batch.findFirst).mockResolvedValue(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        { id: 'batch-1', organization_id: 'org-1', statut: 'BLOQUE', created_by: 'operateur-2' } as any
+      );
+      vi.mocked(prisma.batch.update).mockResolvedValue({
+        id: 'batch-1',
+        statut: 'EN_STOCK',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+
+      const result = await batchService.liftQuarantine('batch-1', 'org-1', 'user-1', 'motif');
+
+      expect(result.statut).toBe('EN_STOCK');
     });
   });
 

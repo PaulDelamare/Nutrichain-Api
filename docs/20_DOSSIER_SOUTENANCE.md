@@ -73,8 +73,9 @@ Requêtes prêtes dans la collection Bruno (`Nutrichain.json`).
 | 1 | L'ERP pousse son catalogue | `POST /api/connectors/imports/products` puis `/customers` (CSV) | Import idempotent, validation ligne à ligne, GTIN-13/14 imposé |
 | 2 | Réception fournisseur | `POST /api/logistics/receipts` (avec `id_materiel` de stockage) | Lot créé avec **numéro GS1 court** (`AAMMJJ-XXXXXX`), **rattaché à son emplacement** (matériel → lieu, position connue) + ObjectEvent EPCIS en **URN LGTIN** |
 | 3 | Étiquette du lot | `GET /api/logistics/batches/:id/label` | QR code **GS1 Digital Link** (GTIN + lot) |
-| 4 | Réception NON CONFORME | `POST /api/logistics/receipts` (`statut_controle: NONCONFORME`) | Lot créé **BLOQUE** (quarantaine HACCP) — l'expédier renvoie 400 |
-| 5 | Décision qualité | `POST /api/logistics/batches/:id/release` (motif obligatoire) | Levée tracée dans l'audit WORM |
+| 4 | Réception NON CONFORME — **connecté en `operator`** | `POST /api/logistics/receipts` (`statut_controle: NONCONFORME`) | Lot créé **BLOQUE** (quarantaine HACCP) — l'expédier renvoie 400 |
+| 5a | L'opérateur tente de lever SA propre quarantaine | `POST /api/logistics/batches/:id/release` | **403** : on ne libère pas le lot qu'on a enregistré (séparation des tâches) |
+| 5b | Décision qualité — **se reconnecter en `quality`** | `POST /api/logistics/batches/:id/release` (motif obligatoire) | Levée acceptée et tracée dans l'audit WORM |
 | 6 | Transformation | `POST /api/traceability/transformations` | Lot enfant + généalogie (`GET .../batches/:id/genealogy`) + TransformationEvent LGTIN |
 | 7 | Expédition | `POST /api/logistics/shipments` (`shipment_id: AUTO`) | **SSCC 18 chiffres** généré + AggregationEvent (palette ⊃ lots) |
 | 8 | Excursion chaîne du froid | `POST /api/telemetry/ping` (température hors seuil) | Alerte TEMP_EXCURSION < 30 s + email **ET les lots stockés dans l'équipement passent automatiquement en quarantaine (`BLOQUE`)** ; résolution `PATCH /api/alerts/:id/resolve` |
@@ -95,7 +96,11 @@ Requêtes prêtes dans la collection Bruno (`Nutrichain.json`).
   même transaction** ; vérification à la demande et par job planifié ; checkpoints
   anti-troncature. Aucune route de modification/suppression n'existe.
 - **Sûreté sanitaire (HACCP)** : lot non conforme → quarantaine `BLOQUE`, intransformable
-  et inexpédiable ; levée uniquement par décision qualité tracée avec motif.
+  et inexpédiable ; levée uniquement par décision qualité tracée avec motif, et **signée par une
+  autre personne que celle qui a enregistré le lot** (séparation des tâches). La règle porte sur la
+  personne, pas sur le rôle : `admin` conserve ses droits, mais pas sur sa propre production. Si
+  l'organisation ne compte aucun autre décideur habilité, la levée passe et l'audit porte la
+  mention `AUTO_SIGNEE_AUCUN_AUTRE_DECIDEUR` — on trace au lieu de bloquer du stock.
 - **Durcissement** : validation VineJS systématique (messages français), anti-XSS emails,
   anti-injection de formule CSV à l'export, sanitization CRLF, variables d'environnement
   validées au démarrage (fail-fast), rate limiting.

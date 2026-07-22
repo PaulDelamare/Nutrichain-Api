@@ -4,6 +4,10 @@ import { APIError } from '../../../shared/utils/errorHandler/APIError';
 import { auditService } from '../../../shared/utils/audit/audit.service';
 import { retryableTransaction } from '../../../shared/utils/db/withWriteConflictRetry';
 import {
+  enforceSeparationOfDuties,
+  SELF_RELEASE_TRACE,
+} from '../../logistics/shared/utils/separationOfDuties';
+import {
   BATCH_STATUSES,
   MOVEMENT_TYPES,
   QUALITY_RESULTS,
@@ -91,6 +95,17 @@ export const qualityControlService = {
 
         const target = nextStatus(batch.statut, data.resultat);
 
+        // La garde ne porte que sur la LIBÉRATION : déclarer son propre lot non conforme reste
+        // permis, et doit le rester (cf. `enforceSeparationOfDuties`).
+        const autoSignee =
+          target === BATCH_STATUSES.IN_STOCK &&
+          (await enforceSeparationOfDuties(tx, {
+            organizationId: data.organization_id,
+            batchCreatedBy: batch.created_by,
+            actorUserId: data.id_user_labo,
+            field: 'id_lot',
+          }));
+
         const control = await tx.qualityControl.create({
           data: {
             organization_id: data.organization_id,
@@ -157,6 +172,7 @@ export const qualityControlService = {
               statut: target ?? batch.statut,
               resultat: data.resultat,
               type_test: data.type_test,
+              ...(autoSignee ? { separation_des_taches: SELF_RELEASE_TRACE } : {}),
             },
           },
           tx

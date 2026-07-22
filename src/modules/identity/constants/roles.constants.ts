@@ -37,8 +37,12 @@ export const WRITE_ROLES: Role[] = [ROLES.OWNER, ROLES.ADMIN, ROLES.OPERATOR];
 
 /**
  * Décisions qualité / sécurité (levée de quarantaine, rappel, résolution d'alerte,
- * contrôles qualité). L'opérateur en est exclu : séparation des tâches HACCP —
- * celui qui réceptionne ne valide pas sa propre quarantaine.
+ * contrôles qualité). L'opérateur en est exclu.
+ *
+ * ⚠️ Ce découpage NE SUFFIT PAS à assurer la séparation des tâches HACCP : `owner` et `admin`
+ * figurent ici ET dans `WRITE_ROLES`, donc ils enregistrent un lot et peuvent en signer la
+ * libération. La règle qui l'interdit porte sur la personne et vit dans
+ * `logistics/shared/utils/separationOfDuties.ts`.
  */
 export const QUALITY_ROLES: Role[] = [ROLES.OWNER, ROLES.ADMIN, ROLES.QUALITY];
 
