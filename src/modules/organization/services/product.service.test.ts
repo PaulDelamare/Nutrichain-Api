@@ -6,16 +6,21 @@ const productUpdate = vi.fn();
 const batchCount = vi.fn();
 const logAction = vi.fn();
 
-vi.mock('../../../shared/configs/prismaClient.config', () => ({
-  prisma: {
+vi.mock('../../../shared/configs/prismaClient.config', () => {
+  const mockPrisma: Record<string, unknown> = {
+    // Les écritures passent par `retryableTransaction` : le mock rejoue le callback avec
+    // lui-même en guise de client transactionnel.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    $transaction: (cb: any) => cb(mockPrisma),
     product: {
       findFirst: (...a: unknown[]) => productFindFirst(...a),
       create: (...a: unknown[]) => productCreate(...a),
       update: (...a: unknown[]) => productUpdate(...a),
     },
     batch: { count: (...a: unknown[]) => batchCount(...a) },
-  },
-}));
+  };
+  return { prisma: mockPrisma, bdd: mockPrisma };
+});
 vi.mock('../../../shared/utils/audit/audit.service', () => ({
   auditService: { logAction: (...a: unknown[]) => logAction(...a) },
 }));
@@ -46,7 +51,10 @@ describe('productService.create', () => {
     const res = await productService.create(INPUT, ORG, 'admin');
 
     expect(res.id).toBe('p1');
-    expect(logAction).toHaveBeenCalledWith(expect.objectContaining({ action: 'CREATE_PRODUCT' }));
+    expect(logAction).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'CREATE_PRODUCT' }),
+      expect.anything()
+    );
   });
 
   it('refuse un GTIN déjà utilisé dans l’organisation (409)', async () => {
@@ -101,7 +109,10 @@ describe('productService.setActive', () => {
     productUpdate.mockResolvedValue({ id: 'p1', is_active: false });
 
     await productService.setActive('p1', false, ORG, 'admin');
-    expect(logAction).toHaveBeenCalledWith(expect.objectContaining({ action: 'ARCHIVE_PRODUCT' }));
+    expect(logAction).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'ARCHIVE_PRODUCT' }),
+      expect.anything()
+    );
   });
 
   it("n'écrit rien si l'état ne change pas", async () => {

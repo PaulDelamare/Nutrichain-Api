@@ -298,6 +298,11 @@ model Product {
   transformations           Transformation[]
   RecipeComposition         RecipeComposition[]
 
+  /// Le GTIN identifie le produit (URN GS1) et sert de clé d'idempotence à l'import CSV.
+  /// La contrainte est en BASE, pas seulement applicative : vérifié côté application, deux
+  /// créations simultanées passaient toutes les deux et le catalogue se retrouvait avec deux
+  /// produits pour un même GTIN — après quoi l'import n'en met à jour qu'un, arbitrairement.
+  @@unique([organization_id, code_gtin])
   @@index([organization_id])
 }
 

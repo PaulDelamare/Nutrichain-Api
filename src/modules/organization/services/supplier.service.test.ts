@@ -6,16 +6,21 @@ const create = vi.fn();
 const update = vi.fn();
 const logAction = vi.fn();
 
-vi.mock('../../../shared/configs/prismaClient.config', () => ({
-  prisma: {
+vi.mock('../../../shared/configs/prismaClient.config', () => {
+  const mockPrisma: Record<string, unknown> = {
+    // Les écritures passent par `retryableTransaction` : le mock rejoue le callback avec
+    // lui-même en guise de client transactionnel.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    $transaction: (cb: any) => cb(mockPrisma),
     supplier: {
       findMany: (...a: unknown[]) => findMany(...a),
       findFirst: (...a: unknown[]) => findFirst(...a),
       create: (...a: unknown[]) => create(...a),
       update: (...a: unknown[]) => update(...a),
     },
-  },
-}));
+  };
+  return { prisma: mockPrisma, bdd: mockPrisma };
+});
 vi.mock('../../../shared/utils/audit/audit.service', () => ({
   auditService: { logAction: (...a: unknown[]) => logAction(...a) },
 }));
@@ -43,7 +48,8 @@ describe('supplierService.create', () => {
       expect.objectContaining({ data: expect.objectContaining({ organization_id: ORG }) })
     );
     expect(logAction).toHaveBeenCalledWith(
-      expect.objectContaining({ action: 'CREATE_SUPPLIER', organizationId: ORG })
+      expect.objectContaining({ action: 'CREATE_SUPPLIER', organizationId: ORG }),
+      expect.anything()
     );
   });
 });
@@ -65,7 +71,10 @@ describe('supplierService.update — multi-tenancy', () => {
 
     await supplierService.update('s1', { nom_ferme: 'Après' }, ORG, 'admin');
 
-    expect(logAction).toHaveBeenCalledWith(expect.objectContaining({ action: 'UPDATE_SUPPLIER' }));
+    expect(logAction).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'UPDATE_SUPPLIER' }),
+      expect.anything()
+    );
   });
 });
 
@@ -77,7 +86,10 @@ describe('supplierService.setActive — archivage / réactivation', () => {
     await supplierService.setActive('s1', false, ORG, 'admin');
 
     expect(update).toHaveBeenCalledWith(expect.objectContaining({ data: { is_active: false } }));
-    expect(logAction).toHaveBeenCalledWith(expect.objectContaining({ action: 'ARCHIVE_SUPPLIER' }));
+    expect(logAction).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'ARCHIVE_SUPPLIER' }),
+      expect.anything()
+    );
   });
 
   it('réactive avec une action d’audit distincte de l’archivage', async () => {
@@ -87,7 +99,8 @@ describe('supplierService.setActive — archivage / réactivation', () => {
     await supplierService.setActive('s1', true, ORG, 'admin');
 
     expect(logAction).toHaveBeenCalledWith(
-      expect.objectContaining({ action: 'REACTIVATE_SUPPLIER' })
+      expect.objectContaining({ action: 'REACTIVATE_SUPPLIER' }),
+      expect.anything()
     );
   });
 

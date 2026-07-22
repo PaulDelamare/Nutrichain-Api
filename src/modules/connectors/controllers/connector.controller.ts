@@ -3,6 +3,7 @@ import { catchAsync } from '../../../shared/utils/errorHandler/catchAsync';
 import { sendSuccess } from '../../../shared/utils/returnSuccess/returnSuccess';
 import { APIError } from '../../../shared/utils/errorHandler/APIError';
 import { AuthenticatedRequest } from '../../identity/types/auth.types';
+import { resolveWritingActor } from '../../../shared/utils/auth/resolveWritingActor';
 import { productImportService } from '../services/productImport.service';
 import { customerImportService } from '../services/customerImport.service';
 import { eventExportService } from '../services/eventExport.service';
@@ -25,7 +26,13 @@ function readCsvBody(req: AuthenticatedRequest): string {
 export const importProductsController = catchAsync(
   async (req: AuthenticatedRequest, res: Response) => {
     const activeOrgId = req.activeOrgId as string;
-    const report = await productImportService.importProducts(activeOrgId, readCsvBody(req));
+    // L'auteur de l'import vient de la session : chaque ligne écrite est journalisée à son nom.
+    const actorUserId = resolveWritingActor({ sessionUserId: req.auth?.user?.id });
+    const report = await productImportService.importProducts(
+      activeOrgId,
+      readCsvBody(req),
+      actorUserId
+    );
     return sendSuccess(res, 200, 'Import du catalogue produits traité.', report);
   }
 );
@@ -36,7 +43,12 @@ export const importProductsController = catchAsync(
 export const importCustomersController = catchAsync(
   async (req: AuthenticatedRequest, res: Response) => {
     const activeOrgId = req.activeOrgId as string;
-    const report = await customerImportService.importCustomers(activeOrgId, readCsvBody(req));
+    const actorUserId = resolveWritingActor({ sessionUserId: req.auth?.user?.id });
+    const report = await customerImportService.importCustomers(
+      activeOrgId,
+      readCsvBody(req),
+      actorUserId
+    );
     return sendSuccess(res, 200, 'Import des clients traité.', report);
   }
 );

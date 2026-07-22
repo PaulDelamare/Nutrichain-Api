@@ -1,6 +1,6 @@
-import { prisma } from '../../../shared/configs/prismaClient.config';
 import { APIError } from '../../../shared/utils/errorHandler/APIError';
 import { auditService } from '../../../shared/utils/audit/audit.service';
+import { retryableTransaction } from '../../../shared/utils/db/withWriteConflictRetry';
 
 export interface SupplierInput {
   nom_ferme: string;
@@ -18,20 +18,27 @@ const introuvable = () =>
 // une seule source. Ce service porte uniquement les écritures.
 export const supplierService = {
   async create(input: SupplierInput, organizationId: string, actorUserId: string) {
-    const supplier = await prisma.supplier.create({
-      data: { ...input, organization_id: organizationId },
-    });
+    // Écriture et audit dans une SEULE transaction : une donnée de référence ne doit jamais
+    // exister sans sa trace WORM, ni une trace désigner une entité qui n'existe pas.
+    return retryableTransaction(async (tx) => {
+      const supplier = await tx.supplier.create({
+        data: { ...input, organization_id: organizationId },
+      });
 
-    await auditService.logAction({
-      organizationId,
-      userId: actorUserId,
-      action: 'CREATE_SUPPLIER',
-      entity: 'Supplier',
-      entityId: supplier.id,
-      newValue: supplier as unknown as Record<string, unknown>,
-    });
+      await auditService.logAction(
+        {
+          organizationId,
+          userId: actorUserId,
+          action: 'CREATE_SUPPLIER',
+          entity: 'Supplier',
+          entityId: supplier.id,
+          newValue: supplier as unknown as Record<string, unknown>,
+        },
+        tx
+      );
 
-    return supplier;
+      return supplier;
+    });
   },
 
   async update(
@@ -40,24 +47,32 @@ export const supplierService = {
     organizationId: string,
     actorUserId: string
   ) {
-    const existant = await prisma.supplier.findFirst({
-      where: { id, organization_id: organizationId },
+    // La LECTURE est dans la transaction : l'état journalisé est celui sur lequel l'écriture a
+    // porté, et un échec de l'audit annule la modification. (Ce n'est pas un verrou : en Read
+    // Committed, la ligne n'est pas figée entre le `findFirst` et l'`update`.)
+    return retryableTransaction(async (tx) => {
+      const existant = await tx.supplier.findFirst({
+        where: { id, organization_id: organizationId },
+      });
+      if (!existant) throw introuvable();
+
+      const supplier = await tx.supplier.update({ where: { id }, data: input });
+
+      await auditService.logAction(
+        {
+          organizationId,
+          userId: actorUserId,
+          action: 'UPDATE_SUPPLIER',
+          entity: 'Supplier',
+          entityId: id,
+          oldValue: existant as unknown as Record<string, unknown>,
+          newValue: supplier as unknown as Record<string, unknown>,
+        },
+        tx
+      );
+
+      return supplier;
     });
-    if (!existant) throw introuvable();
-
-    const supplier = await prisma.supplier.update({ where: { id }, data: input });
-
-    await auditService.logAction({
-      organizationId,
-      userId: actorUserId,
-      action: 'UPDATE_SUPPLIER',
-      entity: 'Supplier',
-      entityId: id,
-      oldValue: existant as unknown as Record<string, unknown>,
-      newValue: supplier as unknown as Record<string, unknown>,
-    });
-
-    return supplier;
   },
 
   /**
@@ -66,24 +81,29 @@ export const supplierService = {
    * réel, pas seulement cosmétique. On ne supprime jamais : des réceptions passées le référencent.
    */
   async setActive(id: string, active: boolean, organizationId: string, actorUserId: string) {
-    const existant = await prisma.supplier.findFirst({
-      where: { id, organization_id: organizationId },
+    return retryableTransaction(async (tx) => {
+      const existant = await tx.supplier.findFirst({
+        where: { id, organization_id: organizationId },
+      });
+      if (!existant) throw introuvable();
+
+      // Idempotent : archiver un fournisseur déjà archivé n'ajoute pas une 2e ligne à l'audit WORM.
+      if (existant.is_active === active) return existant;
+
+      const supplier = await tx.supplier.update({ where: { id }, data: { is_active: active } });
+
+      await auditService.logAction(
+        {
+          organizationId,
+          userId: actorUserId,
+          action: active ? 'REACTIVATE_SUPPLIER' : 'ARCHIVE_SUPPLIER',
+          entity: 'Supplier',
+          entityId: id,
+        },
+        tx
+      );
+
+      return supplier;
     });
-    if (!existant) throw introuvable();
-
-    // Idempotent : archiver un fournisseur déjà archivé n'ajoute pas une 2e ligne à l'audit WORM.
-    if (existant.is_active === active) return existant;
-
-    const supplier = await prisma.supplier.update({ where: { id }, data: { is_active: active } });
-
-    await auditService.logAction({
-      organizationId,
-      userId: actorUserId,
-      action: active ? 'REACTIVATE_SUPPLIER' : 'ARCHIVE_SUPPLIER',
-      entity: 'Supplier',
-      entityId: id,
-    });
-
-    return supplier;
   },
 };
