@@ -16,6 +16,26 @@ afterEach(async () => {
 });
 
 describe('Health route', () => {
+  /**
+   * `hello.routes` et `health.routes` ont longtemps importé le MÊME `Router()` singleton
+   * (`shared/configs/router.config`) : chacun y ajoutait ses routes, et `app.ts` montait deux fois
+   * le même objet. Inerte tant que personne n'ajoutait de `router.use(...)` — mais le jour où l'un
+   * des deux aurait posé un middleware, il se serait appliqué aux routes de l'autre sans que rien
+   * ne le signale. Ce test échoue si le partage revient.
+   */
+  it("n'expose que ses propres routes : health et hello sont deux routeurs distincts", async () => {
+    const { default: healthRoutes } = await import('./health.routes');
+    const { default: helloRoutes } = await import('../hello.routes');
+
+    const appHealth = express().use(healthRoutes);
+    const appHello = express().use(helloRoutes);
+
+    expect((await request(appHealth).get('/health')).status).toBe(200);
+    expect((await request(appHealth).get('/hello')).status).toBe(404);
+    expect((await request(appHello).get('/hello')).status).toBe(200);
+    expect((await request(appHello).get('/health')).status).toBe(404);
+  });
+
   it('should return ok status with uptime and timestamp', async () => {
     // import fresh module
     const { default: healthRoutes } = await import('./health.routes');

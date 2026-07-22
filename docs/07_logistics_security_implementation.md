@@ -1001,7 +1001,7 @@ export default router;
 
 ## 7️⃣ Configuration de Routes (Montage dans Express)
 
-**Fichier**: `src/app.ts` ou `src/shared/configs/router.config.ts` (VÉRIFIER)
+**Fichier**: `src/app.ts` — chaque module de routes crée son propre `Router()` et l'exporte par défaut.
 
 ```typescript
 // Assurez-vous que le routeur est importé et utilisé ainsi:

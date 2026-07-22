@@ -1,6 +1,8 @@
 // ! IMPORTS
-import { router } from '../../../shared/configs/router.config';
+import { Router } from 'express';
 import { HealthController } from '../health.controller';
+
+const router = Router();
 
 /**
  * @swagger

@@ -1,12 +1,13 @@
-import { router } from '../../shared/configs/router.config';
+import { Router, Response } from 'express';
 import { HelloController } from './hello.controller';
 import { requireAuth } from '../identity/middlewares/requireAuth.middleware';
-import { Response } from 'express';
 import { sendSuccess } from '../../shared/utils/returnSuccess/returnSuccess';
 import { AuthenticatedRequest } from '../identity/types/auth.types';
 import { resolveActiveOrgRole } from '../identity/utils/resolveActiveOrgRole';
 import { prisma } from '../../shared/configs/prismaClient.config';
 import { catchAsync } from '../../shared/utils/errorHandler/catchAsync';
+
+const router = Router();
 
 // ! Requêtes
 
