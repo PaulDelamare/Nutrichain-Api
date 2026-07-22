@@ -56,7 +56,7 @@ Le détail (5 diagrammes) est dans [`19_architecture.md`](19_architecture.md). L
    mouvement, l'événement EPCIS et l'entrée d'audit dans **une seule transaction ACID**.
    En microservices : des sagas, pour aucun bénéfice à cette échelle (YAGNI).
 2. **Couches strictes par module** — routes → middlewares (auth, validation) → controllers →
-   services. Aucun service ne dépend d'Express : 667 tests rapides, utilitaires GS1
+   services. Aucun service ne dépend d'Express : 724 tests rapides, utilitaires GS1
    en fonctions pures.
 3. **PostgreSQL comme unique source de vérité** — transactions Serializable, optimistic
    locking (`Batch.version`), migrations Prisma versionnées.
@@ -147,8 +147,8 @@ Dire au jury ce qui n'est **pas** fait vaut mieux que de le laisser le découvri
 
 ## 8. Qualité logicielle (comment c'est construit)
 
-- **TDD à trois niveaux** : 667 tests unitaires/intégration (Vitest + Supertest,
-  100 fichiers, 86 % de couverture de lignes) + suites e2e contre PostgreSQL réel + benchmark de généalogie.
+- **TDD à trois niveaux** : 724 tests unitaires/intégration (Vitest + Supertest,
+  104 fichiers, 86 % de couverture de lignes) + suites e2e contre PostgreSQL réel + benchmark de généalogie.
 - **TypeScript strict, zéro `any` en production** ; validation typée aux frontières
   (`Infer<typeof schema>`).
 - **Migrations versionnées** (`prisma/migrations/`), commits conventionnels, hooks
@@ -162,7 +162,7 @@ Dire au jury ce qui n'est **pas** fait vaut mieux que de le laisser le découvri
 |---|---|
 | Rappel produit (généalogie + blocage) | **~21 ms** pour 4 645 lots (budget : 15 min) |
 | Alerte chaîne du froid | **< 30 s** entre télémétrie et alerte |
-| Tests automatisés | **667** verts (86 % de couverture de lignes) + suites e2e |
+| Tests automatisés | **724** verts (86 % de couverture de lignes) + suites e2e |
 | Modules métier | 11 (+ noyau partagé), 33 modèles de données |
 | Standards | GS1 : GTIN, AI(10), SSCC, URN LGTIN/SSCC, Digital Link · EPCIS : Object/Transformation/AggregationEvent |
 | Conformité visée | HACCP, ISO 22000, RPO 15 min / RTO 60-120 min (PCA/PRA, cf. `18_PCA_PRA.md`) |

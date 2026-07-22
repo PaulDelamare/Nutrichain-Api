@@ -1,7 +1,8 @@
 {
-  "name": "api",
+  "name": "nutrichain-api",
+  "private": true,
   "version": "1.0.0",
-  "description": "",
+  "description": "API de tracabilite agroalimentaire GS1/EPCIS : chaine du froid IoT, rappel produit et audit WORM, multi-tenant.",
   "main": "index.js",
   "scripts": {
     "test": "vitest run",
@@ -58,8 +59,8 @@
     ]
   },
   "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "author": "Paul Delamare",
+  "license": "SEE LICENSE IN LICENSE",
   "prisma": {
     "seed": "tsx prisma/seed.ts"
   },

@@ -144,7 +144,7 @@ flowchart LR
 Conséquences concrètes :
 
 - **Testabilité** : les services se testent avec un Prisma mocké, les utilitaires GS1
-  sont des fonctions pures testées sans aucun mock (667 tests, 100 fichiers).
+  sont des fonctions pures testées sans aucun mock (724 tests, 104 fichiers).
 - **Validation aux frontières** : VineJS (messages français centralisés) valide toute
   entrée *avant* le contrôleur ; le cœur métier reçoit des données déjà typées
   (`Infer<typeof schema>`, zéro `any`).
@@ -245,7 +245,7 @@ par schéma** (une base, filtrage par organisation) :
 | Décision | Motivation |
 |---|---|
 | Monolithe modulaire, pas de microservices | Transactions ACID sur les flux critiques ; équipe réduite (un seul déployable à opérer) ; frontières extractibles plus tard |
-| Découpage en couches par module (pas d'hexagonal) | Cœur métier testable sans HTTP ; 667 tests rapides, 86 % de couverture de lignes |
+| Découpage en couches par module (pas d'hexagonal) | Cœur métier testable sans HTTP ; 724 tests rapides, 86 % de couverture de lignes |
 | Prisma + migrations versionnées | Schéma tracé en Git, reproductible (fini `db push`) |
 | Sessions Better-Auth pour les humains, `machineAuth` pour les capteurs | Chaque voie porte sa propre identité et son organisation ; la clé API n'autorise rien à elle seule |
 | VineJS aux frontières, messages FR | Erreurs exploitables par le front, cœur métier typé strict (zéro `any`) |

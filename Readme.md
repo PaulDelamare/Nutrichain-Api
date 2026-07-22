@@ -4,7 +4,7 @@ API REST B2B/B2C de **traçabilité agroalimentaire « de la ferme au rayon »**
 
 > Projet fil rouge 4e année. Monolithe modulaire multi-tenant (SaaS), orienté conformité réglementaire (HACCP / ISO 22000) et intégrité d'audit (WORM).
 
-**État** : `develop` — build TypeScript strict ✅ · ESLint ✅ · **667 tests verts** (Vitest, 86 % de couverture de lignes) · migrations Prisma versionnées.
+**État** : `develop` — build TypeScript strict ✅ · ESLint ✅ · **724 tests verts** (Vitest, 86 % de couverture de lignes) · migrations Prisma versionnées.
 
 ---
 
@@ -18,6 +18,7 @@ API REST B2B/B2C de **traçabilité agroalimentaire « de la ferme au rayon »**
 - [Sécurité & conformité](#sécurité--conformité)
 - [Limitations connues](#limitations-connues)
 - [Documentation détaillée](#documentation-détaillée)
+- [Licence](#licence)
 
 ---
 
@@ -291,3 +292,15 @@ Les documents techniques par domaine sont dans [`docs/`](docs/) :
 - [`15_iot_cold_chain_alerts.md`](docs/15_iot_cold_chain_alerts.md) — chaîne du froid IoT
 - [`06_standards_techniques.md`](docs/06_standards_techniques.md), [`05_bonnes_pratiques_api.md`](docs/05_bonnes_pratiques_api.md) — standards & conventions
 - [`README_SECURITY.md`](docs/README_SECURITY.md), [`09_SECURITY_DECISION_MATRIX.md`](docs/09_SECURITY_DECISION_MATRIX.md) — sécurité, **documents historiques** : ils décrivent un flux clé API antérieur au durcissement et ne doivent pas servir de spécification (chacun porte un bandeau)
+
+---
+
+## Licence
+
+**Tous droits réservés** — voir [`LICENSE`](LICENSE).
+
+Le code est consultable, exécutable et évaluable librement (jury, recruteur). Sa redistribution,
+sa publication et toute réutilisation dans un autre projet demandent l'accord écrit des auteurs.
+
+Ce choix est le plus réversible : une licence permissive peut être accordée plus tard, alors qu'un
+code publié sous licence ouverte le reste définitivement pour la version diffusée.
