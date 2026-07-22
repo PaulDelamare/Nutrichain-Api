@@ -1,5 +1,14 @@
 # REFONTE BIZ & DATA : CE QU'IL MANQUE À `bdd.md` (La version "NutriChain 2026")
 
+> 🛑 **BROUILLON DE TRAVAIL — NE PAS LIRE COMME UNE SPÉCIFICATION (note du 22/07/2026).**
+>
+> Ce fichier est une note de cadrage rédigée en cours de conception, restée à la racine du dépôt.
+> Il énumère des pistes — **OIDC, ABAC, MFA par SMS** — qui n'ont **pas** été retenues ni
+> implémentées. Le contrôle d'accès livré est un RBAC à cinq rôles, l'authentification passe par
+> Better-Auth en sessions, et la MFA n'est pas exposée (motif dans `docs/20` §7).
+>
+> Conservé pour la traçabilité de la réflexion. Le modèle réel est `prisma/schema.prisma`.
+
 Ton fichier `bdd.md` initial est une excellente base relationnelle (PostgreSQL) métier. Mais pour soutenir nos ambitions (SLA < 2s, architecture Modulith, authentification OIDC/@better-auth, scalabilité IoT WORM), voici les **modules critiques qui devront être modélisés** :
 
 ---
