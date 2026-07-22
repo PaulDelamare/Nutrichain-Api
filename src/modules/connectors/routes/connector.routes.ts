@@ -20,8 +20,8 @@ const router = Router();
  *
  * Une session administrateur est désormais EXIGÉE : ces routes écrivent le catalogue et le fichier
  * clients. Elles étaient ouvertes à la seule clé API — une clé publique, embarquée dans le bundle
- * mobile. L'intégration machine-à-machine reste possible, mais elle devra passer par le patron du
- * module `sync` : l'appelant déclare un utilisateur dont l'appartenance ET le rôle sont vérifiés.
+ * mobile. L'auteur de l'import vient de la SESSION et de nulle part ailleurs : chaque ligne écrite
+ * est journalisée à son nom, et un appelant ne peut pas désigner qui signe à sa place.
  * Entrant : import de catalogue produit (CSV). Sortant : export des événements EPCIS (CSV).
  */
 router.post(

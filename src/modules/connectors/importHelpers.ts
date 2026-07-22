@@ -46,10 +46,14 @@ export interface CsvUpsertHandlers<T> {
   validateRow: (row: Record<string, string>) => Promise<T>;
   /** Contrôle métier additionnel (ex: FK unité) ; renvoie un message d'erreur ou null si OK. */
   checkRow?: (data: T) => string | null;
-  /** Cherche la ligne existante par sa clé d'idempotence (cloisonnée org par l'appelant). */
-  findExisting: (data: T) => Promise<{ id: string } | null>;
-  update: (id: string, data: T) => Promise<unknown>;
-  create: (data: T) => Promise<unknown>;
+  /**
+   * Écrit UNE ligne et journalise l'acte, dans une seule transaction.
+   *
+   * La recherche de l'existant appartient à ce bloc, pas au helper : menée au-dehors, la valeur
+   * « avant » journalisée pouvait déjà être périmée au moment de l'écriture, et l'audit racontait
+   * un changement qui n'a pas eu lieu. Renvoie ce qu'il a fait, pour le rapport.
+   */
+  upsertRow: (data: T) => Promise<'created' | 'updated'>;
   /** Référence affichée dans le rapport (clé d'idempotence). */
   refOf: (data: T) => string;
 }
@@ -81,16 +85,10 @@ export async function runCsvUpsertImport<T>(
         continue;
       }
 
-      const existing = await handlers.findExisting(data);
-      if (existing) {
-        await handlers.update(existing.id, data);
-        results.push({ line, status: 'updated', ref: handlers.refOf(data) });
-        updated++;
-      } else {
-        await handlers.create(data);
-        results.push({ line, status: 'created', ref: handlers.refOf(data) });
-        created++;
-      }
+      const status = await handlers.upsertRow(data);
+      results.push({ line, status, ref: handlers.refOf(data) });
+      if (status === 'updated') updated++;
+      else created++;
     } catch (err) {
       results.push({ line, status: 'error', message: importErrorMessage(err) });
       errors++;

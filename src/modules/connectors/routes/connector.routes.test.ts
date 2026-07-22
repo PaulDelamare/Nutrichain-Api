@@ -11,9 +11,16 @@ vi.mock('../../../shared/configs/prismaClient.config', () => {
       create: vi.fn().mockResolvedValue({}),
       update: vi.fn().mockResolvedValue({}),
     },
+    // Chaque ligne écrite est journalisée dans SA transaction : le mock rejoue le callback.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    $transaction: (cb: any) => cb(prisma),
   };
   return { prisma, bdd: prisma };
 });
+
+vi.mock('../../../shared/utils/audit/audit.service', () => ({
+  auditService: { logAction: vi.fn() },
+}));
 
 /**
  * La session d'un administrateur est simulée ICI, et seulement ici : ce fichier teste le
