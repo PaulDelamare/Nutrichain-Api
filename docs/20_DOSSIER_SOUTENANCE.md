@@ -104,6 +104,13 @@ Requêtes prêtes dans la collection Bruno (`Nutrichain.json`).
 - **Durcissement** : validation VineJS systématique (messages français), anti-XSS emails,
   anti-injection de formule CSV à l'export, sanitization CRLF, variables d'environnement
   validées au démarrage (fail-fast), rate limiting.
+- **Résistance au bruteforce** : deux couches complémentaires sur la connexion. Un limiteur par IP
+  qui ne compte que les tentatives ÉCHOUÉES, et un verrou par COMPTE (5 échecs en 15 min → 15 min
+  de refus, mot de passe correct compris). Aucune ne suffit seule : la première laisse passer
+  l'acharnement sur une victime depuis plusieurs adresses, la seconde le balayage de comptes depuis
+  une seule. L'incrément est atomique et posé AVANT la vérification du mot de passe — compté après,
+  il se perdait dès que les tentatives arrivaient en parallèle. L'e-mail n'est stocké qu'en
+  empreinte HMAC, purgée quotidiennement.
 
 ## 7. Limites assumées et perspectives
 

@@ -14,6 +14,7 @@ import { app } from './app';
 import { bdd } from './shared/configs/prismaClient.config';
 import { connectMongoDB, disconnectMongoDB } from './shared/configs/mongoClient.config';
 import { startCleanupJob } from './modules/identity/jobs/cleanupInvitations.job';
+import { startCleanupLoginAttemptsJob } from './modules/identity/jobs/cleanupLoginAttempts.job';
 import { startCleanupIdempotencyKeysJob } from './modules/sync/jobs/cleanupIdempotencyKeys.job';
 import { startAuditChainVerifyJob } from './modules/auditIntegrity/jobs/auditChainVerify.job';
 
@@ -30,6 +31,7 @@ connectMongoDB()
       // Lancement des tÃ¢ches rÃ©currentes (Cron, Background Jobs)
       startCleanupJob();
       startCleanupIdempotencyKeysJob();
+    startCleanupLoginAttemptsJob();
       startAuditChainVerifyJob();
     });
 
