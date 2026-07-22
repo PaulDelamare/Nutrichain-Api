@@ -1,5 +1,6 @@
 import { Request } from 'express';
 import { Alert, Batch, Receipt } from '@prisma/client';
+import type { TelemetryPingPayload } from '../../iot/middlewares/telemetryPing.schema';
 import { SyncScansPayload } from '../../sync/types/sync.types';
 import { EventsQuery } from '../../traceability/events/middlewares/eventsQuery.schema';
 import type { OrganizationQuery } from '../../organization/middlewares/organizationQuery.schema';
@@ -75,6 +76,8 @@ export interface AuthenticatedRequest extends Request {
   validatedRecall?: RecallPayload;
   // Sync mobile offline-first
   validatedSyncScans?: SyncScansPayload;
+  // Trame de télémétrie IoT (POST /telemetry/ping)
+  validatedTelemetryPing?: TelemetryPingPayload;
   // Alert resolve endpoint (PATCH /api/alerts/:id/resolve) — typé proprement
   validatedResolveAlert?: { note?: string };
   // Query params validés de GET /api/traceability/events — typé via Infer du schéma VineJS

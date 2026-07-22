@@ -13,7 +13,9 @@ La raison d'être de Nutrichain est de surveiller la chaîne du froid en temps r
 ## 2. Flux
 
 ```
-POST /telemetry/ping → machineAuth (passerelle IotGateway → organisation) → ingestController :
+POST /telemetry/ping → machineAuth (passerelle IotGateway → organisation)
+                     → validateTelemetryPing (VineJS strict, messages FR : 400 sur trame malformee)
+                     → ingestController :
   1. TelemetryModel.create(...) → MongoDB time-series
   2. iotAlertService.checkAndAlert({...}) → détection sync
   3. res.status(202) + `detection` (MONITORED | NO_EQUIPMENT | NO_THRESHOLD)

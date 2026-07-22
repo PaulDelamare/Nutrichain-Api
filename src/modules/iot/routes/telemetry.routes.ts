@@ -5,6 +5,7 @@ import { machineAuth } from '../../../shared/middlewares/machineAuth';
 import { requireAuth } from '../../identity/middlewares/requireAuth.middleware';
 import { requireOrgRole } from '../../identity/middlewares/requireOrgRole.middleware';
 import { ALL_ROLES } from '../../identity/constants/roles.constants';
+import { validateTelemetryPing } from '../middlewares/validateTelemetryPing.middleware';
 
 const router = Router();
 
@@ -50,19 +51,31 @@ const router = Router();
  *             properties:
  *               sensor_id:
  *                 type: string
+ *                 minLength: 1
+ *                 maxLength: 100
  *                 description: Identifiant du capteur (doit matcher `Equipment.sensor_id` pour activer la détection)
  *                 example: "SENSOR-FRIGO-NORD-001"
  *               temperature:
  *                 type: number
- *                 description: Température en °C
+ *                 minimum: -273.15
+ *                 maximum: 200
+ *                 description: |
+ *                   Température en °C. Les champs numériques sont validés en mode STRICT : une
+ *                   chaîne ("4.2") ou un booléen est refusé en 400, jamais converti. Les bornes ne
+ *                   rejettent que l'impossible — une sentinelle de sonde en panne (-127, +85) est
+ *                   acceptée pour être tracée et déclencher l'alerte de seuil.
  *                 example: 4.2
  *               humidity:
  *                 type: number
+ *                 minimum: 0
+ *                 maximum: 100
  *                 description: Humidité relative en %
  *                 example: 60
  *               battery_level:
- *                 type: integer
- *                 description: Niveau de batterie du capteur (0-100)
+ *                 type: number
+ *                 minimum: 0
+ *                 maximum: 100
+ *                 description: Niveau de batterie du capteur en % (décimales acceptées)
  *                 example: 85
  *     responses:
  *       202:
@@ -99,7 +112,7 @@ const router = Router();
  */
 // La SEULE route ouverte à une machine : un capteur ne peut pas ouvrir de session humaine.
 // Elle n'ingère que des mesures — aucune décision, aucune identité d'auteur (cf. machineAuth).
-router.post('/telemetry/ping', machineAuth(), ingestTelemetry);
+router.post('/telemetry/ping', machineAuth(), validateTelemetryPing, ingestTelemetry);
 
 /**
  * @swagger
