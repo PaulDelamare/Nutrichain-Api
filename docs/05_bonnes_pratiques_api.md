@@ -5,20 +5,45 @@ Ce document centralise les règles d'architecture, de développement et de "Clea
 ## 1. Architecture et "Clean Code"
 
 ### Séparation des Préoccupations (SoC - Separation of Concerns)
-L'architecture de l'API est construite en couches strictes :
-- **Routes (`src/Routes/`)** : Se limitent à définir les points d'entrée (URLs) et les méthodes HTTP (GET, POST, etc.).
-- **Contrôleurs (`src/Controllers/`)** : Doivent être **ultra-minimalistes**. Leur seul rôle est de récupérer les données (body, params), d'appeler le Service correspondant, et de renvoyer la réponse HTTP (via l'utilitaire `returnSuccess`).
-- **Services (`src/Services/`)** : Contiennent **100% de la logique métier**. Ils sont agnostiques du protocole HTTP.
-- **Base de données (Prisma)** : Les appels à la base de données se font dans les services ou dans des "Repositories" si la logique est complexe.
+L'API est un **monolithe modulaire** : les couches sont découpées **par domaine métier**, dans
+`src/modules/<domaine>/[<sous-domaine>/]`, et non en dossiers techniques globaux. Un module expose
+généralement `routes/`, `controllers/`, `services/`, plus ce qui lui est propre (`middlewares/`,
+`constants/`, `schemas/`, `models/`, `jobs/`, `types/`, `utils/`) — on ne crée un sous-dossier que
+s'il a un contenu. `core`, minuscule, reste volontairement à plat. Le transverse vit dans
+`src/shared/`.
+
+- **Routes (`<module>/routes/<nom>.routes.ts`)** : URLs, méthodes HTTP et gardes. Chaque fichier crée
+  son propre `Router()` et l'exporte par défaut ; `src/app.ts` les monte sur `/api` (à une exception
+  près : les routes d'invitation sont montées en cascade par `auth.routes.ts`).
+- **Contrôleurs (`<module>/controllers/<nom>.controller.ts`)** : **ultra-minimalistes**. Ils lisent
+  body/params/`req.activeOrgId`, appellent le service, et répondent via `sendSuccess`.
+- **Services (`<module>/services/<nom>.service.ts`)** : **100% de la logique métier**, agnostiques du
+  protocole HTTP.
+- **Base de données (Prisma)** : appelée **directement depuis les services**. Il n'existe **pas** de
+  couche Repository, et il n'est pas prévu d'en introduire une : elle n'ajouterait qu'une
+  indirection sur un client déjà typé.
 
 ### Le Principe DRY (Don't Repeat Yourself)
-- Toute logique répétée (formatage, gestion d'erreurs) doit être extraite dans des **fonctions utilitaires pures** (`src/Utils/`) ou des **Middlewares/Hooks**.
+- Toute logique répétée (formatage, gestion d'erreurs) doit être extraite dans des **fonctions utilitaires pures** (`src/shared/utils/`) ou des **Middlewares**.
 - **Wrapper Async** : Les contrôleurs doivent être encapsulés dans un middleware (ex: `catchAsync`) pour éviter la répétition infernale des blocs `try/catch`. Toute erreur est automatiquement redirigée vers le `errorHandler` global.
 
 ## 2. Validation et Sécurité ("Fail Fast")
 
 - **Validation stricte (VineJS)** : Toutes les données entrantes (Body, Query, Params) doivent être validées avec **VineJS** avant même d'atteindre la logique métier. En cas de données invalides, l'API rejette immédiatement la requête (Erreur 400).
-- **Principe du Moindre Privilège** : Le système ABAC assure que chaque route vérifie rigoureusement les droits via des middlewares dédiés (ex: `requirePermission()`), eux-mêmes centralisés et réutilisables.
+- **Principe du Moindre Privilège** : le contrôle d'accès implémenté est un **RBAC**, pas un ABAC.
+  Chaque route porte sa garde, dans la très grande majorité des cas `sessionAuth(ROLES)` ou
+  `requireAuth` + `requireOrgRole(ROLES)` ; deux voies dérogent avec leur propre mécanisme, la
+  télémétrie des capteurs (`machineAuth`) et l'administration de plateforme
+  (`requirePlatformAdmin`). Le vocabulaire de rôles a une source unique,
+  `identity/constants/roles.constants.ts` (`ALL_ROLES`, `WRITE_ROLES`, `QUALITY_ROLES`,
+  `ADMIN_ROLES`, `PERSONAL_DATA_ROLES`) ; quelques modules en dérivent un alias local
+  (`SYNC_WRITE_ROLES`, `CATALOG_READ_ROLES`…) — ce sont des sous-ensembles de ces cinq-là, pas un
+  second vocabulaire. Il n'existe
+  **pas** de `requirePermission()` : l'ABAC décrit dans `02_roles_et_permissions.md` est une cible
+  de conception, non implémentée.
+- **Cloisonnement** : l'organisation vient de la session (`req.activeOrgId`), jamais du corps de la
+  requête, et elle est passée explicitement à chaque service. `where: { organization_id: undefined }`
+  ne filtre rien en Prisma : une garde oubliée expose tous les tenants sans lever d'erreur.
 
 ## 3. TypeScript Stratégique
 
@@ -27,7 +52,15 @@ L'architecture de l'API est construite en couches strictes :
 
 ## 4. Base de Données (Prisma)
 
-- **Transactions (`$transaction`)** : Toute opération modifiant plusieurs tables simultanément (ex: créer un produit ET générer son lot) DOIT être encapsulée dans une transaction Prisma. En cas d'erreur sur une étape, tout est annulé (Rollback).
+- **Transactions** : toute opération modifiant plusieurs tables simultanément (ex : créer une
+  réception ET son lot ET la ligne d'audit) DOIT être encapsulée dans une transaction. En cas
+  d'erreur sur une étape, tout est annulé (rollback).
+- **`retryableTransaction`, pas `$transaction` nu** : dès qu'une écriture touche la chaîne d'audit,
+  on passe par `retryableTransaction` (`shared/utils/db/withWriteConflictRetry.ts`), qui rejoue
+  l'opération sur conflit d'écriture. Sans lui, deux écritures concurrentes se soldent par un 500 :
+  un conflit de sérialisation levé par une requête brute remonte en `P2010` porteur du SQLSTATE
+  `40001`, et non en `P2034`. Ne jamais y enfermer d'effet de bord non transactionnel (envoi de mail)
+  : le retry le rejouerait. Les seuls `$transaction` bruts restants sont des lectures de pagination.
 - **Optimisation des Requêtes (N+1)** : Utilisation réfléchie des clauses `include` et `select` dans Prisma pour récupérer les relations en une seule passe, au lieu de boucler pour refaire des requêtes.
 
 ## 5. Tests et Qualité

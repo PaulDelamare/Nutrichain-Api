@@ -40,7 +40,7 @@ organisation** (multi-tenancy en défense en profondeur).
 
 | Échéance | Objectif | Livré | Preuve mesurable |
 |---|---|---|---|
-| 01/03 | Auth + MFA + contrôle d'accès | ✅ (⚠️ ABAC reporté, cf. §7) | Better-Auth sessions + TwoFactor, invitations, organisations |
+| 01/03 | Auth + MFA + contrôle d'accès | ⚠️ partiel (MFA et ABAC reportés, cf. §7) | Better-Auth sessions, invitations, organisations, RBAC 5 rôles |
 | 10/03 | CI/CD industrielle | ✅ | GitHub Actions (build, lint, tests) |
 | 15/03 | Alerte chaîne du froid < 30 s p95 | ✅ | `e2e:iot-alert` : excursion → alerte + email |
 | 10/06 | Mobile : scan rapide, mode offline | ✅ | Sync idempotente (HTTP 207, `clientOpId`), `e2e:sync` |
@@ -55,8 +55,8 @@ Le détail (5 diagrammes) est dans [`19_architecture.md`](19_architecture.md). L
 1. **Monolithe modulaire, pas de microservices** — une réception crée le lot, le
    mouvement, l'événement EPCIS et l'entrée d'audit dans **une seule transaction ACID**.
    En microservices : des sagas, pour aucun bénéfice à cette échelle (YAGNI).
-2. **Hexagonal par module** — routes → middlewares (auth, validation) → controllers →
-   services. Le cœur métier ne connaît pas HTTP : 378 tests rapides, utilitaires GS1
+2. **Couches strictes par module** — routes → middlewares (auth, validation) → controllers →
+   services. Aucun service ne dépend d'Express : 667 tests rapides, utilitaires GS1
    en fonctions pures.
 3. **PostgreSQL comme unique source de vérité** — transactions Serializable, optimistic
    locking (`Batch.version`), migrations Prisma versionnées.
@@ -79,7 +79,7 @@ Requêtes prêtes dans la collection Bruno (`Nutrichain.json`).
 | 7 | Expédition | `POST /api/logistics/shipments` (`shipment_id: AUTO`) | **SSCC 18 chiffres** généré + AggregationEvent (palette ⊃ lots) |
 | 8 | Excursion chaîne du froid | `POST /api/telemetry/ping` (température hors seuil) | Alerte TEMP_EXCURSION < 30 s + email **ET les lots stockés dans l'équipement passent automatiquement en quarantaine (`BLOQUE`)** ; résolution `PATCH /api/alerts/:id/resolve` |
 | 9 | **Rappel produit** | `POST /api/traceability/batches/:id/recall` | Toute la descendance passe en ALERTE (chrono affiché : millisecondes), expéditions impactées listées, **clients notifiés par email automatiquement** |
-| 10 | Le consommateur scanne | `GET /api/public/scan/:numero_lot` (route publique) | `statut_sanitaire: RAPPEL_CONSOMMATEUR` — transparence B2C |
+| 10 | Le consommateur scanne | `GET /api/public/scan/:id` (route publique, `:id` = numéro de lot) | `statut_sanitaire: RAPPEL_CONSOMMATEUR` — transparence B2C |
 | 11 | L'ERP récupère l'historique | `GET /api/traceability/events` + `GET /api/connectors/exports/events` | Journal EPCIS filtrable + export CSV |
 | 12 | Preuve d'intégrité | `GET /api/audit/verify` | La chaîne de hash WORM est recalculée et validée |
 
@@ -104,9 +104,25 @@ Requêtes prêtes dans la collection Bruno (`Nutrichain.json`).
 
 Dire au jury ce qui n'est **pas** fait vaut mieux que de le laisser le découvrir :
 
-- **RBAC partiel / ABAC reporté** : deux taxonomies de rôles coexistent (organisation
-  et métier logistique), non réconciliées. Le mode machine (clé API) est complet ; la
-  granularité fine par rôle métier en session web est une itération dédiée à venir.
+- **MFA implémentée mais non exposée — décision de sécurité, pas un oubli.** Le plugin
+  `twoFactor` de Better-Auth est activé et sa table existe, mais les routes
+  `/auth/two-factor/*` sont fermées, comme le reste du cœur Better-Auth. Motif : ces routes
+  sont servies par un passthrough qui **ne traverse ni notre RBAC ni le journal d'audit
+  WORM**. Les ouvrir en bloc rouvrirait aussi `update-user`, `change-email`,
+  `change-password` et la gestion des sessions, hors de tout contrôle de rôle et sans
+  trace. Nous avons donc préféré une **allowlist stricte de trois routes** (connexion,
+  inscription, déconnexion) : la règle échoue *fermé*, et un nouvel endpoint apparu dans
+  une version ultérieure de la dépendance ne rouvre pas un trou en silence. Exposer la MFA
+  proprement suppose de la faire passer par nos propres routes gardées : c'est l'itération
+  suivante, pas une case à cocher.
+- **ABAC reporté** : le contrôle d'accès livré est un **RBAC à cinq rôles**
+  (`owner`, `admin`, `quality`, `operator`, `viewer`), vocabulaire unique et canonique — il a
+  remplacé les anciens `logistics_*`, `quality_control` et `manager`, absents du code. Reste une
+  scorie : `Member.role` a encore `@default("member")` en base, valeur qui n'appartient à aucun
+  ensemble de rôles et ne donnerait donc aucun droit. Elle n'est jamais atteinte — les deux seuls
+  points de création fixent le rôle explicitement — mais le défaut du schéma devrait être aligné.
+  La granularité par attribut (permissions atomiques, affectation par site) décrite en
+  `02_roles_et_permissions.md` reste une cible de conception.
 - **Préfixe GS1 simulé** : les identifiants sont structurellement conformes, mais le
   préfixe entreprise est fictif (aucun préfixe acheté auprès de GS1 — projet d'école).
   Chaque organisation peut renseigner le sien ; les URN sont découpées positionnellement
@@ -119,13 +135,13 @@ Dire au jury ce qui n'est **pas** fait vaut mieux que de le laisser le découvri
 
 ## 8. Qualité logicielle (comment c'est construit)
 
-- **TDD à trois niveaux** : 378 tests unitaires/intégration (Vitest + Supertest,
-  68 fichiers) + 8 suites e2e contre PostgreSQL réel + benchmark de généalogie.
+- **TDD à trois niveaux** : 667 tests unitaires/intégration (Vitest + Supertest,
+  100 fichiers, 86 % de couverture de lignes) + suites e2e contre PostgreSQL réel + benchmark de généalogie.
 - **TypeScript strict, zéro `any` en production** ; validation typée aux frontières
   (`Infer<typeof schema>`).
 - **Migrations versionnées** (`prisma/migrations/`), commits conventionnels, hooks
   husky/lint-staged, revues de code multi-angles avant merge, CI GitHub Actions.
-- **Documentation vivante** : 20 documents dans `docs/` (architecture, sécurité,
+- **Documentation vivante** : 28 documents dans `docs/` (architecture, sécurité,
   PCA/PRA, modules), Readme opérationnel, collection Bruno.
 
 ## 9. Chiffres clés à retenir
@@ -134,7 +150,7 @@ Dire au jury ce qui n'est **pas** fait vaut mieux que de le laisser le découvri
 |---|---|
 | Rappel produit (généalogie + blocage) | **~21 ms** pour 4 645 lots (budget : 15 min) |
 | Alerte chaîne du froid | **< 30 s** entre télémétrie et alerte |
-| Tests automatisés | **378** verts + 8 suites e2e |
-| Modules métier | 9 (+ noyau partagé), 31 modèles de données |
+| Tests automatisés | **667** verts (86 % de couverture de lignes) + suites e2e |
+| Modules métier | 11 (+ noyau partagé), 33 modèles de données |
 | Standards | GS1 : GTIN, AI(10), SSCC, URN LGTIN/SSCC, Digital Link · EPCIS : Object/Transformation/AggregationEvent |
 | Conformité visée | HACCP, ISO 22000, RPO 15 min / RTO 60-120 min (PCA/PRA, cf. `18_PCA_PRA.md`) |

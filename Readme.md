@@ -2,9 +2,9 @@
 
 API REST B2B/B2C de **traçabilité agroalimentaire « de la ferme au rayon »**, conforme aux standards **GS1/EPCIS**, avec **surveillance de la chaîne du froid** (IoT) et **rappel produit rapide** (< 15 min décision → notification).
 
-> Projet fil rouge 4e année. Monolithe modulaire hexagonal, multi-tenant (SaaS), orienté conformité réglementaire (HACCP / ISO 22000) et intégrité d'audit (WORM).
+> Projet fil rouge 4e année. Monolithe modulaire multi-tenant (SaaS), orienté conformité réglementaire (HACCP / ISO 22000) et intégrité d'audit (WORM).
 
-**État** : `develop` — build TypeScript strict ✅ · ESLint ✅ · **378 tests verts** (Vitest) · migrations Prisma versionnées.
+**État** : `develop` — build TypeScript strict ✅ · ESLint ✅ · **667 tests verts** (Vitest, 86 % de couverture de lignes) · migrations Prisma versionnées.
 
 ---
 
@@ -37,7 +37,7 @@ Le tout est **cloisonné par organisation** (multi-tenancy strict) et **auditabl
 
 | Échéance | Objectif | Statut | Où |
 |---|---|---|---|
-| 01/03 | Sécurisation : auth + MFA + contrôle d'accès | ✅ Better-Auth (sessions, **MFA TwoFactor**, organisations) ; RBAC opérationnel — ⚠️ *ABAC reporté* | `modules/identity` |
+| 01/03 | Sécurisation : auth + MFA + contrôle d'accès | ⚠️ partiel — Better-Auth (sessions, organisations) et RBAC 5 rôles opérationnels ; **MFA non exposée** et *ABAC reporté* | `modules/identity` |
 | 10/03 | CI/CD industrielle | ✅ Pipelines GitHub Actions | `.github/workflows/` |
 | 15/03 | Alerte chaîne du froid < 30 s p95 | ✅ Détection d'excursion + alertes | `modules/iot`, `modules/alerts` |
 | 10/06 | Mobile : scan rapide, mode offline | ✅ Sync offline-first idempotente | `modules/sync` |
@@ -49,7 +49,7 @@ Le tout est **cloisonné par organisation** (multi-tenancy strict) et **auditabl
 
 ## Architecture
 
-**Monolithe modulaire hexagonal** : un module par domaine métier, séparation stricte des couches.
+**Monolithe modulaire** : un module par domaine métier, séparation stricte des couches (routes → contrôleur → service). Ce n'est pas une architecture hexagonale : les services appellent Prisma directement, sans port ni adaptateur.
 
 - **Routes** : URLs + méthodes HTTP uniquement.
 - **Controllers** : ultra-minimalistes (extraire → appeler le service → répondre).
@@ -66,6 +66,8 @@ Le tout est **cloisonné par organisation** (multi-tenancy strict) et **auditabl
 | `alerts` | Cycle de vie des alertes (création, résolution) |
 | `sync` | Synchronisation mobile offline-first (idempotente) |
 | `connectors` | Connecteurs ERP/WMS : import CSV, export EPCIS |
+| `organization` | Membres, matériel, lieux, et les restitutions transverses consommées par le front (alertes, expéditions, journal d'audit, lots en quarantaine) |
+| `platform` | Administration de la plateforme (hors organisation) |
 | `auditIntegrity` | Vérification de la chaîne d'audit WORM (job planifié) |
 | `core` | Health checks, endpoints utilitaires |
 
@@ -75,8 +77,10 @@ Le code transverse (utilitaires, middlewares, configs, constantes, types) vit da
 
 - **Runtime** : Node.js + TypeScript (mode strict, `tsx`)
 - **HTTP** : Express 4, Helmet, CORS, compression, rate-limit
-- **Données** : PostgreSQL via **Prisma** (relationnel) + MongoDB via **Mongoose** (logs/télémétrie)
-- **Auth** : **Better-Auth** (sessions, MFA, multi-organisations)
+- **Données** : PostgreSQL via **Prisma** (tout l'état métier) + MongoDB via **Mongoose** (télémétrie IoT en série temporelle uniquement ; les logs applicatifs vont dans des fichiers Winston)
+- **Auth** : **Better-Auth** (sessions, multi-organisations). MFA implémentée mais **non exposée** :
+  les routes du cœur Better-Auth sont fermées par allowlist car elles contourneraient le RBAC et
+  l'audit — motif détaillé dans `docs/20_DOSSIER_SOUTENANCE.md` §7.
 - **Validation** : **VineJS** (messages en français)
 - **Tests** : **Vitest** + Supertest
 - **Observabilité** : Winston (logs rotatifs)
@@ -89,7 +93,7 @@ Le code transverse (utilitaires, middlewares, configs, constantes, types) vit da
 
 - Node.js ≥ 20, npm
 - PostgreSQL (base `nutrichain`)
-- MongoDB (logs applicatifs)
+- MongoDB (télémétrie des capteurs)
 
 ### Installation
 
@@ -103,7 +107,7 @@ Variables d'environnement requises (validées au démarrage — *fail-fast*) :
 | Variable | Description |
 |---|---|
 | `DATABASE_URL` | Chaîne de connexion PostgreSQL |
-| `MONGO_URI` | Chaîne de connexion MongoDB (logs) |
+| `MONGO_URI` | Chaîne de connexion MongoDB (télémétrie IoT) |
 | `BETTER_AUTH_SECRET` | Secret Better-Auth (≥ 32 caractères) |
 | `API_KEY` | Clé qui identifie l'application appelante (mobile, front). **Publique** : elle n'autorise aucune action |
 | `IOT_API_KEY` | Secret des capteurs, **valeur différente d'`API_KEY`**. N'ouvre l'ingestion que si une passerelle la porte en base (`npm run iot:gateway`) |
@@ -183,11 +187,11 @@ Si l'ingestion IoT doit fonctionner dans le conteneur, enregistrer aussi la pass
 
 ```bash
 npm run unit:test            # suite unitaire + intégration (Vitest)
-npm run test:coverage        # couverture de code (plancher CI : 70 % — mesurée à ~84 % lignes / ~89 % branches)
+npm run test:coverage        # couverture de code (plancher CI : 70 % — mesurée à 86 % lignes / 90 % branches)
 ```
 
 > Périmètre de couverture : la logique applicative (`src/**`), hors bootstrap serveur,
-> déclarations de types, templates d'e-mails et config Swagger (cf. `vitest.config.js`).
+> déclarations de types, templates d'e-mails et config Swagger (cf. `vitest.config.mjs`).
 
 Scénarios end-to-end contre une base réelle (nécessitent PostgreSQL + seed) :
 
@@ -221,8 +225,9 @@ C'est la règle qui gouverne toutes les routes, et elle tient en une phrase :
 **Deux clés, deux natures** :
 
 - `API_KEY` — **publique par construction** : elle est compilée dans le bundle de l'application
-  mobile (`EXPO_PUBLIC_API_KEY`), donc extractible par quiconque l'installe. Elle n'ouvre que
-  `/api/auth/*` : elle **identifie une application**, elle n'autorise personne (OWASP API Security :
+  mobile (`EXPO_PUBLIC_API_KEY`), donc extractible par quiconque l'installe. Elle n'ouvre que les
+  routes d'authentification exposées et l'aperçu d'une invitation (limité à un jeton) : elle
+  **identifie une application**, elle n'autorise personne (OWASP API Security :
   *Broken Authentication*).
 - `IOT_API_KEY` — **un vrai secret**, qui ne quitte ni le serveur ni la passerelle IoT, et qui
   n'ouvre l'ingestion que s'il est enregistré comme passerelle (`IotGateway`, empreinte SHA-256,
@@ -285,4 +290,4 @@ Les documents techniques par domaine sont dans [`docs/`](docs/) :
 - [`12_RECALLS_SYSTEM.md`](docs/12_RECALLS_SYSTEM.md) — système de rappel
 - [`15_iot_cold_chain_alerts.md`](docs/15_iot_cold_chain_alerts.md) — chaîne du froid IoT
 - [`06_standards_techniques.md`](docs/06_standards_techniques.md), [`05_bonnes_pratiques_api.md`](docs/05_bonnes_pratiques_api.md) — standards & conventions
-- [`README_SECURITY.md`](docs/README_SECURITY.md), [`09_SECURITY_DECISION_MATRIX.md`](docs/09_SECURITY_DECISION_MATRIX.md) — sécurité
+- [`README_SECURITY.md`](docs/README_SECURITY.md), [`09_SECURITY_DECISION_MATRIX.md`](docs/09_SECURITY_DECISION_MATRIX.md) — sécurité, **documents historiques** : ils décrivent un flux clé API antérieur au durcissement et ne doivent pas servir de spécification (chacun porte un bandeau)
