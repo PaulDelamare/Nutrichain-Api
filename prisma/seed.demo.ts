@@ -1,5 +1,5 @@
 /**
- * Seed de DÉMONSTRATION — jeu de données riche et cohérent pour la soutenance.
+ * Seed de DÉMONSTRATION — jeu de données riche et cohérent pour la démonstration.
  *
  * S'ajoute par-dessus le seed de base (`prisma/seed.ts`) : réutilise l'organisation,
  * l'admin, le fournisseur et le client seedés, et construit une chaîne complète
