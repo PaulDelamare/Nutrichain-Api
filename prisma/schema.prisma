@@ -23,9 +23,7 @@ model User {
   twofactors       TwoFactor[]
   lots             Batch[]
   transformations  Transformation[]
-  rebuts           ScrapRecord[]
   tests_qualite    QualityControl[]
-  maintenances     Maintenance[]
   receptions       Receipt[]
   expeditions      Shipment[]
   mouvements       Batch_Mouvement[]
@@ -138,9 +136,7 @@ model Organization {
   Audit_Log          Audit_Log[]
   Audit_Checkpoint   Audit_Checkpoint?
   Alert              Alert[]
-  ScrapRecord        ScrapRecord[]
   QualityControl     QualityControl[]
-  Maintenance        Maintenance[]
   Customer           Customer[]
   Shipment           Shipment[]
   IdempotencyKey     IdempotencyKey[]
@@ -255,7 +251,6 @@ model Equipment {
   last_cleaned_at DateTime?
   lots            Batch[]
   transformations Transformation[]
-  Maintenance     Maintenance[]
 
   @@unique([organization_id, sensor_id]) // composite : permet à 2 orgs d'utiliser le même sensor_id sans collision, empêche enumeration cross-tenant
   @@index([organization_id])
@@ -296,7 +291,6 @@ model Product {
   is_active                 Boolean             @default(true)
   lots                      Batch[]
   transformations           Transformation[]
-  RecipeComposition         RecipeComposition[]
 
   /// Le GTIN identifie le produit (URN GS1) et sert de clé d'idempotence à l'import CSV.
   /// La contrainte est en BASE, pas seulement applicative : vérifié côté application, deux
@@ -335,7 +329,6 @@ model Batch {
 
   transformations_enfants Transformation[]            @relation("TransformationEnfant")
   transformations_parents TransformationComposition[]
-  rebuts                  ScrapRecord[]
   tests_qualite           QualityControl[]
   liaisons                Liaison_Shipment[]
   mouvements              Batch_Mouvement[]
@@ -443,22 +436,7 @@ model Audit_Checkpoint {
   verified_at         DateTime     @default(now())
 }
 
-// --- GESTION DES REJETS/QUALITE ---
-model ScrapRecord {
-  id                 String       @id @default(uuid())
-  organization_id    String
-  organization       Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
-  id_lot             String
-  lot                Batch        @relation(fields: [id_lot], references: [id])
-  quantite_jetee     Decimal
-  unite              String
-  motif              String
-  date_mise_au_rebut DateTime
-  created_by         String
-  user               User         @relation(fields: [created_by], references: [id])
-
-  @@index([organization_id])
-}
+// --- CONTROLE QUALITE ---
 
 model QualityControl {
   id              String       @id @default(uuid())
@@ -477,34 +455,7 @@ model QualityControl {
   @@index([organization_id])
 }
 
-// --- HYGIENE ET MAINTENANCE ---
-model Maintenance {
-  id              String       @id @default(uuid())
-  organization_id String
-  organization    Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
-  id_materiel     String
-  materiel        Equipment    @relation(fields: [id_materiel], references: [id])
-  id_user         String
-  user            User         @relation(fields: [id_user], references: [id])
-  type_action     String
-  produit_utilise String?
-  date_debut      DateTime
-  date_fin        DateTime?
-  valid_until     DateTime?
 
-  @@index([organization_id])
-}
-
-// --- RECETTES ---
-model RecipeComposition {
-  id                 String  @id @default(uuid())
-  id_produit_fini    String
-  produit            Product @relation(fields: [id_produit_fini], references: [id])
-  id_type_ingredient String
-  quantite_theorique Decimal
-  unite              String
-  tolerance_percent  Decimal
-}
 
 // --- RECEPTION & FOURNISSEUR ---
 model Supplier {
@@ -614,14 +565,6 @@ model Batch_Mouvement {
   @@index([id_lot, created_at])
 }
 
-// --- METRIQUES ---
-model PerformanceStat {
-  id            Int      @id @default(autoincrement())
-  type_metrique String
-  valeur        Decimal
-  id_reference  String?
-  horodatage    DateTime @default(now())
-}
 
 // --- SYNC MOBILE OFFLINE-FIRST ---
 // Stocke les clés d'idempotency pour POST /api/sync/scans.

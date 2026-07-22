@@ -1,4 +1,21 @@
+# Modèle de données — document de conception
+
+> 📌 **DOCUMENT DE CONCEPTION — état au 22/07/2026.**
+>
+> C'est le modèle de données **imaginé au cadrage**, pas celui du code. Les noms y sont en français
+> (`Lieux`, `Materiel`, `Lot`) là où le schéma réel les porte en anglais (`Location`, `Equipment`,
+> `Batch`) — la correspondance n'est donc pas immédiate.
+>
+> Quatre tables décrites ici n'ont **jamais été implémentées** et viennent d'être retirées du
+> schéma : `Gestion_Rebuts`, `Nettoyage_Maintenance`, `Recette_Composition` et `Performance_Stats`.
+> Elles restaient déclarées sans qu'aucune ligne de code ne les lise.
+>
+> **La référence du modèle de données est `prisma/schema.prisma`** — le dépôt ne contient pas de
+> diagramme entité-association ; les schémas de `docs/19_architecture.md` décrivent les composants
+> et les flux, pas les tables.
+
 ### 0. Tables utilitaires
+
 
 - **Table `Unite`** (canonicalisation des unités) — *Liste des unités et facteurs de conversion*
     - `code` : Postgres `text` — Prisma `String` — Identifiant court de l’unité (ex: "L", "kg", "u").

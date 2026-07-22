@@ -83,7 +83,7 @@ flowchart TB
     end
 
     PRISMA["Prisma Client"]
-    DB[("PostgreSQL<br/>33 modèles")]
+    DB[("PostgreSQL<br/>30 modèles")]
 
     HTTP --> Modules
     Modules --> Shared

@@ -163,6 +163,6 @@ Dire au jury ce qui n'est **pas** fait vaut mieux que de le laisser le découvri
 | Rappel produit (généalogie + blocage) | **~21 ms** pour 4 645 lots (budget : 15 min) |
 | Alerte chaîne du froid | **< 30 s** entre télémétrie et alerte |
 | Tests automatisés | **724** verts (86 % de couverture de lignes) + suites e2e |
-| Modules métier | 11 (+ noyau partagé), 33 modèles de données |
+| Modules métier | 11 (+ noyau partagé), 30 modèles de données |
 | Standards | GS1 : GTIN, AI(10), SSCC, URN LGTIN/SSCC, Digital Link · EPCIS : Object/Transformation/AggregationEvent |
 | Conformité visée | HACCP, ISO 22000, RPO 15 min / RTO 60-120 min (PCA/PRA, cf. `18_PCA_PRA.md`) |
