@@ -308,4 +308,42 @@ describe('Logistics - Receipts Routes', () => {
       expect(batchService.liftQuarantine).not.toHaveBeenCalled();
     });
   });
+
+  /**
+   * ⚠️ Ces cas verrouillent le CÂBLAGE de la borne, pas le schéma. Un test de schéma isolé reste
+   * vert si l'on retire le middleware de la route — et c'est exactement ainsi que ces deux
+   * endpoints s'étaient retrouvés sans plafond alors que tous les autres en avaient un.
+   */
+  describe('GET /api/logistics/receipts — bornes de pagination', () => {
+    it('refuse une limite démesurée en 400, au lieu de charger toutes les réceptions', async () => {
+      const res = await request(app).get('/api/logistics/receipts?limit=100000000');
+
+      expect(res.status).toBe(400);
+      expect(receiptService.listReceipts).not.toHaveBeenCalled();
+    });
+
+    it("refuse une limite non numérique en 400, au lieu d'un `take: NaN` (500)", async () => {
+      const res = await request(app).get('/api/logistics/receipts?limit=abc');
+
+      expect(res.status).toBe(400);
+    });
+
+    it('refuse une page nulle en 400, au lieu d’un `skip` négatif (500)', async () => {
+      const res = await request(app).get('/api/logistics/receipts?page=0');
+
+      expect(res.status).toBe(400);
+    });
+
+    it('laisse passer une requête normale, avec ses valeurs par défaut', async () => {
+      vi.mocked(receiptService.listReceipts).mockResolvedValue({
+        data: [],
+        meta: { total: 0, page: 1, limit: 20 },
+      } as never);
+
+      const res = await request(app).get('/api/logistics/receipts');
+
+      expect(res.status).toBe(200);
+      expect(receiptService.listReceipts).toHaveBeenCalledWith('org_test_123', 1, 20);
+    });
+  });
 });

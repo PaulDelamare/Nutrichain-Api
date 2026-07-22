@@ -1,6 +1,6 @@
 # Standards Techniques (Nutrichain API)
 
-> **Note 22/07/2026** : ce document décrit désormais **l'état réel du code**, y compris ses trous (pagination non standardisée, `listReceipts` non borné, hook de pré-commit réduit à ESLint). Les sections §2 et §3 avaient été implémentées lors de la session de durcissement — voir `13_SESSION_HARDENING_2026-05-27.md`.
+> **Note 22/07/2026** : ce document décrit désormais **l'état réel du code**, y compris ses trous (pas d'utilitaire de pagination partagé, hook de pré-commit réduit à ESLint). Les sections §2 et §3 avaient été implémentées lors de la session de durcissement — voir `13_SESSION_HARDENING_2026-05-27.md`.
 
 Au-delà de l'architecture "Clean Code", l'API respecte les piliers suivants pour garantir qu'elle est "Prête pour la Production" (Production-ready).
 
@@ -45,11 +45,14 @@ Toutes les routes retournant des listes (Utilisateurs, Lots, Produits) doivent r
   utilitaire de pagination partagé** : chaque endpoint paginé construit son propre `{ data, meta }`.
   C'est un écart assumé et non résorbé — pas une fonction à appeler.
 
-> **État réel du plafond `[1, 500]`** : il est appliqué là où une requête est validée par un schéma
-> (`organizationQuery.schema.ts`, `eventsQuery.schema.ts`). Il ne l'est **pas** partout :
-> `listReceipts` lit `page`/`limit` par `parseInt` sans schéma ni borne, donc `?limit=999999` est
-> accepté et `?limit=abc` produit un `NaN` transmis à `take`. La règle ci-dessus est la cible ; le
-> trou est suivi en issue.
+> **État réel du plafond** : appliqué partout, par un schéma VineJS de query. Les plafonds vivent
+> dans `shared/constants/pagination.constants.ts` — valeur unique, parce qu'un plafond recopié à
+> cinq endroits est cinq occasions d'en oublier un, ce qui est précisément ce qui s'était produit.
+>
+> `page` est borné **des deux côtés** : `skip = (page - 1) * limit`, donc un numéro de page
+> démesuré produit un `skip` que la base refuse — le même 500 que `page=0`, de l'autre côté de
+> l'axe. `page` et `limit` sont en outre exigés **entiers** : une demi-page rendait la pagination
+> non déterministe.
 
 ## 5. CI/CD et Processus Git
 

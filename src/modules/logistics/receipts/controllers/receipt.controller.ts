@@ -4,6 +4,7 @@ import { batchService } from '../../shared/services/batch.service';
 import { labelService } from '../../shared/services/label.service';
 import { sendSuccess } from '../../../../shared/utils/returnSuccess/returnSuccess';
 import { catchAsync } from '../../../../shared/utils/errorHandler/catchAsync';
+import { RECEIPT_PAGE_DEFAULTS } from '../middlewares/receiptQuery.schema';
 import { AuthenticatedRequest } from '../../../identity/types/auth.types';
 import { APIError } from '../../../../shared/utils/errorHandler/APIError';
 import { resolveWritingActor } from '../../../../shared/utils/auth/resolveWritingActor';
@@ -95,8 +96,9 @@ export const getBatchByIdController = catchAsync(
 export const listReceiptsController = catchAsync(
   async (req: AuthenticatedRequest, res: Response) => {
     const activeOrgId = req.activeOrgId as string;
-    const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
-    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 20;
+    // Bornés en amont par `validateReceiptQuery` : ni `NaN`, ni page négative, ni limite illimitée.
+    const { page = RECEIPT_PAGE_DEFAULTS.page, limit = RECEIPT_PAGE_DEFAULTS.limit } =
+      req.validatedReceiptQuery ?? {};
 
     const result = await receiptService.listReceipts(activeOrgId, page, limit);
     sendSuccess(res, 200, 'Réceptions récupérées', result);

@@ -6,6 +6,7 @@ import { requireAuth } from '../../identity/middlewares/requireAuth.middleware';
 import { requireOrgRole } from '../../identity/middlewares/requireOrgRole.middleware';
 import { ALL_ROLES } from '../../identity/constants/roles.constants';
 import { validateTelemetryPing } from '../middlewares/validateTelemetryPing.middleware';
+import { validateTelemetryHistoryQuery } from '../middlewares/validateTelemetryHistoryQuery.middleware';
 
 const router = Router();
 
@@ -130,9 +131,19 @@ router.post('/telemetry/ping', machineAuth(), validateTelemetryPing, ingestTelem
  *           type: string
  *         required: true
  *         description: ID du capteur
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 500
+ *           default: 100
+ *         description: Nombre de points renvoyés (borné, la collection est conservée un an).
  *     responses:
  *       200:
  *         description: Historique récupéré avec succès
+ *       400:
+ *         description: Paramètre de requête invalide (limite hors bornes ou non entière)
  *       401:
  *         description: Non authentifié ou clé API manquante
  *       403:
@@ -145,6 +156,7 @@ router.get(
   checkApiKey(),
   requireAuth,
   requireOrgRole(ALL_ROLES),
+  validateTelemetryHistoryQuery,
   getSensorHistory
 );
 

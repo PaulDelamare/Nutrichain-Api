@@ -26,7 +26,8 @@ export const getProducts = catchAsync(async (req: AuthenticatedRequest, res: Res
 
 export const getBatches = catchAsync(async (req: AuthenticatedRequest, res: Response) => {
   const activeOrgId = req.activeOrgId || req.auth?.activeOrgId;
-  const { q } = req.query;
+  // Validé en amont : `?q=a&q=b` donnait un TABLEAU transmis au `contains` de Prisma (500).
+  const q = req.validatedCatalogQuery?.q;
 
   if (!activeOrgId) {
     throw new APIError(400, {

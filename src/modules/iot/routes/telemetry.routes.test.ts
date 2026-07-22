@@ -5,6 +5,19 @@ import { prisma } from '../../../shared/configs/prismaClient.config';
 
 // On NE mocke PAS machineAuth : ce test prouve le rejet RÉEL de la garde multi-tenant centralisée
 // au niveau HTTP (le rejet survient avant le controller). Seule la base est simulée.
+vi.mock('../../../shared/utils/checkApiKey/checkApiKey', () => ({
+  checkApiKey: () => (_req: unknown, _res: unknown, next: () => void) => next(),
+}));
+vi.mock('../../identity/middlewares/requireAuth.middleware', () => ({
+  requireAuth: (req: { activeOrgId?: string }, _res: unknown, next: () => void) => {
+    req.activeOrgId = 'org-1';
+    next();
+  },
+}));
+vi.mock('../../identity/middlewares/requireOrgRole.middleware', () => ({
+  requireOrgRole: () => (_req: unknown, _res: unknown, next: () => void) => next(),
+}));
+
 vi.mock('../../../shared/configs/prismaClient.config', () => {
   const mock = { iotGateway: { findFirst: vi.fn() } };
   return { prisma: mock, bdd: mock };
@@ -61,5 +74,21 @@ describe('POST /api/telemetry/ping — garde multi-tenant réelle (machineAuth)'
       .send({ ...trame, temperature: true });
 
     expect(res.status).toBe(401);
+  });
+
+  /**
+   * ⚠️ Verrouille le CÂBLAGE de la borne sur l'historique. La collection est une série temporelle
+   * conservée un an : un `limit` libre y ramenait un volume sans commune mesure avec le reste.
+   */
+  it('GET /history — refuse une limite démesurée en 400', async () => {
+    const res = await request(app).get('/api/telemetry/SENSOR-1/history?limit=99999');
+
+    expect(res.status).toBe(400);
+  });
+
+  it('GET /history — refuse une limite non numérique en 400', async () => {
+    const res = await request(app).get('/api/telemetry/SENSOR-1/history?limit=abc');
+
+    expect(res.status).toBe(400);
   });
 });
