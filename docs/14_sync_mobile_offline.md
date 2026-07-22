@@ -1,7 +1,8 @@
 # 14 — Sync Mobile Offline-First (Bulk Endpoint)
 
 > **Objectif SMART n°4** : Expérience mobile offline et résiliente (cible 10/06/2026)
-> **Statut** : MVP livré sur la branche `feat/mobile-sync-bulk`, durci après revue multi-agent.
+> **Statut** : livré et mergé. Durci depuis : le mode M2M par clé API a été **supprimé**, l'auteur
+> d'un scan vient exclusivement de la session (voir §6).
 
 ## 1. Contexte
 
@@ -28,11 +29,14 @@ Le champ `type` est un enum extensible : ajouter `'transformation'` cassera la c
 
 ### `POST /api/sync/scans`
 
-**Auth** : `mixedAuth([owner, admin, logistics_operator, logistics_admin, logistics_owner])` — accepte cookie HttpOnly (web), Bearer Token (mobile session) ou `x-api-key` (M2M).
+**Auth** : `sessionAuth(SYNC_WRITE_ROLES)` — c'est-à-dire `WRITE_ROLES` : `owner`, `admin`,
+`operator`. Accepte un cookie HttpOnly (web) ou un Bearer Token (session mobile). **Une session est
+obligatoire** : `x-api-key` seule est rejetée en 401, et l'organisation est celle de la session,
+jamais celle d'un en-tête. Les rôles `logistics_*` n'existent plus.
 
 **Headers** :
 - `Content-Type: application/json`
-- `Authorization: Bearer <token>` *(ou)* `x-api-key: <key>`
+- `Authorization: Bearer <token>` (session mobile) ou cookie de session HttpOnly (web)
 
 **Body** :
 ```json
@@ -50,8 +54,7 @@ Le champ `type` est un enum extensible : ajouter `'transformation'` cassera la c
         "statut_controle": "OK"
       }
     }
-  ],
-  "actorUserId": "uuid-de-l-operateur"
+  ]
 }
 ```
 
@@ -60,7 +63,9 @@ Le champ `type` est un enum extensible : ajouter `'transformation'` cassera la c
 - `items[*].clientOpId` : UUID v4 (généré par le mobile, identique sur retry)
 - `items[*].type` : enum `['receipt']`
 - `items[*].payload` : mêmes contraintes que `validateReceiptParams`. `received_by` n'est **jamais lu du payload** : il est forcé serveur-side par le service.
-- `actorUserId` : UUID, **optionnel en session, requis en M2M**. En session, ignoré. En M2M, le service vérifie que l'utilisateur cible est membre de l'org bound **avec un rôle ∈ `SYNC_WRITE_ROLES`** (anti privilege escalation).
+- **Aucun champ d'auteur n'est accepté.** Le schéma VineJS n'en déclare pas : l'opérateur est résolu
+  par `resolveWritingActor({ sessionUserId })` à partir de la session, et l'appel échoue en 401 si elle
+  manque. Ce qui n'existe pas ne se falsifie pas — un client ne peut pas choisir qui signe son scan.
 
 ### Réponse 207 Multi-Status
 
@@ -100,9 +105,9 @@ Le champ `type` est un enum extensible : ajouter `'transformation'` cassera la c
 
 **Codes globaux** :
 - `207` : toujours (même si tous les items sont en erreur — la requête HTTP elle-même est valide)
-- `400` : payload globalement invalide ou `actorUserId` manquant en M2M
+- `400` : payload globalement invalide
 - `401` : non authentifié
-- `403` : rôle insuffisant ou `actorUserId` non membre (M2M)
+- `403` : rôle insuffisant (rôle de la session hors `SYNC_WRITE_ROLES`)
 - `500` : erreur serveur
 
 ## 4. Workflow mobile attendu
@@ -145,9 +150,12 @@ Cron `cleanupIdempotencyKeys.job` purge à 3h chaque jour les entrées `expires_
 
 ## 6. Sécurité
 
-- **`received_by` override** : le service force `req.auth.user.id` en session ou `actorUserId` en M2M ; le payload `received_by` n'existe pas dans le schéma VineJS (ignoré silencieusement par Vine).
+- **L'auteur vient de la session, jamais du corps** : `resolveWritingActor({ sessionUserId })` est la
+  seule source. Ni `received_by` ni `actorUserId` n'existent dans le schéma VineJS.
 - **Isolation multi-tenant** : toutes les FK (`id_fournisseur`, `id_produit`) sont filtrées par `organization_id` dans `receiptService`. Un item référençant une FK d'une autre org tombe en `status: 'error'`.
-- **M2M role check** : `actorUserId` doit pointer vers un membre de l'org bound **avec un rôle dans `SYNC_WRITE_ROLES`**. Empêche une clé API d'usurper un VIEWER pour écrire.
+- **Plus de mode M2M** : `sessionAuth(SYNC_WRITE_ROLES)` rejette en 401 une requête présentée avec la
+  seule clé API. L'ancien mode, où une clé désignait l'auteur par `actorUserId`, permettait à un
+  porteur de clé de faire signer un scan par n'importe quel membre de l'organisation.
 - **Hash divergence = conflict** : détecte un mobile compromis ou un bug client qui rejouerait un clientOpId avec un payload modifié.
 - **VineJS Fail Fast** : structure validée avant toute interaction DB.
 - **Audit trail WORM atomique** : impossible d'avoir un Receipt sans son audit (transaction unique).
@@ -164,11 +172,11 @@ Cron `cleanupIdempotencyKeys.job` purge à 3h chaque jour les entrées `expires_
 
 ## 8. Exemples curl
 
-### Succès simple (M2M)
+### Succès simple (session mobile)
 ```bash
 curl -X POST http://localhost:3000/api/sync/scans \
   -H "Content-Type: application/json" \
-  -H "x-api-key: <YOUR_API_KEY>" \
+  -H "Authorization: Bearer <SESSION_TOKEN>" \
   -d '{
     "items": [
       {
@@ -184,7 +192,6 @@ curl -X POST http://localhost:3000/api/sync/scans \
         }
       }
     ],
-    "actorUserId": "<user_uuid_of_an_org_member_with_write_role>"
   }'
 ```
 
@@ -197,10 +204,10 @@ Modifier `quantite_actuelle: 999` et garder le même `clientOpId` → l'item pas
 ## 9. Tests
 
 Couverture (Vitest + Supertest, tous co-localisés) :
-- `idempotency.service.test.ts` — hashing canonical (5 cas)
-- `syncScans.service.test.ts` — résolution actor session/M2M, role check, processItem atomique, replay, conflict, partial success, audit rollback, anti-usurpation (~12 cas)
-- `validateSyncScans.middleware.test.ts` — toutes les contraintes VineJS + boundary 100 items (~10 cas)
-- `sync.routes.test.ts` — session, M2M positif, M2M rejet, validation, mix success/error (~7 cas)
+- `idempotency.service.test.ts` — hachage canonique (5 cas)
+- `syncScans.service.test.ts` — résolution de l'auteur depuis la session, processItem atomique, replay, conflict, succès partiel, rollback d'audit, anti-usurpation (11 cas)
+- `validateSyncScans.middleware.test.ts` — toutes les contraintes VineJS + borne à 100 items (16 cas)
+- `sync.routes.test.ts` — session, rejet de la clé seule, validation, mélange succès/erreur (5 cas)
 
 Lancement : `npm run unit:test`
 
@@ -230,7 +237,6 @@ Ces items sont volontairement reportés ; ils ne bloquent pas l'objectif 10/06/2
 
 - **Latent nested-transaction trap sur `receiptService.createReceipt`** — Le service accepte un `externalTx` optionnel ; si fourni, il l'utilise sans ouvrir une nouvelle transaction. Tout futur appelant DOIT continuer à passer ce `tx` quand il est lui-même déjà dans une transaction Serializable, sinon deadlock ou perte d'atomicité. Mitigation envisagée : forcer `tx` non-optionnel + ajouter un `createReceiptStandalone()` thin wrapper.
 - **Sequential await loop** — `syncScansService.syncScans` itère séquentiellement sur les items (chaque item ouvre sa propre transaction Serializable). À 100 items, ça peut dépasser le SLA 500 ms sur DB chargée. Benchmark requis avant d'envisager une exécution parallèle bornée (`p-limit ~5`). Risque : conflits Serializable plus fréquents en parallèle.
-- **`actorUserId` accepté silencieusement en session** — VineJS ne strictement-rejette pas un `actorUserId` présent quand `sessionUserId` est défini ; le service le drop. Pas exploitable mais peut masquer un bug client. Envisager un fail-loud (400) pour aider au débogage.
 - **`as unknown as` pour Prisma JSON** — `response_payload as unknown as Prisma.InputJsonValue` côté write + `as unknown as SyncItemResult` côté read. Sans helper natif `Prisma.JsonObject` strict, ces casts restent acceptables sous condition de validation runtime à terme.
 
 ## 12. Référence schéma Prisma
@@ -257,4 +263,4 @@ model IdempotencyKey {
 
 ---
 
-*Branche : `feat/mobile-sync-bulk`. Doc mise à jour le 2026-05-28 après revue multi-agent (4 reviewers, 7 fixes appliqués).*
+*Doc mise à jour le 22/07/2026 : suppression du mode M2M, l'auteur d'un scan vient de la session.*

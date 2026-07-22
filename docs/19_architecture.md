@@ -1,7 +1,7 @@
 # 19 — Architecture de NutriChain API
 
 > Document de référence pour la soutenance. Tous les schémas reflètent le code réel
-> (`src/app.ts`, `src/modules/`, `src/shared/`, `prisma/schema.prisma`) à la date du 04/07/2026.
+> (`src/app.ts`, `src/modules/`, `src/shared/`, `prisma/schema.prisma`), revérifiés le 22/07/2026.
 
 ## 1. Vue de contexte — qui parle à l'API ?
 
@@ -15,7 +15,7 @@ flowchart LR
         WEB["Front web opérateur<br/>(sessions Better-Auth)"]
         MOBILE["App mobile terrain<br/>(scans hors-ligne)"]
         IOT["Capteurs IoT<br/>(température chaîne du froid)"]
-        ERP["ERP / WMS<br/>(clé API, CSV)"]
+        ERP["ERP / WMS<br/>(session, CSV)"]
         CONSO["Consommateur<br/>(scan QR public, sans compte)"]
     end
 
@@ -38,12 +38,18 @@ flowchart LR
 
 Points clés :
 
-- **Deux modes d'authentification** : sessions Better-Auth (humains) et clé API
-  (machines ERP/WMS), unifiés par le middleware `mixedAuth`.
+- **Quatre voies d'entrée, disjointes** : session Better-Auth (humains), clé API applicative
+  (`x-api-key` — elle identifie une application, elle n'autorise personne, et ne remplace jamais
+  une session), authentification machine par passerelle IoT (`machineAuth`, une seule route),
+  et admin de plateforme. Le middleware `mixedAuth`, qui basculait en « mode machine » sur la
+  seule présence d'un en-tête, **a été supprimé** : il permettait d'agir sans session.
 - **Une route volontairement publique** : le scan consommateur d'un lot expédié
   (transparence sanitaire), qui n'expose que des données non sensibles.
-- **PostgreSQL est l'unique état persistant** : pas de cache externe ni de broker,
-  la cohérence repose sur les transactions Prisma.
+- **PostgreSQL porte tout l'état métier** : pas de cache externe ni de broker, la cohérence repose
+  sur les transactions Prisma. **Une seconde base existe pourtant** : MongoDB stocke la télémétrie
+  brute des capteurs (série temporelle, purge automatique à 1 an). Elle est **obligatoire au
+  démarrage** — `server.ts` bloque tant que la connexion n'est pas établie, et `MONGO_URI` fait
+  partie des variables exigées au boot.
 
 ## 2. Vue modulith — les modules métier
 
@@ -65,17 +71,19 @@ flowchart TB
         SYNC["sync<br/>scans mobiles hors-ligne,<br/>idempotence"]
         CONN["connectors<br/>imports CSV ERP,<br/>export EPCIS"]
         AUDIT["auditIntegrity<br/>vérification de la chaîne<br/>d'audit, checkpoints, job planifié"]
+        ORG["organization<br/>membres, matériel, lieux,<br/>restitutions transverses au front"]
+        PLAT["platform<br/>administration de plateforme"]
         CORE["core<br/>health, hello"]
     end
 
     subgraph Shared["src/shared — noyau commun"]
-        MW["middlewares<br/>mixedAuth, rateLimiter,<br/>sanitize, requestId"]
+        MW["middlewares<br/>sessionAuth, machineAuth,<br/>rateLimiter, sanitize, requestId"]
         UTILS["utils<br/>gs1, audit hash-chain, validateData,<br/>csv, mailer, errorHandler, logger"]
         CONSTS["constants<br/>EPCIS, configs, types"]
     end
 
     PRISMA["Prisma Client"]
-    DB[("PostgreSQL<br/>31 modèles")]
+    DB[("PostgreSQL<br/>33 modèles")]
 
     HTTP --> Modules
     Modules --> Shared
@@ -88,25 +96,30 @@ flowchart TB
 
 Pourquoi ce choix plutôt que des microservices :
 
-- **Cohérence transactionnelle** : une réception crée en un seul `prisma.$transaction`
-  le lot, le mouvement de stock, l'événement EPCIS et l'entrée d'audit. En
+- **Cohérence transactionnelle** : une réception crée en une seule transaction
+  (`retryableTransaction`) le lot, le mouvement de stock, l'événement EPCIS et l'entrée d'audit. En
   microservices, cela exigerait des sagas — complexité injustifiée à cette échelle (YAGNI).
 - **Frontières prêtes pour l'extraction** : chaque module étant autonome (routes →
   services), un module peut devenir un service séparé si la charge l'exige un jour.
 - **Un seul pipeline de sécurité** : auth, rate limiting, sanitisation et audit
   sont appliqués uniformément.
 
-## 3. Zoom hexagonal — anatomie d'un module
+## 3. Anatomie d'un module
 
-Chaque module suit le même patron **ports & adaptateurs** : le cœur métier (services,
-fonctions pures) ne connaît ni Express ni le transport HTTP. Exemple réel :
-`logistics/receipts`.
+Chaque module suit le même patron **en couches** : routes → contrôleur → service, le service
+portant toute la logique métier. Le cœur métier ne connaît **ni Express ni le transport HTTP** —
+aucun service n'importe Express, et c'est la propriété qui compte à la relecture.
+
+En revanche, ce n'est **pas** une architecture hexagonale : il n'y a ni port, ni adaptateur, ni
+couche Repository. Les services appellent le client Prisma directement et manipulent les types
+générés. C'est un choix assumé — l'inversion de dépendance n'apporterait ici qu'une indirection
+supplémentaire sur un client déjà typé. Exemple réel : `logistics/receipts`.
 
 ```mermaid
 flowchart LR
-    subgraph Adapters_In["Adaptateurs entrants"]
+    subgraph In["Entrées HTTP"]
         R["routes<br/>receipt.routes.ts"]
-        M["middlewares<br/>requireAuth / mixedAuth<br/>verifyReceiptAccess (multi-tenant)<br/>validateReceipt (VineJS, messages FR)"]
+        M["middlewares<br/>sessionAuth(ROLES)<br/>verifyReceiptAccess (multi-tenant)<br/>validateReceipt (VineJS, messages FR)"]
         C["controllers<br/>receipt.controller.ts<br/>(traduction HTTP ↔ métier)"]
     end
 
@@ -116,7 +129,7 @@ flowchart LR
         A["shared/utils/audit<br/>hash-chain WORM"]
     end
 
-    subgraph Adapters_Out["Adaptateurs sortants"]
+    subgraph Out["Sorties"]
         P["Prisma Client<br/>(persistance)"]
         ML["mailer<br/>(notifications)"]
     end
@@ -131,7 +144,7 @@ flowchart LR
 Conséquences concrètes :
 
 - **Testabilité** : les services se testent avec un Prisma mocké, les utilitaires GS1
-  sont des fonctions pures testées sans aucun mock (378 tests, 68 fichiers).
+  sont des fonctions pures testées sans aucun mock (667 tests, 100 fichiers).
 - **Validation aux frontières** : VineJS (messages français centralisés) valide toute
   entrée *avant* le contrôleur ; le cœur métier reçoit des données déjà typées
   (`Infer<typeof schema>`, zéro `any`).
@@ -223,17 +236,18 @@ par schéma** (une base, filtrage par organisation) :
    `verifyAlertAccess`, …) rejettent en 403/404 tout accès hors organisation.
 3. Chaque requête Prisma des services inclut `organization_id` dans son `where` —
    même si la garde a déjà filtré (défense en profondeur).
-4. Les imports/exports connecteurs sont cloisonnés par la clé API, liée à une
-   organisation unique.
+4. Les imports/exports connecteurs sont cloisonnés **par la session**, comme le reste du métier :
+   leurs routes portent `sessionAuth(ADMIN_ROLES)` en écriture et `sessionAuth(ALL_ROLES)` en
+   lecture. Ils ne s'appuient sur aucune clé API.
 
 ## 7. Décisions structurantes (résumé pour la soutenance)
 
 | Décision | Motivation |
 |---|---|
 | Monolithe modulaire, pas de microservices | Transactions ACID sur les flux critiques ; équipe réduite (un seul déployable à opérer) ; frontières extractibles plus tard |
-| Hexagonal par module | Cœur métier testable sans HTTP ni base ; 378 tests rapides |
+| Découpage en couches par module (pas d'hexagonal) | Cœur métier testable sans HTTP ; 667 tests rapides, 86 % de couverture de lignes |
 | Prisma + migrations versionnées | Schéma tracé en Git, reproductible (fini `db push`) |
-| Better-Auth + clé API via `mixedAuth` | Humains et machines sur le même pipeline de sécurité |
+| Sessions Better-Auth pour les humains, `machineAuth` pour les capteurs | Chaque voie porte sa propre identité et son organisation ; la clé API n'autorise rien à elle seule |
 | VineJS aux frontières, messages FR | Erreurs exploitables par le front, cœur métier typé strict (zéro `any`) |
 | Audit hash-chain en transaction | Preuve d'intégrité opposable, sans infrastructure dédiée |
 | GS1/EPCIS natifs (pas de plugin) | Maîtrise fine des règles (URN sans check digit, AI(10) ≤ 20 car.) |

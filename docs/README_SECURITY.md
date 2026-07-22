@@ -1,5 +1,11 @@
 # 📋 RÉSUMÉ EXÉCUTIF: Implémentation Sécurité Logistics
 
+> 🛑 **DOCUMENT HISTORIQUE — NE PAS L'APPLIQUER (note du 22/07/2026).**
+> Comme `09_SECURITY_DECISION_MATRIX.md`, il décrit le flux « B2B par clé API » qui permettait
+> d'agir sans session, l'organisation venant de la configuration. **Ce flux a été supprimé** :
+> `x-api-key` n'autorise plus rien, toute route métier exige une session et l'organisation vient
+> de cette session. Référence à jour : `19_architecture.md` §1.
+
 ## ✅ Livraisons
 
 ### 1. **Documentation Complète** (4 fichiers)

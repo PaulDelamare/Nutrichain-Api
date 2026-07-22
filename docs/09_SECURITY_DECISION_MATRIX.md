@@ -1,5 +1,18 @@
 # Matrice de Sécurité: Décisions d'Accès par Scénario
 
+> 🛑 **DOCUMENT HISTORIQUE — NE PAS L'APPLIQUER (note du 22/07/2026).**
+> Il décrit un flux « B2B par clé API » où `x-api-key` suffisait à **agir sur des données métier**,
+> l'organisation étant déduite de la configuration. **Ce flux n'existe plus.** Aujourd'hui
+> `x-api-key` identifie une application et n'autorise rien : `sessionAuth` rejette en 401 toute
+> écriture ou lecture métier présentée sans session, et `requireOrgRole` réécrit l'organisation
+> depuis la session. Mécanisme à connaître : `checkApiKey` **pose toujours** `req.activeOrgId`
+> depuis `API_KEY_ORG_ID` — ce qui a disparu, ce n'est pas cette ligne, c'est qu'une route métier
+> s'en contente. Deux exceptions volontaires et étroites subsistent : la télémétrie des capteurs
+> (`machineAuth`, organisation portée par la passerelle) et l'aperçu d'invitation, limité à un
+> jeton. Implémenter une route d'après cette matrice rouvrirait une fuite
+> entre organisations. Référence à jour : `19_architecture.md` §1 et `13_SESSION_HARDENING_2026-05-27.md`.
+> Conservé pour la traçabilité des décisions, pas comme spécification.
+
 > **Note 2026-05-27** : la matrice ci-dessous reflète l'état pré-session de durcissement. Plusieurs points ont été modifiés (suppression du bypass `x-api-key` dans `verifyBatchAccess`/`verifyReceiptAccess`, résolution de l'`activeOrgId` depuis `API_KEY_ORG_ID` env au lieu du header `x-org-id`, filtre statut sur le public scan B2C). Voir `13_SESSION_HARDENING_2026-05-27.md` pour la liste des changements.
 
 ## 🎯 Vue d'Ensemble
