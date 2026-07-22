@@ -10,24 +10,15 @@ import { iotAlertService } from '../services/iotAlert.service';
  * Ingest new telemetry ping from an IoT device.
  */
 export const ingestTelemetry = catchAsync(async (req: AuthenticatedRequest, res: Response) => {
-  const { sensor_id, temperature, humidity, battery_level } = req.body;
+  // La trame est validée en amont par `validateTelemetryPing` : elle est déjà typée, bornée, et
+  // garantie NUMÉRIQUE. La garde manuelle qui vivait ici testait `=== undefined` et laissait donc
+  // passer `null`, `"n/a"` ou `true` — cette dernière, coercée en 1 °C, éteignait la détection.
+  const { sensor_id, temperature, humidity, battery_level } = req.validatedTelemetryPing!;
   const organization_id = req.activeOrgId;
 
   if (!organization_id) {
     throw new APIError(400, {
       error: [{ field: 'auth', message: "ID Organisation manquant pour l'ingestion IoT." }],
-    });
-  }
-
-  // Ensure payload is complete.
-  if (
-    !sensor_id ||
-    temperature === undefined ||
-    humidity === undefined ||
-    battery_level === undefined
-  ) {
-    throw new APIError(400, {
-      error: [{ field: 'payload', message: 'Format de trame IoT invalide.' }],
     });
   }
 

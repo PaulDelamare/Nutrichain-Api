@@ -12,9 +12,11 @@ vi.mock('../services/iotAlert.service', () => ({
   iotAlertService: { checkAndAlert: vi.fn() },
 }));
 
+// Le contrôleur lit la trame VALIDÉE, pas `req.body` : reproduire ici l'état que produit
+// réellement `validateTelemetryPing`, sinon le test valide un monde qui n'existe pas.
 const buildReq = () =>
   ({
-    body: { sensor_id: 'S1', temperature: 8, humidity: 50, battery_level: 90 },
+    validatedTelemetryPing: { sensor_id: 'S1', temperature: 8, humidity: 50, battery_level: 90 },
     activeOrgId: 'org-1',
   }) as unknown as AuthenticatedRequest;
 
