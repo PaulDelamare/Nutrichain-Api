@@ -5,6 +5,7 @@ import { APIError } from '../../../shared/utils/errorHandler/APIError';
 import { AuthenticatedRequest } from '../../identity/types/auth.types';
 import { catchAsync } from '../../../shared/utils/errorHandler/catchAsync';
 import { iotAlertService } from '../services/iotAlert.service';
+import { TELEMETRY_HISTORY_DEFAULT_LIMIT } from '../middlewares/telemetryHistoryQuery.schema';
 
 /**
  * Ingest new telemetry ping from an IoT device.
@@ -58,7 +59,9 @@ export const ingestTelemetry = catchAsync(async (req: AuthenticatedRequest, res:
 export const getSensorHistory = catchAsync(async (req: AuthenticatedRequest, res: Response) => {
   const { sensor_id } = req.params;
   const organization_id = req.activeOrgId;
-  const limit = parseInt((req.query.limit as string) || '100', 10);
+  // Borné en amont : la série temporelle est conservée un an, un `limit` libre y ramenait
+  // un volume sans commune mesure avec les autres lectures.
+  const limit = req.validatedTelemetryHistoryQuery?.limit ?? TELEMETRY_HISTORY_DEFAULT_LIMIT;
 
   if (!organization_id) {
     throw new APIError(400, {

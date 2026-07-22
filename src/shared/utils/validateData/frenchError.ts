@@ -15,6 +15,7 @@ export const frenchErrorMessages = {
   'date.after': (_meta: { data: string }) =>
     `Ce champ doit avoir une date superieure ou égale à aujourd'hui.`,
   number: 'Ce champ doit être un nombre.',
+  withoutDecimals: 'Ce champ doit être un nombre entier.',
   object: 'Le corps de la requête doit être un objet JSON.',
   password:
     'Le mot de passe doit contenir au moins 12 caractères, une majuscule, un chiffre et un caractère spécial.',

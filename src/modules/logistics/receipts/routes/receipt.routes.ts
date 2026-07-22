@@ -11,6 +11,7 @@ import {
 } from '../controllers/receipt.controller';
 import { validateReceiptParams } from '../middlewares/validateReceipt.middleware';
 import { validateBatchResolve } from '../middlewares/validateBatchResolve.middleware';
+import { validateReceiptQuery } from '../middlewares/validateReceiptQuery.middleware';
 import { validateQuarantineLift } from '../middlewares/validateQuarantineLift.middleware';
 import { sessionAuth } from '../../../../shared/middlewares/sessionAuth';
 import { verifyReceiptAccess } from '../../middlewares/verifyReceiptAccess.middleware';
@@ -40,7 +41,12 @@ router.post(
 
 router.get('/logistics/receipts/stats', sessionAuth(ADMIN_ROLES), getReceiptStatsController);
 
-router.get('/logistics/receipts', sessionAuth(ALL_ROLES), listReceiptsController);
+router.get(
+  '/logistics/receipts',
+  sessionAuth(ALL_ROLES),
+  validateReceiptQuery,
+  listReceiptsController
+);
 
 router.get(
   '/logistics/receipts/:id',

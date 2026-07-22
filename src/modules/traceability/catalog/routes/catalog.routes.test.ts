@@ -43,6 +43,17 @@ describe('Catalog Routes Integration', () => {
     app = express();
     app.use(express.json());
     app.use('/api', catalogRoutes);
+    // Sans gestionnaire d'erreurs, un refus de validation ressortirait en 500 par défaut d'Express.
+    app.use(
+      (
+        err: Error & { status?: number },
+        _req: express.Request,
+        res: express.Response,
+        _next: express.NextFunction
+      ) => {
+        res.status(err.status ?? 500).json(err);
+      }
+    );
   });
 
   afterEach(() => {
@@ -79,6 +90,35 @@ describe('Catalog Routes Integration', () => {
       expect(res.body.message).toBe('Lots récupérés avec succès');
       expect(res.body.data).toEqual(mockBatches);
       expect(catalogService.getAllBatches).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  /**
+   * ⚠️ Verrouille le CÂBLAGE de la borne. `?q=a&q=b` produit un TABLEAU côté Express : il partait
+   * tel quel dans le `contains` de Prisma et sortait en 500. Un test de schéma isolé resterait vert
+   * si l'on retirait le middleware de la route.
+   */
+  describe('GET /api/traceability/batches — terme de recherche borné', () => {
+    it('refuse un terme répété (tableau) en 400 au lieu de sortir en 500', async () => {
+      const res = await request(app).get('/api/traceability/batches?q=a&q=b');
+
+      expect(res.status).toBe(400);
+      expect(catalogService.getAllBatches).not.toHaveBeenCalled();
+    });
+
+    it('refuse un terme de recherche démesuré', async () => {
+      const res = await request(app).get('/api/traceability/batches?q=' + 'x'.repeat(101));
+
+      expect(res.status).toBe(400);
+    });
+
+    it('laisse passer une recherche normale', async () => {
+      vi.mocked(catalogService.getAllBatches).mockResolvedValue([] as never);
+
+      const res = await request(app).get('/api/traceability/batches?q=lait');
+
+      expect(res.status).toBe(200);
+      expect(catalogService.getAllBatches).toHaveBeenCalledWith('org-123', 'lait', expect.anything());
     });
   });
 });
