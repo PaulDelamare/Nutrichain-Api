@@ -84,6 +84,29 @@ model Account {
   @@map("account")
 }
 
+/// Compteur d'échecs de connexion, par compte visé.
+///
+/// Un limiteur par IP ne protège pas un compte CIBLÉ : un attaquant qui dispose de plusieurs
+/// adresses le contourne sans effort. Le verrouillage porte donc aussi sur le compte lui-même.
+///
+/// L'e-mail n'est jamais stocké en clair : on garde une empreinte HMAC-SHA-256 calculée avec le
+/// secret du serveur. Un condensat nu serait forçable au dictionnaire — l'espace des adresses
+/// d'une entreprise s'énumère en quelques secondes. Cela reste une donnée PSEUDONYMISÉE, donc une
+/// donnée personnelle : c'est le job de purge quotidien qui la borne dans le temps.
+model LoginAttempt {
+  /// HMAC-SHA-256 de l'e-mail normalisé (minuscules, sans espaces).
+  email_hash   String    @id
+  /// Échecs consécutifs depuis `first_failed_at`. Remis à zéro par une connexion réussie.
+  failed_count Int       @default(0)
+  first_failed_at DateTime @default(now())
+  /// Tant que cette date est future, toute tentative est refusée, mot de passe correct compris.
+  locked_until DateTime?
+  updated_at   DateTime  @updatedAt
+
+  @@index([locked_until])
+  @@map("login_attempt")
+}
+
 model Verification {
   id         String   @id
   identifier String

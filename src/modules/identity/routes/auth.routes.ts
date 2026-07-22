@@ -5,6 +5,8 @@ import { checkApiKey } from '../../../shared/utils/checkApiKey/checkApiKey';
 import { requireInvitationOrFirstUser } from '../middlewares/guardSignUp.middleware';
 import { validateSignInParams, validateSignUpParams } from '../middlewares/validateAuth.middleware';
 import { blockOrgPassthrough } from '../middlewares/blockOrgPassthrough.middleware';
+import { authRateLimiter } from '../middlewares/authRateLimiter.middleware';
+import { loginThrottle } from '../middlewares/loginThrottle.middleware';
 import { allowAuthRoutes } from '../middlewares/allowAuthRoutes.middleware';
 import invitationRoutes from './invitation.routes';
 
@@ -102,6 +104,14 @@ const router = Router();
 router.use('/auth/*', checkApiKey());
 
 // ==========================================
+// FREIN CONTRE LE BRUTEFORCE (PAR IP)
+// ==========================================
+// Doit rester AVANT les gardes ci-dessous : posé après, il ne voyait ni le devinage de jeton
+// d'invitation (refusé en 403 par `requireInvitationOrFirstUser`) ni les corps rejetés en 400 par
+// VineJS — deux boucles qu'un attaquant peut pourtant dérouler sans limite.
+router.all('/auth/*', authRateLimiter);
+
+// ==========================================
 // VALIDATION & GUARD SIGNUP / SIGNIN
 // ==========================================
 // Validation des champs & règles strictes de MDP pour Inscription
@@ -110,6 +120,10 @@ router.post('/auth/sign-up/email', validateSignUpParams, requireInvitationOrFirs
 
 // Validation des champs basique pour la Connexion
 router.post('/auth/sign-in/email', validateSignInParams);
+
+// Verrou PAR COMPTE, après la validation du corps : inutile de compter une tentative dont on sait
+// déjà qu'elle est malformée. Le limiteur par IP, lui, l'a déjà comptée.
+router.post('/auth/sign-in/email', loginThrottle);
 
 // ==========================================
 // FERMETURE DU PASSTHROUGH SUR LES ORGANISATIONS
