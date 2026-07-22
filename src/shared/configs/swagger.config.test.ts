@@ -16,8 +16,8 @@ describe('spécification OpenAPI', () => {
   });
 
   /**
-   * Les 11 étapes du scénario de démonstration (`docs/20` §5). C'est ce qu'un jury ou un
-   * intégrateur suit en premier : si l'une disparaît de la doc, on veut le savoir avant lui.
+   * Les 11 étapes du scénario de démonstration. C'est le parcours qu'un intégrateur suit en
+   * premier : si l'une disparaît de la documentation, on veut le savoir avant lui.
    */
   it('documente le parcours de démonstration de bout en bout', () => {
     const attendues = [

@@ -1,13 +1,13 @@
 -- Suppression de quatre tables jamais utilisees : ScrapRecord, Maintenance,
 -- RecipeComposition, PerformanceStat.
 --
--- Elles etaient declarees dans le schema, presentes dans l'ERD, et vendues dans `bdd.md` sous les
--- noms « Gestion_Rebuts », « Nettoyage_Maintenance », « Recette_Composition » et
--- « Performance_Stats ». Aucune n'a jamais ete lue ni ecrite : zero occurrence dans `src/`, dans
--- les scripts et dans les seeds. Aucun code n'a donc jamais ecrit dedans : elles sont vides,
--- sauf insertion manuelle sur une instance tierce. Verifie nul sur la base de developpement.
+-- Elles etaient declarees au schema et decrites dans `bdd.md` sous les noms « Gestion_Rebuts »,
+-- « Nettoyage_Maintenance », « Recette_Composition » et « Performance_Stats », sans qu'aucune
+-- ligne de code ne les lise ni ne les ecrive : zero occurrence dans `src/`, dans les scripts et
+-- dans les seeds. Elles sont donc vides, sauf insertion manuelle sur une instance tierce ; c'est
+-- verifie nul sur la base de developpement.
 --
--- Un jury pardonne un perimetre assume, pas une table fantome.
+-- Une table declaree que rien n'alimente induit en erreur quiconque reprend le schema.
 
 -- DropForeignKey
 ALTER TABLE "Maintenance" DROP CONSTRAINT "Maintenance_id_materiel_fkey";
