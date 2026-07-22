@@ -1,5 +1,12 @@
 # Nutrichain - Plan d'Implémentation : Module Expéditions (Shipments)
 
+> 📌 **DOCUMENT DE PLANIFICATION — état au 22/07/2026.**
+>
+> Livré : `POST /api/logistics/shipments`, génération du **SSCC** et AggregationEvent EPCIS,
+> refus d'expédier un lot bloquant. Non livré : `GET /shipments/:id/label` — l'étiquette existe au
+> niveau du **lot** (`GET /api/logistics/batches/:id/label`, QR GS1 Digital Link), pas de
+> l'expédition. Les cases non cochées ci-dessous sont restées non cochées.
+
 Ce document trace la feuille de route pour la Phase 2 de la logistique. L'objectif est de permettre l'expédition de lots (Batches) vers des clients ou d'autres centres de production.
 
 ## 🏁 Étape 1 : Squelette & Création d'Expédition

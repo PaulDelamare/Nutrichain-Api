@@ -1,5 +1,21 @@
 # Implémentation Sécurité Logistics (Receipts & Batches)
 
+> 🛑 **DOCUMENT HISTORIQUE — NE PAS L'APPLIQUER (note du 22/07/2026).**
+>
+> Il décrit un modèle de sécurité qui **n'existe plus** : un « flux B2B/M2M » où une clé API
+> autorisait des écritures métier, et des rôles `logistics_admin` / `logistics_operator` /
+> `LOGISTICS_ROLES`. Ces rôles ont disparu du code (`git grep LOGISTICS_ROLES -- src` ne renvoie
+> rien) au profit d'un vocabulaire unique : `owner`, `admin`, `quality`, `operator`, `viewer`
+> (`identity/constants/roles.constants.ts`).
+>
+> Surtout, la matrice « qui a le droit de quoi » de ce document autorise `POST /receipts` par clé
+> API : c'est l'**exact contraire** de la règle en vigueur — une clé identifie une application,
+> elle n'autorise personne, et `sessionAuth` rejette en 401 toute écriture présentée sans session.
+> Implémenter une route d'après ce document rouvrirait une écriture sans utilisateur identifiable.
+>
+> Référence à jour : `19_architecture.md` §1 et `05_bonnes_pratiques_api.md` §2.
+> Conservé pour la traçabilité des décisions, pas comme spécification.
+
 ## 📋 Résumé Exécutif
 
 Cette implémentation sécurise les routes logistics avec une distinction claire entre :

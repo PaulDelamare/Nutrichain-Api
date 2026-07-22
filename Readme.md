@@ -282,6 +282,8 @@ Preuve reproductible, contre l'API réelle : `npm run e2e:api-key`.
 
 ## Documentation détaillée
 
+**[Index complet des 28 documents](docs/README.md)** — avec, pour chacun, son statut : à jour, plan, ou historique à ne pas appliquer.
+
 Les documents techniques par domaine sont dans [`docs/`](docs/) :
 
 - [`20_DOSSIER_SOUTENANCE.md`](docs/20_DOSSIER_SOUTENANCE.md) — **dossier de soutenance** (problème → solution → démo → preuves)

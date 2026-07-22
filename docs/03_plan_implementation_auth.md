@@ -1,5 +1,13 @@
 # Plan d'Implémentation : Système d'Authentification (Better Auth + ABAC)
 
+> 📌 **DOCUMENT DE PLANIFICATION — état au 22/07/2026.**
+>
+> C'est une feuille de route, pas une description du code. Ce qui a été livré : Better-Auth
+> (sessions, organisations, invitations) et un **RBAC à 5 rôles**. Ce qui ne l'a pas été :
+> l'**ABAC** (permissions atomiques type `USER_INVITE`) et les routes de la phase 4
+> (`POST /api/users/invite`, `PUT /api/users/:id/disable`, `GET /api/users/me/permissions`) —
+> aucune n'existe. La gestion des membres passe par `/api/organization/*`.
+
 Ce document trace la feuille de route exacte, étape par étape, pour implémenter notre architecture d'authentification complète de manière sécurisée et modulaire.
 
 ## 🔴 Phase 1 : Infrastructure & Base de données (Schéma)

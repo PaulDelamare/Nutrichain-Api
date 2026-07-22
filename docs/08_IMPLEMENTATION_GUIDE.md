@@ -1,5 +1,11 @@
 # Implémentation Sécurité Logistics - GUIDE D'INTÉGRATION
 
+> 🛑 **DOCUMENT HISTORIQUE — NE PAS L'APPLIQUER (note du 22/07/2026).**
+>
+> Compagnon de `07_logistics_security_implementation.md`, il en partage le modèle périmé :
+> matrice rôles ↔ routes bâtie sur `LOGISTICS_ROLES`, et flux machine par clé API. Ni l'un ni
+> l'autre n'existe dans le code. Référence à jour : `19_architecture.md` §1.
+
 ## 📦 Fichiers à Implémenter
 
 ### 1. Constantes (NEW)

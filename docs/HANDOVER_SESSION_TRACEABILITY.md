@@ -1,5 +1,11 @@
 # 🚩 Passation : Module Traçabilité & Rappels (NutriChain)
 
+> 📌 **NOTE DE PASSATION — état au 22/07/2026.**
+>
+> Les sections « prochaines étapes » ci-dessous ont été traitées, sauf une : `GET
+> /api/traceability/stats` **n'existe pas** et n'est pas prévu. Le tableau de bord du front se
+> construit à partir de `/api/organization/quarantine-batches` et `/api/traceability/events`.
+
 **Date :** 24 Mai 2026
 **Statut de la branche :** 90% Opérationnelle (Cœur métier validé).
 
