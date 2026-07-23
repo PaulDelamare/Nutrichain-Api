@@ -4,9 +4,12 @@ import { auditService } from '../../../shared/utils/audit/audit.service';
 import { retryableTransaction } from '../../../shared/utils/db/withWriteConflictRetry';
 import { APIError } from '../../../shared/utils/errorHandler/APIError';
 import { logger } from '../../../shared/utils/logger/logger';
-import { idempotencyService } from './idempotency.service';
+import {
+  idempotencyService,
+  IDEMPOTENCY_TTL_MS,
+} from '../../../shared/utils/idempotency/idempotency.service';
 import { resolveWritingActor } from '../../../shared/utils/auth/resolveWritingActor';
-import { IDEMPOTENCY_TTL_MS, SYNC_WRITE_ROLES } from '../constants/sync.constants';
+import { SYNC_WRITE_ROLES } from '../constants/sync.constants';
 import { SyncItem, SyncItemError, SyncItemResult, SyncScansResponse } from '../types/sync.types';
 
 export interface SyncScansParams {
@@ -60,42 +63,20 @@ async function processItem(
     const result = await retryableTransaction(
       async (tx) => {
         const requestHash = idempotencyService.hashPayload(item.payload);
-        const compoundKey = {
-          organization_id: organizationId,
-          client_op_id: item.clientOpId,
-        };
 
-        // 1. Idempotency claim
-        const existing = await tx.idempotencyKey.findUnique({
-          where: { organization_id_client_op_id: compoundKey },
+        // 1. Idempotency claim (replay / conflict / first-write) — dans la même tx atomique.
+        const claim = await idempotencyService.claim(tx, {
+          organizationId,
+          clientOpId: item.clientOpId,
+          userId,
+          requestHash,
+          ttlMs: IDEMPOTENCY_TTL_MS,
         });
-
-        if (existing) {
-          if (existing.request_hash !== requestHash) {
-            throw new APIError(409, {
-              error: [{ field: 'clientOpId', message: 'Idempotency conflict — payload diverged' }],
-            });
-          }
-          // Replay — renvoie la réponse cachée
-          return existing.response_payload as unknown as SyncItemResult;
+        if (claim.replay) {
+          return claim.payload as SyncItemResult;
         }
 
-        // 2. First-write : créer placeholder
-        const now = new Date();
-        await tx.idempotencyKey.create({
-          data: {
-            organization_id: organizationId,
-            client_op_id: item.clientOpId,
-            user_id: userId,
-            request_hash: requestHash,
-            response_status: 'pending',
-            response_payload: {} as Prisma.InputJsonValue,
-            created_at: now,
-            expires_at: new Date(now.getTime() + IDEMPOTENCY_TTL_MS),
-          },
-        });
-
-        // 3. Op métier dans la même tx
+        // 2. Op métier dans la même tx
         const created = await runOperation(item, organizationId, userId, tx);
 
         const okResult: SyncItemResult = {
@@ -104,13 +85,11 @@ async function processItem(
           serverId: created,
         };
 
-        // 4. Finalise la clé d'idempotency
-        await tx.idempotencyKey.update({
-          where: { organization_id_client_op_id: compoundKey },
-          data: {
-            response_status: 'ok',
-            response_payload: okResult as unknown as Prisma.InputJsonValue,
-          },
+        // 3. Finalise la clé d'idempotency avec la réponse mise en cache.
+        await idempotencyService.finalize(tx, {
+          organizationId,
+          clientOpId: item.clientOpId,
+          payload: okResult,
         });
 
         // 5. Audit WORM (action distincte pour distinguer du flow non-bulk)

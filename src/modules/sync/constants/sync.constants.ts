@@ -6,9 +6,5 @@ import { WRITE_ROLES } from '../../identity/constants/roles.constants';
  */
 export const SYNC_WRITE_ROLES: string[] = [...WRITE_ROLES];
 
-/**
- * Durée de vie des clés d'idempotency : 7 jours.
- * Compromis entre robustesse du retry mobile et volume DB.
- */
-const IDEMPOTENCY_TTL_DAYS = 7;
-export const IDEMPOTENCY_TTL_MS = IDEMPOTENCY_TTL_DAYS * 24 * 60 * 60 * 1000;
+// La durée de vie des clés d'idempotence (IDEMPOTENCY_TTL_MS) vit désormais dans le mécanisme
+// partagé : src/shared/utils/idempotency/idempotency.service.ts.

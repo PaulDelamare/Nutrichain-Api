@@ -176,7 +176,7 @@ describe('SyncScansService — processItem (atomique)', () => {
     // 1er passage : pas de clé → create + receipt OK
     // 2e passage : findUnique renvoie la clé créée au 1er (simulé via mockResolvedValueOnce)
     const item = buildItem('cli-dup');
-    const { idempotencyService } = await import('./idempotency.service');
+    const { idempotencyService } = await import('../../../shared/utils/idempotency/idempotency.service');
     const realHash = idempotencyService.hashPayload(item.payload);
 
     vi.mocked(receiptService.createReceipt).mockResolvedValue(okReceipt);
@@ -212,7 +212,7 @@ describe('SyncScansService — processItem (atomique)', () => {
     };
     // Hash calculé en avance pour matcher
     const item = buildItem('cli-1');
-    const { idempotencyService } = await import('./idempotency.service');
+    const { idempotencyService } = await import('../../../shared/utils/idempotency/idempotency.service');
     const realHash = idempotencyService.hashPayload(item.payload);
 
     vi.mocked(prisma.idempotencyKey.findUnique).mockResolvedValue({
