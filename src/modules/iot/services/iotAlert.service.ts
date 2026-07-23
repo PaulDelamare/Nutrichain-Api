@@ -79,6 +79,15 @@ export const iotAlertService = {
       return 'NO_EQUIPMENT'; // sensor sans mapping (déjà loggué dans resolveThreshold)
     }
 
+    // Dernier relevé du matériel, pour l'affichage temps réel (fiche frigo). Écrit à CHAQUE ping,
+    // avant tout fast-path : sans lui, le front lisait une valeur figée du seed — un frigo affichait
+    // 3,2°C pendant une alerte PANIC, cachant justement la température coupable. updateMany cloisonné
+    // par organisation : count 0 (sans erreur) si le cache pointe un matériel entre-temps supprimé.
+    await prisma.equipment.updateMany({
+      where: { id: cached.equipmentId, organization_id: cached.equipmentOrgId },
+      data: { temp_actuelle: currentTemp },
+    });
+
     // 3. Pas de seuil défini → on ne peut pas détecter
     if (cached.threshold === null) {
       return 'NO_THRESHOLD';
