@@ -36,6 +36,8 @@ describe('RecallController', () => {
   });
 
   describe('getBatchGenealogy', () => {
+    // Garde de dernier recours : par la route, `requireOrgRole` repond 400 sans organisation
+    // active, bien avant le controleur. Ce 401 vaut pour un montage qui oublierait la garde.
     it("refuse (401) et n'interroge aucune genealogie sans organisation active", async () => {
       const req = { params: { id: UUID } } as unknown as AuthenticatedRequest;
 
@@ -45,7 +47,10 @@ describe('RecallController', () => {
       expect(genealogyService.getOrigins).not.toHaveBeenCalled();
     });
 
-    it("cloisonne : passe l'organisation de la SESSION aux trois requetes de genealogie", async () => {
+    // « transmet », et non « cloisonne » : le filtrage par organisation vit dans genealogy.service,
+    // qui est mocké ici. Retirer `organization_id` de ses `where` Prisma ne ferait pas rougir ce
+    // fichier — seul un test de service ou de route le verrait.
+    it("transmet l'organisation de la SESSION aux trois requetes de genealogie", async () => {
       vi.mocked(genealogyService.getUpstream).mockResolvedValue([]);
       vi.mocked(genealogyService.getDownstream).mockResolvedValue([]);
       vi.mocked(genealogyService.getOrigins).mockResolvedValue([]);
@@ -88,7 +93,11 @@ describe('RecallController', () => {
       );
     });
 
-    it("retombe sur l'organisation de req.auth quand le middleware amont n'a pas pose req.activeOrgId", async () => {
+    // Branche defensive, non atteignable par la route : `requireOrgRole` pose `req.auth.activeOrgId`
+    // ET `req.activeOrgId` (requireOrgRole.middleware.ts:55-62), et sans organisation active il
+    // repond 400 avant meme d'atteindre le controleur. On fige le repli, sans pretendre qu'un
+    // middleware le produit.
+    it("retombe sur l'organisation de req.auth — branche defensive, non atteignable par la route", async () => {
       vi.mocked(genealogyService.getUpstream).mockResolvedValue([]);
       vi.mocked(genealogyService.getDownstream).mockResolvedValue([]);
       vi.mocked(genealogyService.getOrigins).mockResolvedValue([]);
