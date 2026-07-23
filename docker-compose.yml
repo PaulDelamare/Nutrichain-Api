@@ -1,7 +1,35 @@
-# Démarrage complet reproductible : API + PostgreSQL + MongoDB.
+# Démarrage complet reproductible : PostgreSQL + MongoDB + seed, puis l'API.
 #   docker compose up --build
 # Les variables sont surchargées par un fichier .env à la racine s'il existe
 # (mêmes noms que .env.example) ; les valeurs par défaut suffisent pour une démo locale.
+
+# Environnement applicatif partagé par l'API et le service de seed. Source unique :
+# une origine ou un secret qui divergerait entre les deux ferait seeder une base que
+# l'API interprète autrement.
+x-app-env: &app-env
+  DATABASE_URL: postgresql://nutrichain:nutrichain@postgres:5432/nutrichain?schema=public
+  MONGO_URI: mongodb://mongo:27017/nutrichain-logs
+  API_URL: ${API_URL:-http://localhost:3000}
+  BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
+  FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+  # Origines navigateur de confiance additionnelles (CORS + Better-Auth), separees par des
+  # virgules. Le mode web d'Expo (port 8081) y est declare par defaut pour la demo mobile.
+  ADDITIONAL_TRUSTED_ORIGINS: ${ADDITIONAL_TRUSTED_ORIGINS:-http://localhost:8081}
+  BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-secret-de-demo-docker-32-caracteres-minimum}
+  API_KEY: ${API_KEY:-cle-api-de-demo-docker-a-remplacer-en-production}
+  # Secret des capteurs, DISTINCT d'API_KEY (qui, elle, est publique : compilée dans le bundle
+  # mobile). Exigée au démarrage : sans elle le conteneur sortait en boucle de redémarrage.
+  # Elle n'ouvre l'ingestion que si une passerelle la porte en base (`npm run iot:gateway`).
+  IOT_API_KEY: ${IOT_API_KEY:-cle-capteurs-de-demo-docker-a-remplacer-en-production}
+  # Doit correspondre à une organisation existante ; celle du seed par défaut.
+  API_KEY_ORG_ID: ${API_KEY_ORG_ID:-usine-laitiere-paris}
+  SMTP_HOST: ${SMTP_HOST:-smtp.ethereal.email}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_SECURE: ${SMTP_SECURE:-false}
+  SMTP_USER: ${SMTP_USER:-}
+  SMTP_PASS: ${SMTP_PASS:-}
+  SMTP_FROM: ${SMTP_FROM:-"NutriChain API" <no-reply@nutrichain.local>}
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -31,6 +59,28 @@ services:
       timeout: 3s
       retries: 10
 
+  # Seed one-shot : migrations + socle + jeu de démonstration. Bâti sur l'étape
+  # `builder` du Dockerfile, seule à embarquer les devDependencies — donc `tsx`,
+  # requis par les seeds. L'image de production (`npm ci --omit=dev`) ne l'a pas :
+  # `prisma db seed` y échouait, laissant la base vide.
+  seed:
+    build:
+      context: .
+      target: builder
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *app-env
+      # Le seed crée des comptes de démonstration à mot de passe public : c'est un
+      # outil de démonstration, pas un état de production.
+      NODE_ENV: development
+    command: >
+      sh -c "node_modules/.bin/prisma migrate deploy
+      && node_modules/.bin/tsx prisma/seed.ts
+      && node_modules/.bin/tsx prisma/seed.demo.ts"
+    restart: 'no'
+
   api:
     build: .
     ports:
@@ -40,31 +90,15 @@ services:
         condition: service_healthy
       mongo:
         condition: service_healthy
+      # La base est peuplée avant que l'API ne serve : sans compte, la connexion
+      # échoue. Séquence aussi les deux `migrate deploy` (seed puis api) au lieu
+      # de les laisser courir en parallèle.
+      seed:
+        condition: service_completed_successfully
     environment:
+      <<: *app-env
       NODE_ENV: production
       PORT: 3000
-      DATABASE_URL: postgresql://nutrichain:nutrichain@postgres:5432/nutrichain?schema=public
-      MONGO_URI: mongodb://mongo:27017/nutrichain-logs
-      API_URL: ${API_URL:-http://localhost:3000}
-      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
-      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
-      # Origines navigateur de confiance additionnelles (CORS + Better-Auth), separees par des
-      # virgules. Le mode web d'Expo (port 8081) y est declare par defaut pour la demo mobile.
-      ADDITIONAL_TRUSTED_ORIGINS: ${ADDITIONAL_TRUSTED_ORIGINS:-http://localhost:8081}
-      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-secret-de-demo-docker-32-caracteres-minimum}
-      API_KEY: ${API_KEY:-cle-api-de-demo-docker-a-remplacer-en-production}
-      # Secret des capteurs, DISTINCT d'API_KEY (qui, elle, est publique : compilée dans le bundle
-      # mobile). Exigée au démarrage : sans elle le conteneur sortait en boucle de redémarrage.
-      # Elle n'ouvre l'ingestion que si une passerelle la porte en base (`npm run iot:gateway`).
-      IOT_API_KEY: ${IOT_API_KEY:-cle-capteurs-de-demo-docker-a-remplacer-en-production}
-      # Doit correspondre à une organisation existante ; celle du seed par défaut.
-      API_KEY_ORG_ID: ${API_KEY_ORG_ID:-usine-laitiere-paris}
-      SMTP_HOST: ${SMTP_HOST:-smtp.ethereal.email}
-      SMTP_PORT: ${SMTP_PORT:-587}
-      SMTP_SECURE: ${SMTP_SECURE:-false}
-      SMTP_USER: ${SMTP_USER:-}
-      SMTP_PASS: ${SMTP_PASS:-}
-      SMTP_FROM: ${SMTP_FROM:-"NutriChain API" <no-reply@nutrichain.local>}
     # Applique les migrations versionnées (non destructif) avant de démarrer l'API.
     command: sh -c "node_modules/.bin/prisma migrate deploy && node dist/server.js"
 
