@@ -15,8 +15,10 @@ vi.mock('../../../../shared/utils/returnSuccess/returnSuccess', () => ({
   sendSuccess: vi.fn(),
 }));
 
-// Payload minimal accepté par le schéma VineJS ; on y greffe des champs d'auteur/tenant usurpés
-// pour prouver qu'ils ne franchissent pas le contrôleur.
+// Payload minimal accepté par le schéma VineJS. Les champs d'auteur/tenant greffés plus bas sont
+// déjà éliminés en amont — `vine.object` ne restitue que les clés déclarées — donc le contrôleur ne
+// les verra jamais par la route. On les injecte quand même : c'est le seul moyen de figer l'ordre
+// du spread, qui est ce qui rendrait l'usurpation possible si le middleware sautait un jour.
 const basePayload = {
   id_produit_fini: 'prod-1',
   id_materiel: 'mat-1',
@@ -57,14 +59,17 @@ describe('TransformationController', () => {
       expect(sendSuccess).toHaveBeenCalledWith(
         {},
         201,
-        expect.any(String),
+        'Transformation enregistrée avec succès. Stock et généalogie mis à jour.',
         expect.objectContaining({ id: 'trans-1' })
       );
     });
 
-    it("se replie sur req.auth.activeOrgId quand req.activeOrgId est absent", async () => {
-      // requireOrgRole peut poser l'organisation dans req.auth sans renseigner req.activeOrgId ;
-      // la lecture doit couvrir les deux canaux, sinon une transformation légitime part en 401.
+    it("se replie sur req.auth.activeOrgId — branche defensive, non atteignable par la route", async () => {
+      // À la date de ce test, AUCUN middleware ne produit cet état : `requireOrgRole` pose
+      // `req.auth.activeOrgId` ET `req.activeOrgId` (requireOrgRole.middleware.ts:55-62), et
+      // `checkApiKey`/`machineAuth` posent `req.activeOrgId` sans `req.auth`. Le repli du
+      // contrôleur est donc du code défensif : on le fige tel quel plutôt que de laisser croire
+      // qu'il couvre un scénario réel.
       const req = {
         auth: { activeOrgId: 'org-auth', user: { id: 'user-session' } },
         validatedTransformation: { ...basePayload },
@@ -77,6 +82,9 @@ describe('TransformationController', () => {
       );
     });
 
+    // Les deux refus ci-dessous sont des gardes de dernier recours : par la route, `requireOrgRole`
+    // répond 400 sans organisation active et 401 sans session, bien avant le contrôleur. Ils valent
+    // pour un montage futur qui oublierait la garde, pas comme description du comportement observé.
     it('refuse en 401 sans organisation active, sans rien écrire', async () => {
       const req = {
         auth: { user: { id: 'user-session' } },
@@ -122,7 +130,10 @@ describe('TransformationController', () => {
 
       const passed = vi.mocked(transformationService.createTransformation).mock.calls[0][0];
       expect(passed.date_peremption).toBeInstanceOf(Date);
-      expect((passed.date_peremption as Date).toISOString()).toBe(new Date('2026-07-20').toISOString());
+      // Valeur littérale, et non `new Date('2026-07-20').toISOString()` : reconstruire l'attendu
+      // avec l'expression de production rend l'assertion increvable, un décalage de fuseau se
+      // refléterait des deux côtés.
+      expect((passed.date_peremption as Date).toISOString()).toBe('2026-07-20T00:00:00.000Z');
 
       vi.mocked(transformationService.createTransformation).mockClear();
 
