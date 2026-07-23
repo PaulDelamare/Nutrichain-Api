@@ -233,7 +233,11 @@ async function scenario1_apiKeySpoofing(ctx: Fixtures) {
     fail(`POST receipt attendu 201, reçu ${res.status} : ${JSON.stringify(body)}`);
   }
 
-  const created = await prisma.receipt.findUnique({ where: { shipment_id: shipmentId } });
+  // shipment_id n'est plus unique globalement (@@unique([organization_id, shipment_id])) :
+  // findUnique par shipment_id seul est invalide, on cible par le couple cloisonné.
+  const created = await prisma.receipt.findFirst({
+    where: { organization_id: ORG_ID, shipment_id: shipmentId },
+  });
   if (!created) fail('Receipt non créé en DB');
   if (created!.organization_id !== ORG_ID) {
     fail(
@@ -242,10 +246,16 @@ async function scenario1_apiKeySpoofing(ctx: Fixtures) {
   }
   ok(`Receipt persisté dans l'org bound (${ORG_ID}) malgré x-org-id=${ctx.foreignOrgId}`);
 
-  await prisma.batch_Mouvement.deleteMany({
-    where: { lot: { organization_id: ORG_ID!, id_produit: ctx.productId } },
+  // Cibler UNIQUEMENT le lot né de cette réception (par id_receipt), pas tous les lots du produit :
+  // un filtre par id_produit ratisserait aussi les lots du seed, référencés par des liaisons et des
+  // transformations, et la suppression violerait leurs clés étrangères.
+  const lotsNes = await prisma.batch.findMany({
+    where: { id_receipt: created!.id },
+    select: { id: true },
   });
-  await prisma.batch.deleteMany({ where: { organization_id: ORG_ID!, id_produit: ctx.productId } });
+  const lotIds = lotsNes.map((l) => l.id);
+  await prisma.batch_Mouvement.deleteMany({ where: { id_lot: { in: lotIds } } });
+  await prisma.batch.deleteMany({ where: { id_receipt: created!.id } });
   await prisma.receipt.delete({ where: { id: created!.id } });
 }
 
@@ -437,6 +447,7 @@ async function scenario6_genealogyCte(ctx: Fixtures) {
         nom: 'Cuve E2E',
         type: 'CUVE',
         id_lieu: locationId,
+        qr_code_id: `E2E-SEC-QR-${materialId}`,
       },
     });
 

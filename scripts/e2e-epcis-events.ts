@@ -66,11 +66,11 @@ async function seed() {
   // fabriquait un utilisateur hors organisation qui signait pourtant des réceptions — c'est
   // exactement la falsification d'identité que resolveWritingActor ferme.
   await prisma.member.upsert({
-    where: { id: `member-${USER_ID}-${ORG_ID}` },
+    where: { id: `member-${USER_ID}-${API_KEY_ORG_ID}` },
     update: { role: 'operator' },
     create: {
-      id: `member-${USER_ID}-${ORG_ID}`,
-      organizationId: ORG_ID!,
+      id: `member-${USER_ID}-${API_KEY_ORG_ID}`,
+      organizationId: API_KEY_ORG_ID!,
       userId: USER_ID,
       role: 'operator',
       createdAt: new Date(),
@@ -307,12 +307,13 @@ async function main() {
     }
     if (batchId) await prisma.batch_Mouvement.deleteMany({ where: { id_lot: batchId } });
     if (shipmentId) await prisma.shipment.deleteMany({ where: { id: shipmentId } });
+    // Le LOT avant la RÉCEPTION : Batch.id_receipt est en onDelete Restrict, supprimer la réception
+    // d'abord viole la contrainte (P2003) et laisse tout en base.
+    if (batchId) await prisma.batch.deleteMany({ where: { id: batchId } });
     if (receiptId) {
       await prisma.ePCIS_Event.deleteMany({ where: { related_entity: 'Receipt', related_id: receiptId } });
       await prisma.receipt.deleteMany({ where: { id: receiptId } });
     }
-    if (batchId) await prisma.batch_Mouvement.deleteMany({ where: { id_lot: batchId } });
-    if (batchId) await prisma.batch.deleteMany({ where: { id: batchId } });
     if (foreignEventId) await prisma.ePCIS_Event.deleteMany({ where: { id: foreignEventId } });
     if (foreignOrgId) await prisma.organization.deleteMany({ where: { id: foreignOrgId } });
     console.log('Cleanup done.');
