@@ -1,9 +1,9 @@
-import { prisma } from '../../../shared/configs/prismaClient.config';
 import { validateData } from '../../../shared/utils/validateData/validateData';
 import { auditService } from '../../../shared/utils/audit/audit.service';
 import { retryableTransaction } from '../../../shared/utils/db/withWriteConflictRetry';
 import { productImportRowSchema } from '../schemas/productImport.schema';
 import { ImportReport, runCsvUpsertImport } from '../importHelpers';
+import { isValidUnit, normalizeUnitCode } from '../../../shared/constants/units.constants';
 
 export const productImportService = {
   /**
@@ -21,15 +21,14 @@ export const productImportService = {
     csvText: string,
     actorUserId: string
   ): Promise<ImportReport> {
-    // Référentiel d'unités chargé une fois (FK partagée), réutilisé par chaque ligne.
-    const validUnits = new Set(
-      (await prisma.unit.findMany({ select: { code: true } })).map((u) => u.code)
-    );
-
     return runCsvUpsertImport(csvText, {
       validateRow: (row) => validateData(productImportRowSchema, row),
+      // Le référentiel est la source unique (units.constants), tolérant à la casse : un ERP qui
+      // envoie `kg` n'est pas rejeté, la valeur est normalisée en `KG` au stockage.
       checkRow: (data) =>
-        validUnits.has(data.unite_reference) ? null : `Unité inconnue : ${data.unite_reference}`,
+        isValidUnit(data.unite_reference)
+          ? null
+          : `Unité inconnue : ${data.unite_reference}`,
       upsertRow: (data) =>
         retryableTransaction(async (tx) => {
           const champs = {
@@ -37,7 +36,7 @@ export const productImportService = {
             categorie: data.categorie,
             duree_conservation_defaut: data.duree_conservation_defaut,
             seuil_alerte_stock: data.seuil_alerte_stock,
-            unite_reference: data.unite_reference,
+            unite_reference: normalizeUnitCode(data.unite_reference),
           };
 
           // Lu DANS la transaction : l'état journalisé est celui sur lequel l'écriture a porté.

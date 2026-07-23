@@ -4,6 +4,7 @@ import { ROLES, type Role } from '../src/modules/identity/constants/roles.consta
 import { logger } from '../src/shared/utils/logger/logger';
 import { DEFAULT_GS1_COMPANY_PREFIX, gs1Utils } from '../src/shared/utils/gs1/gs1.utils';
 import { hashGatewayKey } from '../src/shared/utils/iotGateway/iotGateway';
+import { UNITS } from '../src/shared/constants/units.constants';
 
 const prisma = new PrismaClient();
 
@@ -217,13 +218,10 @@ async function main() {
     },
   });
 
-  // 3. Les unités AVANT les produits et les lots, qui s'y réfèrent.
+  // 3. Les unités AVANT les produits et les lots, qui s'y réfèrent. Peuplées depuis le référentiel
+  //    canonique (units.constants) : une seule source, la table en est le reflet persisté.
   await prisma.unit.createMany({
-    data: [
-      { code: 'L', nom: 'Litres', factor_to_base: 1 },
-      { code: 'kg', nom: 'Kilogrammes', factor_to_base: 1 },
-      { code: 'U', nom: 'Unités', factor_to_base: 1 },
-    ],
+    data: UNITS.map((u) => ({ code: u.code, nom: u.nom, factor_to_base: 1 })),
     skipDuplicates: true,
   });
 
@@ -254,7 +252,7 @@ async function main() {
       categorie: 'Produit Laitier',
       duree_conservation_defaut: 90,
       seuil_alerte_stock: 200,
-      unite_reference: 'kg',
+      unite_reference: 'KG',
     },
   });
 
@@ -286,7 +284,7 @@ async function main() {
       lot_number: gs1Utils.generateLotNumber(),
       id_produit: butter.id,
       quantite_actuelle: 400, // represente 100kg (400*250g)
-      unite_code: 'kg',
+      unite_code: 'KG',
       quantite_base: 100,
       date_peremption: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000), // +90 jours
       statut: 'EN_STOCK',
