@@ -165,13 +165,42 @@ jobs:
       - name: 🌱 Seed de base (org + membres par rôle + référentiels)
         run: npx prisma db seed
 
+      # Le jeu de démonstration ajoute lieux, matériels (avec capteurs) et lots : indispensable aux
+      # scénarios réception/chaîne du froid (le seed de base ne crée ni équipement ni site).
+      - name: 🌱 Seed de démonstration
+        run: npm run seed:demo
+
       # Un step par scénario : le log dit immédiatement lequel casse. Séquence validée en local sur
-      # base fraîche (seed de base seul), rejouable (chaque script nettoie ses données).
+      # base fraîche puis rejouée (idempotence 14/14), en conditions CI (NODE_ENV=test, SMTP fermé).
+      # --- Audit WORM (orgs éphémères, sans dépendance au seed) ---
       - name: 🔗 Intégrité de la chaîne d'audit WORM
         run: npm run e2e:audit-verify
       - name: 🔗 Chaîne d'audit linéaire sous concurrence
         run: npm run e2e:audit-chain
+      # --- Connecteurs & référentiels ---
+      - name: 🔌 Import/export CSV connecteurs
+        run: npm run e2e:connectors
       - name: 📏 Référentiel d'unités (source unique, FK)
         run: npm run e2e:units-referential
+      # --- Réception, traçabilité, qualité ---
+      - name: 📦 Réception amont et lien fournisseur
+        run: npm run e2e:lot-fournisseur
+      - name: 📦 Réception → lot → généalogie
+        run: npm run e2e:batch-receipt
+      - name: 🧬 Résolution de lot par numéro
+        run: npm run e2e:resolution-lot
+      - name: 🛡️ Séparation des tâches qualité (RBAC)
+        run: npm run e2e:quality-gate
+      - name: 🚧 Quarantaine et levée
+        run: npm run e2e:quarantine
       - name: ❄️ Levée de quarantaine froid — restauration du statut (HACCP)
         run: npm run e2e:quarantine-restore
+      - name: 🔴 Rappel produit — propagation à la descendance
+        run: npm run e2e:recall
+      # --- Chaîne du froid IoT (Postgres + Mongo + audit) ---
+      - name: 🌡️ Excursion thermique → alerte + quarantaine
+        run: npm run e2e:iot-alert
+      # `e2e:alerte-lots` et `e2e:alert-resolve` restent HORS du job : leur scénario enchaîne
+      # résolution d'alerte, purge Mongo et ré-ingestion dans la même fenêtre glissante — un timing
+      # sensible à l'environnement (vert en local, rouge sur le runner : la 2ᵉ excursion ne
+      # redéclenche pas d'alerte). À stabiliser avant de les réintégrer.

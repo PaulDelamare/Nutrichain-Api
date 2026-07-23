@@ -105,7 +105,13 @@ async function setup(): Promise<Fixtures> {
   let equipment = await prisma.equipment.findFirst({ where: { organization_id: ORG_ID! } });
   if (!equipment) {
     equipment = await prisma.equipment.create({
-      data: { organization_id: ORG_ID!, nom: `E2E-Eq-${stamp}`, type: 'MIXER', id_lieu: location.id },
+      data: {
+        organization_id: ORG_ID!,
+        nom: `E2E-Eq-${stamp}`,
+        type: 'MIXER',
+        id_lieu: location.id,
+        qr_code_id: `E2E-QR-${stamp}`,
+      },
     });
   }
 

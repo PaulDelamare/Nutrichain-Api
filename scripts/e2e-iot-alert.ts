@@ -72,6 +72,7 @@ async function setup(): Promise<Fixtures> {
       id_lieu: location.id,
       sensor_id: sensorId,
       temp_seuil_max: 4,
+      qr_code_id: `QR-${sensorId}`,
     },
   });
 
@@ -90,9 +91,9 @@ async function setup(): Promise<Fixtures> {
 async function cleanup(f: Fixtures) {
   console.log('\n[E2E] Cleanup...');
   await prisma.alert.deleteMany({ where: { id_materiel: f.equipmentId } });
-  await prisma.audit_Log.deleteMany({
-    where: { organization_id: ORG_ID!, action: 'TEMP_EXCURSION_DETECTED' },
-  });
+  // On ne supprime PAS les Audit_Log : la chaîne WORM est chaînée par hash, en retirer une ligne la
+  // romprait pour toute l'organisation. Les traces d'excursion restent — inoffensives, et le
+  // comptage se fait en delta (cf. main).
   await prisma.equipment.delete({ where: { id: f.equipmentId } });
   await TelemetryModel.deleteMany({ 'metadata.sensor_id': f.sensorId });
   console.log('  → fixtures supprimées');
@@ -130,6 +131,13 @@ async function main() {
     // Vider la fenêtre Mongo (au cas où re-run)
     await TelemetryModel.deleteMany({ 'metadata.sensor_id': fixtures.sensorId });
 
+    // L'audit WORM est chaîné : on ne PEUT pas supprimer d'anciennes lignes d'excursion sans casser
+    // la chaîne. Une excursion déclenchée par un autre scénario avant celui-ci laisse donc sa trace.
+    // On mesure donc un DELTA (+1), pas un absolu — le test reste vrai quel que soit l'ordre.
+    const auditBefore = await prisma.audit_Log.count({
+      where: { organization_id: ORG_ID!, action: 'TEMP_EXCURSION_DETECTED' },
+    });
+
     // ===== Scénario 2 : 10 pings au-dessus du seuil → 1 Alert créée =====
     console.log('\nScénario 2 — 10 pings à 8°C (au-dessus du seuil 4°C)');
     for (let i = 9; i >= 0; i--) {
@@ -141,10 +149,13 @@ async function main() {
     });
     assert(alertsAfterFlood === 1, `1 Alert ACTIVE créée (reçu ${alertsAfterFlood})`);
 
-    const auditCount = await prisma.audit_Log.count({
+    const auditAfter = await prisma.audit_Log.count({
       where: { organization_id: ORG_ID!, action: 'TEMP_EXCURSION_DETECTED' },
     });
-    assert(auditCount === 1, `1 ligne Audit_Log TEMP_EXCURSION_DETECTED (reçu ${auditCount})`);
+    assert(
+      auditAfter - auditBefore === 1,
+      `1 ligne Audit_Log TEMP_EXCURSION_DETECTED de plus (delta ${auditAfter - auditBefore})`
+    );
 
     // ===== Scénario 3 : 1 ping de plus → pas de 2e alerte (dédup ACTIVE) =====
     console.log('\nScénario 3 — 1 nouveau ping à 8°C avec Alert ACTIVE existante');
