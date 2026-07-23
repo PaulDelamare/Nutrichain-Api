@@ -12,6 +12,7 @@ vi.mock('../../../../shared/configs/prismaClient.config', () => ({
       update: vi.fn(),
     },
     batch_Mouvement: { create: vi.fn() },
+    qualityControl: { findFirst: vi.fn() },
     member: { findFirst: vi.fn() },
     // Simule une transaction en passant le mock prisma au callback
     $transaction: vi.fn(async (cb) => cb(prisma)),
@@ -28,6 +29,10 @@ describe('BatchSharedService', () => {
     // Par défaut l'organisation compte un second décideur : la séparation des tâches s'applique.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     vi.mocked(prisma.member.findFirst).mockResolvedValue({ id: 'membre-qualite' } as any);
+    // Par défaut aucun contrôle qualité condamnant : la levée de quarantaine froid est possible.
+    // `clearAllMocks` n'efface pas les implémentations — sans ce défaut, un mock NON_CONFORME
+    // fuirait d'un test à l'autre. Chaque test part donc d'un lot non condamné.
+    vi.mocked(prisma.qualityControl.findFirst).mockResolvedValue(null);
   });
 
   describe('createBatch', () => {
@@ -274,6 +279,88 @@ describe('BatchSharedService', () => {
 
       const result = await batchService.liftQuarantine('batch-1', 'org-1', 'user-1', 'motif');
 
+      expect(result.statut).toBe('EN_STOCK');
+    });
+
+    /**
+     * Le cœur du correctif HACCP : un produit fini mis en quarantaine froid alors qu'il attendait
+     * son contrôle de sortie (EN_ATTENTE_QC) DOIT y retourner à la levée — pas devenir expédiable
+     * au seul motif que l'incident frigo est résolu. La barrière « rien ne sort sans contrôle »
+     * était franchissable par un simple incident de chambre froide.
+     */
+    it('restaure le statut d avant-quarantaine (EN_ATTENTE_QC), au lieu de forcer EN_STOCK', async () => {
+      vi.mocked(prisma.batch.findFirst).mockResolvedValue({
+        id: 'batch-1',
+        organization_id: 'org-1',
+        statut: 'BLOQUE',
+        statut_avant_blocage: 'EN_ATTENTE_QC',
+        created_by: 'operateur-2',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(prisma.batch.update).mockResolvedValue({ id: 'batch-1', statut: 'EN_ATTENTE_QC' } as any);
+
+      const result = await batchService.liftQuarantine('batch-1', 'org-1', 'user-1', 'Frigo réparé');
+
+      expect(prisma.batch.update).toHaveBeenCalledWith({
+        where: { id: 'batch-1' },
+        data: expect.objectContaining({ statut: 'EN_ATTENTE_QC', statut_avant_blocage: null }),
+      });
+      // L'audit WORM — la preuve HACCP opposable — doit refléter le VRAI statut, pas EN_STOCK.
+      expect(auditService.logAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          newValue: expect.objectContaining({ statut: 'EN_ATTENTE_QC' }),
+        }),
+        expect.anything()
+      );
+      expect(result.statut).toBe('EN_ATTENTE_QC');
+    });
+
+    /**
+     * Un lot déclaré NON CONFORME par le labo pendant sa quarantaine froid ne se libère PAS par ce
+     * canal : réparer la chambre froide ne rend pas consommable un produit contaminé. Sans cette
+     * garde, le décideur lève la quarantaine, le lot repasse en attente de contrôle, un contrôle
+     * de routine le déclare conforme, et le produit condamné part en magasin.
+     */
+    it('refuse (409) la levée d un lot condamné par un contrôle non conforme', async () => {
+      vi.mocked(prisma.batch.findFirst).mockResolvedValue({
+        id: 'batch-1',
+        organization_id: 'org-1',
+        statut: 'BLOQUE',
+        statut_avant_blocage: 'EN_ATTENTE_QC',
+        created_by: 'operateur-2',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+      vi.mocked(prisma.qualityControl.findFirst).mockResolvedValue({
+        id: 'qc-1',
+        resultat: 'NON_CONFORME',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+
+      const action = batchService.liftQuarantine('batch-1', 'org-1', 'user-1', 'Frigo réparé');
+      await expect(action).rejects.toMatchObject({ status: 409 });
+      expect(prisma.batch.update).not.toHaveBeenCalled();
+      expect(auditService.logAction).not.toHaveBeenCalled();
+    });
+
+    it('reste sur EN_STOCK par défaut pour un lot né bloqué (aucun statut d avant)', async () => {
+      vi.mocked(prisma.batch.findFirst).mockResolvedValue({
+        id: 'batch-1',
+        organization_id: 'org-1',
+        statut: 'BLOQUE',
+        statut_avant_blocage: null,
+        created_by: 'operateur-2',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(prisma.batch.update).mockResolvedValue({ id: 'batch-1', statut: 'EN_STOCK' } as any);
+
+      const result = await batchService.liftQuarantine('batch-1', 'org-1', 'user-1', 'Réception revue');
+
+      expect(prisma.batch.update).toHaveBeenCalledWith({
+        where: { id: 'batch-1' },
+        data: expect.objectContaining({ statut: 'EN_STOCK', statut_avant_blocage: null }),
+      });
       expect(result.statut).toBe('EN_STOCK');
     });
   });

@@ -315,6 +315,11 @@ model Batch {
   quantite_base      Decimal
   date_peremption    DateTime?
   statut             String       @default("EN_STOCK")
+  // Statut d'avant la mise en quarantaine FROID, pour y revenir à la levée plutôt que de forcer
+  // EN_STOCK : un produit fini qui attendait son contrôle de sortie (EN_ATTENTE_QC) doit y
+  // retourner, jamais devenir expédiable au seul motif que l'incident frigo est résolu.
+  // Non-null uniquement tant que statut = BLOQUE ; remis à null à la levée ou au rappel.
+  statut_avant_blocage String?
   id_materiel_actuel String?
   materiel           Equipment?   @relation(fields: [id_materiel_actuel], references: [id])
   // Réception d'origine (matière première). Nul pour un produit fini issu de transformation.

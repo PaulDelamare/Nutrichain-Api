@@ -135,7 +135,7 @@ export const recallService = {
           ${downstreamTraceCte(batchId, MAX_GENEALOGY_DEPTH)},
           blocked AS (
             UPDATE "Batch"
-            SET statut = 'ALERTE', version = version + 1
+            SET statut = 'ALERTE', statut_avant_blocage = NULL, version = version + 1
             WHERE organization_id = ${organizationId}
               AND (id = ${batchId} OR id IN (SELECT DISTINCT id_lot_enfant FROM downstream_trace))
             RETURNING id, quantite_actuelle, unite_code

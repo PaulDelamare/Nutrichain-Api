@@ -142,7 +142,9 @@ export const iotAlertService = {
             { id: string; quantite_actuelle: Prisma.Decimal; unite_code: string }[]
           >`
             UPDATE "Batch"
-               SET statut = ${BATCH_STATUSES.BLOCKED}, version = version + 1
+               SET statut = ${BATCH_STATUSES.BLOCKED},
+                   statut_avant_blocage = statut,
+                   version = version + 1
              WHERE organization_id = ${cached.equipmentOrgId}
                AND id_materiel_actuel = ${cached.equipmentId}
                AND statut = ANY(${COLD_QUARANTINABLE_STATUSES as string[]})
