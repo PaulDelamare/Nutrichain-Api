@@ -209,9 +209,13 @@ jobs:
       # désormais que le point soit lisible avant de déclencher la détection.
       - name: 🌡️ Excursion thermique → alerte + quarantaine
         run: npm run e2e:iot-alert
-      # `e2e:alerte-lots` et `e2e:alert-resolve` restent hors du job : même famille de fragilité,
-      # mais leur scénario enchaîne en plus résolution d'alerte et ré-ingestion dans la même fenêtre.
-      # À traiter séparément, avec la même attente de visibilité.
+      # `alerte-lots` et `alert-resolve` : même famille de fragilité (relecture time-series), réglée
+      # de la même façon — chaque ingestion attend désormais la visibilité du point avant de
+      # déclencher la détection, y compris la ré-ingestion de la seconde fenêtre.
+      - name: 🧊 Levée d'alerte froid — ne relâche que les lots de l'alerte
+        run: npm run e2e:alerte-lots
+      - name: ✅ Résolution d'alerte → dédup IoT débloquée
+        run: npm run e2e:alert-resolve
 
       # Les scénarios ci-dessous frappent l'API par HTTP (sécurité, RBAC, sync mobile, EPCIS) : ils
       # exigent un serveur en marche. On le démarre en arrière-plan et on attend qu'il réponde.

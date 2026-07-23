@@ -158,6 +158,25 @@ async function cleanup(f: Fixtures): Promise<void> {
   console.log('  → fixtures supprimées');
 }
 
+/**
+ * Attend que le point qu'on vient d'écrire soit RÉELLEMENT lisible avant de déclencher la
+ * détection. Sur une collection Mongo time-series, une lecture immédiate après l'écriture ne voit
+ * pas toujours le dernier point (bucketing) : la détection concluait alors « aucune excursion » et
+ * le scénario échouait par intermittence sur le runner CI, jamais en local.
+ * Borné : on n'attend jamais indéfiniment — si le point reste invisible, l'assertion métier qui
+ * suit échouera avec son propre message, plus parlant qu'un blocage muet.
+ */
+async function waitUntilVisible(sensorId: string, timestamp: Date): Promise<void> {
+  for (let i = 0; i < 20; i++) {
+    const seen = await TelemetryModel.countDocuments({
+      'metadata.sensor_id': sensorId,
+      timestamp,
+    });
+    if (seen > 0) return;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+}
+
 async function main(): Promise<void> {
   console.log(`[E2E] Alert resolve — org ${ORG_ID}`);
   await connectMongoDB();
@@ -219,15 +238,21 @@ async function main(): Promise<void> {
     console.log('\nScénario 4 — Dédup débloquée : nouveau ping IoT → nouvelle Alert ACTIVE');
     // Insérer ≥ 5 points au-dessus du seuil dans la fenêtre 15min (préparer le terrain
     // pour que detectExcursion confirme une excursion sur le 6e ping).
+    let lastTs = new Date();
     for (let i = 9; i >= 0; i--) {
+      lastTs = new Date(Date.now() - i * 60_000);
       await TelemetryModel.create({
         metadata: { sensor_id: fixtures.sensorId, organization_id: ORG_ID! },
-        timestamp: new Date(Date.now() - i * 60_000),
+        timestamp: lastTs,
         temperature: 8,
         humidity: 50,
         battery_level: 80,
       });
     }
+    // Le dernier point (le plus récent) est celui que la relecture time-series peut ne pas encore
+    // voir : on attend sa visibilité avant de déclencher, sinon la fenêtre 15min compte un point de
+    // moins et la détection conclut « aucune excursion » par intermittence sur le runner.
+    await waitUntilVisible(fixtures.sensorId, lastTs);
     _clearThresholdCacheForTests();
     await iotAlertService.checkAndAlert({
       sensorId: fixtures.sensorId,
