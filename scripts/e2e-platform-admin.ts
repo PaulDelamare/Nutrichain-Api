@@ -12,7 +12,7 @@ import { signInAsOperator } from './helpers/e2eSession';
  * Lancement : npm run e2e:platform
  */
 
-const API_BASE = process.env.API_BASE || 'http://localhost:3000';
+const API_URL = process.env.API_URL || process.env.API_BASE || 'http://localhost:3000';
 const API_KEY = process.env.API_KEY;
 const ORIGIN = process.env.FRONTEND_URL ?? 'http://localhost:5173';
 
@@ -27,7 +27,7 @@ const echec = (m: string): never => {
 };
 
 async function connexion(email: string): Promise<string> {
-  const res = await fetch(`${API_BASE}/api/auth/sign-in/email`, {
+  const res = await fetch(`${API_URL}/api/auth/sign-in/email`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-api-key': API_KEY!, Origin: ORIGIN },
     body: JSON.stringify({ email, password: 'NutriChain!2026' }),
@@ -38,7 +38,7 @@ async function connexion(email: string): Promise<string> {
 }
 
 const appel = (token: string, path: string, method = 'GET', body?: unknown) =>
-  fetch(`${API_BASE}/api${path}`, {
+  fetch(`${API_URL}/api${path}`, {
     method,
     headers: {
       'content-type': 'application/json',

@@ -15,7 +15,7 @@ import { signInAsOperator } from './helpers/e2eSession';
  * Lancement : npm run e2e:sscc
  */
 
-const API_BASE = process.env.API_BASE || 'http://localhost:3000';
+const API_URL = process.env.API_URL || process.env.API_BASE || 'http://localhost:3000';
 const API_KEY = process.env.API_KEY;
 const ORG_ID = process.env.API_KEY_ORG_ID;
 const PRODUCT_ID = '44444444-4444-4444-8444-444444444444';
@@ -38,7 +38,7 @@ async function main() {
   console.log('\n📦 Un identifiant logistique se réserve, il ne se compte pas\n');
 
   const session = await signInAsOperator(prisma, {
-    apiBase: API_BASE,
+    apiBase: API_URL,
     apiKey: API_KEY!,
     organizationId: ORG_ID!,
   });
@@ -66,7 +66,7 @@ async function main() {
   try {
     const reponses = await Promise.all(
       lots.map((lot) =>
-        fetch(`${API_BASE}/api/logistics/shipments`, {
+        fetch(`${API_URL}/api/logistics/shipments`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -115,7 +115,7 @@ async function main() {
       lots: [{ id_lot: lots[0].id, quantite_expediee: 1 }],
     });
     const envoyer = (id: string) =>
-      fetch(`${API_BASE}/api/logistics/shipments`, {
+      fetch(`${API_URL}/api/logistics/shipments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.token}` },
         body: JSON.stringify(corps(id)),

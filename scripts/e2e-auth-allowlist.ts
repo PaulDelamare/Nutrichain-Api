@@ -14,7 +14,7 @@ import { signInAsOperator } from './helpers/e2eSession';
  * Prérequis : `npm run dev` sur une base seedée. Lancement : npm run e2e:auth-allowlist
  */
 
-const API_BASE = process.env.API_BASE || 'http://localhost:3000';
+const API_URL = process.env.API_URL || process.env.API_BASE || 'http://localhost:3000';
 const API_KEY = process.env.API_KEY;
 const ORG_ID = process.env.API_KEY_ORG_ID;
 const ORIGIN = process.env.FRONTEND_URL ?? 'http://localhost:5173';
@@ -44,7 +44,7 @@ async function main() {
   console.log('\n🔒 Passthrough Better-Auth — allowlist stricte\n');
 
   const { token } = await signInAsOperator(prisma, {
-    apiBase: API_BASE,
+    apiBase: API_URL,
     apiKey: API_KEY!,
     organizationId: ORG_ID!,
     email: 'e2e-viewer@nutrichain.local',
@@ -60,7 +60,7 @@ async function main() {
   };
 
   for (const [action, method, body] of ROUTES_FERMEES) {
-    const res = await fetch(`${API_BASE}/api/auth/${action}`, {
+    const res = await fetch(`${API_URL}/api/auth/${action}`, {
       method,
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
@@ -72,16 +72,16 @@ async function main() {
   }
 
   // get-session : la session ne doit se lire que par /api/me (route à nous), jamais par le core.
-  const getSession = await fetch(`${API_BASE}/api/auth/get-session`, { headers });
+  const getSession = await fetch(`${API_URL}/api/auth/get-session`, { headers });
   if (getSession.status !== 403) echec(`/auth/get-session répond ${getSession.status} au lieu de 403.`);
   ok('GET /auth/get-session → 403');
 
   // Non-régression : /api/me (la vraie lecture de session) et la déconnexion fonctionnent.
-  const me = await fetch(`${API_BASE}/api/me`, { headers });
+  const me = await fetch(`${API_URL}/api/me`, { headers });
   if (me.status !== 200) echec(`/api/me répond ${me.status} : l'authentification est cassée.`);
   ok('/api/me → 200 : lecture de session intacte');
 
-  const signOut = await fetch(`${API_BASE}/api/auth/sign-out`, { method: 'POST', headers });
+  const signOut = await fetch(`${API_URL}/api/auth/sign-out`, { method: 'POST', headers });
   if (signOut.status !== 200) echec(`/auth/sign-out répond ${signOut.status} au lieu de 200.`);
   ok('POST /auth/sign-out → 200 : la déconnexion fonctionne toujours');
 

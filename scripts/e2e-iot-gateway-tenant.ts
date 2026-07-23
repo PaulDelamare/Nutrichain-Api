@@ -21,7 +21,7 @@ import { signInAsOperator } from './helpers/e2eSession';
  * Lancement : npm run e2e:iot-gateway
  */
 
-const API_BASE = process.env.API_BASE || 'http://localhost:3000';
+const API_URL = process.env.API_URL || process.env.API_BASE || 'http://localhost:3000';
 const API_KEY = process.env.API_KEY;
 
 if (!API_KEY) {
@@ -40,7 +40,7 @@ const suffixe = randomBytes(4).toString('hex');
 const SENSOR_ID = `E2E-GW-SENSOR-${suffixe}`;
 
 async function ping(cle: string, temperature: number) {
-  const res = await fetch(`${API_BASE}/api/telemetry/ping`, {
+  const res = await fetch(`${API_URL}/api/telemetry/ping`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-api-key': cle },
     body: JSON.stringify({ sensor_id: SENSOR_ID, temperature, humidity: 60, battery_level: 90 }),
@@ -89,14 +89,14 @@ async function creerTenant(nom: string, seuil: number, orgExistante?: string) {
  */
 async function provisionnerPasserelle(orgId: string, nom: string): Promise<string> {
   const admin = await signInAsOperator(prisma, {
-    apiBase: API_BASE,
+    apiBase: API_URL,
     apiKey: API_KEY!,
     organizationId: orgId,
     email: `e2e-gw-admin-${nom}-${suffixe}@nutrichain.local`,
     role: 'admin',
   });
 
-  const res = await fetch(`${API_BASE}/api/organization/iot-gateways`, {
+  const res = await fetch(`${API_URL}/api/organization/iot-gateways`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${admin.token}` },
     // Le suffixe est DANS le nom : c'est ce qui permet au nettoyage de retrouver la passerelle
@@ -186,12 +186,12 @@ async function main() {
 
     // La clé ne s'affiche qu'à la création : la liste ne doit jamais permettre de la retrouver.
     const operateur = await signInAsOperator(prisma, {
-      apiBase: API_BASE,
+      apiBase: API_URL,
       apiKey: API_KEY!,
       organizationId: b.orgId,
       email: `e2e-gw-operateur-${suffixe}@nutrichain.local`,
     });
-    const refus = await fetch(`${API_BASE}/api/organization/iot-gateways`, {
+    const refus = await fetch(`${API_URL}/api/organization/iot-gateways`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${operateur.token}` },
       body: JSON.stringify({ nom: 'Passerelle pirate' }),
@@ -201,7 +201,7 @@ async function main() {
     }
     ok("Un opérateur ne peut pas créer de passerelle (403) — la clé vaut le droit de bloquer des lots");
 
-    const liste = await fetch(`${API_BASE}/api/organization/iot-gateways`, {
+    const liste = await fetch(`${API_URL}/api/organization/iot-gateways`, {
       headers: { Authorization: `Bearer ${operateur.token}` },
     });
     if (liste.status !== 403) {

@@ -22,7 +22,7 @@ import { signInAsOperator } from './helpers/e2eSession';
 import crypto from 'crypto';
 import { prisma } from '../src/shared/configs/prismaClient.config';
 
-const API_BASE = process.env.API_BASE || 'http://localhost:3000';
+const API_URL = process.env.API_URL || process.env.API_BASE || 'http://localhost:3000';
 const API_KEY = process.env.API_KEY;
 const ORG_ID = process.env.API_KEY_ORG_ID;
 
@@ -65,7 +65,7 @@ function assert(condition: boolean, label: string) {
 let sessionToken = '';
 
 async function postSync(items: unknown[]): Promise<{ status: number; body: SyncResponseBody }> {
-  const res = await fetch(`${API_BASE}/api/sync/scans`, {
+  const res = await fetch(`${API_URL}/api/sync/scans`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}` },
     body: JSON.stringify({ items }),
@@ -96,13 +96,13 @@ async function countAudit(action: string): Promise<number> {
 }
 
 async function main() {
-  console.log(`[E2E] Sync mobile bulk — API ${API_BASE}, org ${ORG_ID}\n`);
+  console.log(`[E2E] Sync mobile bulk — API ${API_URL}, org ${ORG_ID}\n`);
 
   const { supplierId, productId } = await fetchFixtures();
 
   // Session d'operateur : le mobile reel envoie un jeton, jamais la cle sur les routes metier.
   const session = await signInAsOperator(prisma, {
-    apiBase: API_BASE,
+    apiBase: API_URL,
     apiKey: API_KEY!,
     organizationId: ORG_ID!,
   });

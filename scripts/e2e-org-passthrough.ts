@@ -20,7 +20,7 @@ import { signInAsOperator } from './helpers/e2eSession';
  * Lancement : npm run e2e:org-passthrough
  */
 
-const API_BASE = process.env.API_BASE || 'http://localhost:3000';
+const API_URL = process.env.API_URL || process.env.API_BASE || 'http://localhost:3000';
 const API_KEY = process.env.API_KEY;
 const ORG_ID = process.env.API_KEY_ORG_ID;
 const ORIGIN = process.env.FRONTEND_URL ?? 'http://localhost:5173';
@@ -52,7 +52,7 @@ async function main() {
 
   // Le rôle le plus faible : s'il est refusé, tout le monde l'est.
   const { token } = await signInAsOperator(prisma, {
-    apiBase: API_BASE,
+    apiBase: API_URL,
     apiKey: API_KEY!,
     organizationId: ORG_ID!,
     email: 'e2e-viewer@nutrichain.local',
@@ -69,7 +69,7 @@ async function main() {
   const orgsAvant = await prisma.organization.count();
 
   for (const [action, body] of MUTATIONS) {
-    const res = await fetch(`${API_BASE}/api/auth/organization/${action}`, {
+    const res = await fetch(`${API_URL}/api/auth/organization/${action}`, {
       method: 'POST',
       headers,
       body: JSON.stringify(body),
@@ -84,7 +84,7 @@ async function main() {
   }
 
   // Les lectures aussi : `list` révélait les organisations des AUTRES clients.
-  const liste = await fetch(`${API_BASE}/api/auth/organization/list`, { headers });
+  const liste = await fetch(`${API_URL}/api/auth/organization/list`, { headers });
   if (liste.status !== 403) echec(`/auth/organization/list répond ${liste.status} au lieu de 403.`);
   ok('/auth/organization/list → 403');
 
@@ -95,7 +95,7 @@ async function main() {
   ok(`Aucune organisation créée ni supprimée (${orgsAvant} avant, ${orgsApres} après)`);
 
   // Non-régression : l'authentification, elle, doit continuer de fonctionner.
-  const session = await fetch(`${API_BASE}/api/me`, { headers });
+  const session = await fetch(`${API_URL}/api/me`, { headers });
   if (session.status !== 200) echec(`/api/me répond ${session.status} : l'authentification est cassée.`);
   ok("/api/me → 200 : l'authentification n'est pas affectée");
 
