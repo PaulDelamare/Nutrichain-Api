@@ -87,3 +87,91 @@ jobs:
           name: couverture-api
           path: coverage/
           retention-days: 14
+
+  # Les tests unitaires mockent Prisma : ils ne prouvent RIEN du SQL brut ni des clés étrangères.
+  # Ce job joue des scénarios e2e contre de VRAIES bases (PostgreSQL + MongoDB), là où le moteur
+  # accepte ou rejette pour de bon. Job séparé : il ne fragilise pas le check requis, et n'exécute
+  # qu'un sous-ensemble éprouvé, séquentiel (les scripts partagent l'org du seed et se marcheraient
+  # dessus en parallèle).
+  e2e-tests:
+    name: E2E (PostgreSQL + MongoDB)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: nutrichain
+          POSTGRES_PASSWORD: nutrichain
+          POSTGRES_DB: nutrichain
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U nutrichain"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+      mongo:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ping:1})'"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: 📦 Install dependencies
+        run: npm ci
+
+      - name: 🗄️ Generate Prisma Client
+        run: npx prisma generate
+
+      # Valeurs de TEST (bases éphémères du runner) — aucun secret de production. Les scripts e2e
+      # lisent via `tsx --env-file=.env` ; Prisma charge aussi ce fichier. SMTP pointe vers un port
+      # fermé : `transporter.verify()` échoue vite et proprement (envois fire-and-forget catchés),
+      # sans jamais sortir sur le réseau.
+      - name: 🔐 Écrire le .env de test
+        run: |
+          cat > .env <<'EOF'
+          DATABASE_URL=postgresql://nutrichain:nutrichain@localhost:5432/nutrichain?schema=public
+          MONGO_URI=mongodb://localhost:27017/nutrichain-logs
+          API_KEY=secret-key-pour-les-tests
+          IOT_API_KEY=iot-key-pour-les-tests
+          API_KEY_ORG_ID=usine-laitiere-paris
+          BETTER_AUTH_SECRET=secret-de-test-au-moins-32-caracteres-xyz
+          BETTER_AUTH_URL=http://localhost:3000
+          API_URL=http://localhost:3000
+          FRONTEND_URL=http://localhost:5173
+          SMTP_HOST=localhost
+          SMTP_PORT=1
+          SMTP_SECURE=false
+          SMTP_USER=test
+          SMTP_PASS=test
+          SMTP_FROM="NutriChain Test <no-reply@test.local>"
+          NODE_ENV=test
+          EOF
+
+      - name: 🗄️ Appliquer les migrations
+        run: npx prisma migrate deploy
+
+      - name: 🌱 Seed de base (org + membres par rôle + référentiels)
+        run: npx prisma db seed
+
+      # Un step par scénario : le log dit immédiatement lequel casse. Séquence validée en local sur
+      # base fraîche (seed de base seul), rejouable (chaque script nettoie ses données).
+      - name: 🔗 Intégrité de la chaîne d'audit WORM
+        run: npm run e2e:audit-verify
+      - name: 🔗 Chaîne d'audit linéaire sous concurrence
+        run: npm run e2e:audit-chain
+      - name: 📏 Référentiel d'unités (source unique, FK)
+        run: npm run e2e:units-referential
+      - name: ❄️ Levée de quarantaine froid — restauration du statut (HACCP)
+        run: npm run e2e:quarantine-restore
