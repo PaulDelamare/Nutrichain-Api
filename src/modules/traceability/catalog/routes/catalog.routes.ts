@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import { getProducts, getBatches } from '../controllers/catalog.controller';
 import { validateCatalogQuery } from '../middlewares/validateCatalogQuery.middleware';
-import { checkApiKey } from '../../../../shared/utils/checkApiKey/checkApiKey';
 import { requireAuth } from '../../../identity/middlewares/requireAuth.middleware';
 import { requireOrgRole } from '../../../identity/middlewares/requireOrgRole.middleware';
 import { CATALOG_READ_ROLES } from '../constants/catalog.constants';
