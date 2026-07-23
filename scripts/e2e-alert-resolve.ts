@@ -78,6 +78,7 @@ async function setup(): Promise<Fixtures> {
       id_lieu: location.id,
       sensor_id: sensorId,
       temp_seuil_max: 4,
+      qr_code_id: `QR-${sensorId}`,
     },
   });
 
