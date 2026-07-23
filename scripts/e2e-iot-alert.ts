@@ -99,6 +99,25 @@ async function cleanup(f: Fixtures) {
   console.log('  → fixtures supprimées');
 }
 
+/**
+ * Attend que le point qu'on vient d'écrire soit RÉELLEMENT lisible avant de déclencher la
+ * détection. Sur une collection Mongo time-series, une lecture immédiate après l'écriture ne voit
+ * pas toujours le dernier point (bucketing) : la détection concluait alors « aucune excursion » et
+ * le scénario échouait par intermittence sur le runner CI, jamais en local.
+ * Borné : on n'attend jamais indéfiniment — si le point reste invisible, l'assertion métier qui
+ * suit échouera avec son propre message, plus parlant qu'un blocage muet.
+ */
+async function attendreVisibilite(sensorId: string, timestamp: Date) {
+  for (let i = 0; i < 20; i++) {
+    const vus = await TelemetryModel.countDocuments({
+      'metadata.sensor_id': sensorId,
+      timestamp,
+    });
+    if (vus > 0) return;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+}
+
 async function ingestPing(sensorId: string, organizationId: string, temperature: number, minutesAgo = 0) {
   const ts = new Date(Date.now() - minutesAgo * 60_000);
   await TelemetryModel.create({
@@ -108,6 +127,7 @@ async function ingestPing(sensorId: string, organizationId: string, temperature:
     humidity: 50,
     battery_level: 80,
   });
+  await attendreVisibilite(sensorId, ts);
   await iotAlertService.checkAndAlert({
     sensorId,
     organizationId,
