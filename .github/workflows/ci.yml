@@ -149,6 +149,7 @@ jobs:
           BETTER_AUTH_SECRET=secret-de-test-au-moins-32-caracteres-xyz
           BETTER_AUTH_URL=http://localhost:3000
           API_URL=http://localhost:3000
+          API_BASE=http://localhost:3000
           FRONTEND_URL=http://localhost:5173
           SMTP_HOST=localhost
           SMTP_PORT=1
@@ -204,3 +205,45 @@ jobs:
       # résolution d'alerte, purge Mongo et ré-ingestion dans la même fenêtre glissante — un timing
       # sensible à l'environnement (vert en local, rouge sur le runner : la 2ᵉ excursion ne
       # redéclenche pas d'alerte). À stabiliser avant de les réintégrer.
+
+      # Les scénarios ci-dessous frappent l'API par HTTP (sécurité, RBAC, sync mobile, EPCIS) : ils
+      # exigent un serveur en marche. On le démarre en arrière-plan et on attend qu'il réponde.
+      - name: 🚀 Démarrer l'API en arrière-plan
+        run: |
+          npx tsx src/server.ts > server.log 2>&1 &
+          echo $! > server.pid
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3000/api/health > /dev/null; then
+              echo "API prête après ${i} tentative(s)."; exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::L'API n'a pas démarré à temps"; cat server.log; exit 1
+
+      # Ordre imposé : les deux tests de REJET d'authentification (allowlist, passthrough org)
+      # saturent volontairement le limiteur anti-bruteforce par IP — en mémoire, partagé sur le
+      # runner. Les jouer EN DERNIER évite qu'ils verrouillent les connexions des scénarios suivants.
+      - name: 🔑 Clé API applicative — durcissement
+        run: npm run e2e:api-key
+      - name: 📦 SSCC concurrents (pas de doublon)
+        run: npm run e2e:sscc
+      - name: 🏷️ Événements EPCIS (Object/Transformation/Aggregation)
+        run: npm run e2e:epcis
+      - name: 📱 Sync mobile hors-ligne (idempotence)
+        run: npm run e2e:sync
+      - name: 🌐 Passerelle IoT liée à son tenant
+        run: npm run e2e:iot-gateway
+      - name: 🗂️ Données de référence (RBAC CRUD)
+        run: npm run e2e:reference-data
+      - name: 🗂️ Clients & produits (RBAC CRUD)
+        run: npm run e2e:customer-product
+      - name: 👥 Gestion des membres (RBAC)
+        run: npm run e2e:members
+      - name: 🔒 Allowlist Better-Auth (rejets)
+        run: npm run e2e:auth-allowlist
+      - name: 🔒 Passthrough organisation fermé (rejets)
+        run: npm run e2e:org-passthrough
+
+      - name: 🛑 Arrêter l'API
+        if: always()
+        run: if [ -f server.pid ]; then kill "$(cat server.pid)" || true; fi
