@@ -20,4 +20,15 @@ describe('docker-compose fournit tout ce que le boot exige', () => {
       expect(compose).toContain(`${variable}:`);
     });
   }
+
+  /**
+   * Celle-ci n'est pas exigée au boot (vide = aucune origine additionnelle), donc la boucle
+   * ci-dessus ne la couvre pas. Elle mérite quand même sa garde : elle vit dans le bloc que
+   * la factorisation en ancre YAML a déplacé, et une résolution de conflit qui reprend « la
+   * version d'en face » la fait disparaître sans que rien ne casse — jusqu'à la démo mobile
+   * au navigateur, qui repart en 403 « Invalid origin ».
+   */
+  it('déclare ADDITIONAL_TRUSTED_ORIGINS dans l’environnement partagé', () => {
+    expect(compose).toContain('ADDITIONAL_TRUSTED_ORIGINS:');
+  });
 });

@@ -9,6 +9,7 @@ import { logger } from '../utils/logger/logger';
 import createRateLimiter from '../middlewares/rateLimiter/rateLimiter.middleware';
 import { sanitizeRequestData } from '../middlewares/sanitizeData/sanitizeData.middleware';
 import { requestIdMiddleware } from '../middlewares/requestId.middleware';
+import { resolveTrustedOrigins } from './trustedOrigins.config';
 
 // ! FONCTION
 
@@ -37,7 +38,7 @@ const configureMiddleware = (app: express.Application) => {
 
   app.use(
     cors({
-      origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+      origin: resolveTrustedOrigins(),
       credentials: true,
     })
   );
