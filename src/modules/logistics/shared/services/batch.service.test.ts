@@ -10,8 +10,10 @@ vi.mock('../../../../shared/configs/prismaClient.config', () => ({
       create: vi.fn(),
       findFirst: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
     },
     batch_Mouvement: { create: vi.fn() },
+    equipment: { findFirst: vi.fn() },
     qualityControl: { findFirst: vi.fn() },
     member: { findFirst: vi.fn() },
     // Simule une transaction en passant le mock prisma au callback
@@ -362,6 +364,111 @@ describe('BatchSharedService', () => {
         data: expect.objectContaining({ statut: 'EN_STOCK', statut_avant_blocage: null }),
       });
       expect(result.statut).toBe('EN_STOCK');
+    });
+  });
+
+  describe('moveBatch — déplacer un lot d’un emplacement à un autre', () => {
+    const enStockDansA = {
+      id: 'batch-1',
+      organization_id: 'org-1',
+      statut: 'EN_STOCK',
+      id_materiel_actuel: 'frigo-A',
+      quantite_actuelle: 100,
+      unite_code: 'KG',
+      version: 3,
+    };
+    const frigoB = { id: 'frigo-B', organization_id: 'org-1', type: 'FRIGO' };
+
+    it('déplace un lot libre vers un emplacement de stockage, avec mouvement et audit', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(prisma.batch.findFirst).mockResolvedValueOnce(enStockDansA as any);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(prisma.equipment.findFirst).mockResolvedValue(frigoB as any);
+      vi.mocked(prisma.batch.updateMany).mockResolvedValue({ count: 1 } as never);
+      vi.mocked(prisma.batch.findFirst).mockResolvedValueOnce({
+        ...enStockDansA,
+        id_materiel_actuel: 'frigo-B',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+
+      const result = await batchService.moveBatch('batch-1', 'org-1', 'user-1', 'frigo-B');
+
+      // Verrou optimiste : la version lue est dans le where, l'écriture échoue si l'état a bougé.
+      expect(prisma.batch.updateMany).toHaveBeenCalledWith({
+        where: { id: 'batch-1', organization_id: 'org-1', version: 3 },
+        data: { id_materiel_actuel: 'frigo-B', version: { increment: 1 } },
+      });
+      expect(prisma.batch_Mouvement.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          id_lot: 'batch-1',
+          type_action: 'DEPLACEMENT',
+          metadata: expect.objectContaining({ from: 'frigo-A', to: 'frigo-B' }),
+        }),
+      });
+      expect(auditService.logAction).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'MOVE_BATCH', entityId: 'batch-1' }),
+        expect.anything()
+      );
+      expect(result.id_materiel_actuel).toBe('frigo-B');
+    });
+
+    it('no-op idempotent (aucune écriture) si le lot est déjà à cet emplacement', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(prisma.batch.findFirst).mockResolvedValue(enStockDansA as any);
+
+      const result = await batchService.moveBatch('batch-1', 'org-1', 'user-1', 'frigo-A');
+
+      expect(prisma.batch.updateMany).not.toHaveBeenCalled();
+      expect(prisma.batch_Mouvement.create).not.toHaveBeenCalled();
+      expect(result.id_materiel_actuel).toBe('frigo-A');
+    });
+
+    it('refuse (409) le déplacement d’un lot en quarantaine (BLOQUE)', async () => {
+      vi.mocked(prisma.batch.findFirst).mockResolvedValue({
+        ...enStockDansA,
+        statut: 'BLOQUE',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+
+      const action = batchService.moveBatch('batch-1', 'org-1', 'user-1', 'frigo-B');
+      await expect(action).rejects.toMatchObject({ status: 409 });
+      expect(prisma.batch.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('refuse (404) un matériel cible hors de l’organisation', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(prisma.batch.findFirst).mockResolvedValue(enStockDansA as any);
+      vi.mocked(prisma.equipment.findFirst).mockResolvedValue(null);
+
+      const action = batchService.moveBatch('batch-1', 'org-1', 'user-1', 'frigo-inconnu');
+      await expect(action).rejects.toMatchObject({ status: 404 });
+      expect(prisma.batch.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('refuse (400) un matériel cible qui n’est pas un emplacement de stockage (CUVE)', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(prisma.batch.findFirst).mockResolvedValue(enStockDansA as any);
+      vi.mocked(prisma.equipment.findFirst).mockResolvedValue({
+        id: 'cuve-1',
+        organization_id: 'org-1',
+        type: 'CUVE',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+
+      const action = batchService.moveBatch('batch-1', 'org-1', 'user-1', 'cuve-1');
+      await expect(action).rejects.toMatchObject({ status: 400 });
+      expect(prisma.batch.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('refuse (409) si le lot a changé d’état entre la lecture et l’écriture (verrou optimiste)', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(prisma.batch.findFirst).mockResolvedValue(enStockDansA as any);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(prisma.equipment.findFirst).mockResolvedValue(frigoB as any);
+      vi.mocked(prisma.batch.updateMany).mockResolvedValue({ count: 0 } as never);
+
+      const action = batchService.moveBatch('batch-1', 'org-1', 'user-1', 'frigo-B');
+      await expect(action).rejects.toMatchObject({ status: 409 });
     });
   });
 

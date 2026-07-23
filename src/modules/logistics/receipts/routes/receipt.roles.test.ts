@@ -31,6 +31,7 @@ vi.mock('../controllers/receipt.controller', () => ({
   listReceiptsController: (_req: express.Request, res: express.Response) => res.status(200).end(),
   liftBatchQuarantineController: (_req: express.Request, res: express.Response) =>
     res.status(200).end(),
+  moveBatchController: (_req: express.Request, res: express.Response) => res.status(200).end(),
   resolveBatchByLotNumberController: (_req: express.Request, res: express.Response) =>
     res.status(200).json({ route: 'resolve' }),
 }));
@@ -116,6 +117,22 @@ describe('RBAC des routes logistiques (session réelle)', () => {
     it('refuse viewer', async () => {
       signedInAs('viewer');
       const res = await request(app).post('/api/logistics/batches/lot-1/release').send({});
+      expect(res.status).toBe(403);
+    });
+  });
+
+  describe('PATCH /logistics/batches/:id/location (déplacement — écriture métier)', () => {
+    const body = { id_materiel: '11111111-1111-4111-8111-111111111111' };
+
+    it.each(['owner', 'admin', 'operator'])('autorise %s', async (role) => {
+      signedInAs(role);
+      const res = await request(app).patch('/api/logistics/batches/lot-1/location').send(body);
+      expect(res.status).toBe(200);
+    });
+
+    it('refuse viewer (lecture seule)', async () => {
+      signedInAs('viewer');
+      const res = await request(app).patch('/api/logistics/batches/lot-1/location').send(body);
       expect(res.status).toBe(403);
     });
   });

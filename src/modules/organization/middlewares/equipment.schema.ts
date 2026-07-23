@@ -7,6 +7,17 @@ import type { Infer } from '@vinejs/vine/build/src/types';
  */
 export const EQUIPMENT_TYPES = ['FRIGO', 'CONGELATEUR', 'CUVE', 'ETAGERE', 'MIXEUR'] as const;
 
+/**
+ * Matériel où un lot se STOCKE (donc où on peut le déplacer). CUVE et MIXEUR sont des équipements de
+ * transformation : un lot n'y « est rangé » que le temps d'une transformation, jamais par un
+ * déplacement manuel de stock.
+ */
+export const STORAGE_EQUIPMENT_TYPES: readonly (typeof EQUIPMENT_TYPES)[number][] = [
+  'FRIGO',
+  'CONGELATEUR',
+  'ETAGERE',
+];
+
 export const createEquipmentSchema = vine.object({
   nom: vine.string().trim().minLength(3).maxLength(100),
   type: vine.enum(EQUIPMENT_TYPES),

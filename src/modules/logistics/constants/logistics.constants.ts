@@ -111,7 +111,20 @@ export const MOVEMENT_TYPES = {
   COLD_QUARANTINE: 'QUARANTAINE_FROID',
   QUARANTINE_LIFTED: 'LEVEE_QUARANTAINE',
   RECALL: 'RAPPEL',
+  MOVE: 'DEPLACEMENT',
 } as const;
+
+/**
+ * Statuts d'un lot qu'on peut RANGER ailleurs. Un lot en quarantaine (`BLOQUE`) ou sous rappel
+ * (`ALERTE`) est immobilisé : le déplacer casserait la surveillance de l'incident — un lot `BLOQUE`
+ * déplacé n'est plus jamais re-mis en quarantaine froid (`COLD_QUARANTINABLE_STATUSES` ne le contient
+ * pas) et ressortirait `EN_STOCK` dans un frigo en panne à la levée. `EXPEDIE`/`EPUISE` ne sont plus
+ * là physiquement. Seul un lot librement disponible bouge.
+ */
+export const MOVABLE_BATCH_STATUSES: readonly BatchStatus[] = [
+  BATCH_STATUSES.IN_STOCK,
+  BATCH_STATUSES.PENDING_QC,
+];
 
 export type MovementType = (typeof MOVEMENT_TYPES)[keyof typeof MOVEMENT_TYPES];
 

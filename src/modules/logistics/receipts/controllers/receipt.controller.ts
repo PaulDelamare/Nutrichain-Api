@@ -133,6 +133,32 @@ export const liftBatchQuarantineController = catchAsync(
 );
 
 /**
+ * Déplace un lot vers un autre emplacement de stockage (met à jour sa position physique).
+ */
+export const moveBatchController = catchAsync(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const id = req.params.id as string;
+    const activeOrgId = req.activeOrgId as string;
+    const userId = req.auth?.user?.id ?? req.user?.id;
+    const idMateriel = req.validatedMoveBatch?.id_materiel;
+
+    if (!userId) {
+      throw new APIError(401, {
+        error: [{ field: 'user', message: 'Utilisateur requis pour déplacer un lot.' }],
+      });
+    }
+    if (!idMateriel) {
+      throw new APIError(400, {
+        error: [{ field: 'id_materiel', message: 'Matériel de destination manquant.' }],
+      });
+    }
+
+    const batch = await batchService.moveBatch(id, activeOrgId, userId, idMateriel);
+    sendSuccess(res, 200, 'Lot déplacé', batch);
+  }
+);
+
+/**
  * Génère une étiquette QR Code pour un lot (GS1 Digital Link)
  */
 export const getBatchLabelController = catchAsync(
