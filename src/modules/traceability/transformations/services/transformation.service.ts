@@ -60,7 +60,7 @@ export const transformationService = {
         // inputs triés — car hashPayload garde l'ordre des tableaux et aplatit les Date : sans ça,
         // un rejeu reconstruit dans un autre ordre serait vu comme un conflit à tort.
         if (data.client_op_id) {
-          const empreinte = {
+          const fingerprint = {
             id_produit_fini: data.id_produit_fini,
             id_materiel: data.id_materiel,
             quantite_produite: data.quantite_produite,
@@ -74,7 +74,7 @@ export const transformationService = {
             organizationId: data.organization_id,
             clientOpId: data.client_op_id,
             userId: data.created_by,
-            requestHash: idempotencyService.hashPayload(empreinte),
+            requestHash: idempotencyService.hashPayload(fingerprint),
             ttlMs: IDEMPOTENCY_TTL_MS,
           });
           if (claim.replay) {

@@ -107,13 +107,13 @@ async function cleanup(f: Fixtures) {
  * Borné : on n'attend jamais indéfiniment — si le point reste invisible, l'assertion métier qui
  * suit échouera avec son propre message, plus parlant qu'un blocage muet.
  */
-async function attendreVisibilite(sensorId: string, timestamp: Date) {
+async function waitUntilVisible(sensorId: string, timestamp: Date) {
   for (let i = 0; i < 20; i++) {
-    const vus = await TelemetryModel.countDocuments({
+    const seen = await TelemetryModel.countDocuments({
       'metadata.sensor_id': sensorId,
       timestamp,
     });
-    if (vus > 0) return;
+    if (seen > 0) return;
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
 }
@@ -127,7 +127,7 @@ async function ingestPing(sensorId: string, organizationId: string, temperature:
     humidity: 50,
     battery_level: 80,
   });
-  await attendreVisibilite(sensorId, ts);
+  await waitUntilVisible(sensorId, ts);
   await iotAlertService.checkAndAlert({
     sensorId,
     organizationId,
