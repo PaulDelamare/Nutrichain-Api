@@ -192,6 +192,8 @@ jobs:
         run: npm run e2e:resolution-lot
       - name: 📍 Déplacement d'un lot (position physique)
         run: npm run e2e:move-batch
+      - name: 🔁 Idempotence de la transformation (pas de double prélèvement)
+        run: npm run e2e:transformation-idempotency
       - name: 🛡️ Séparation des tâches qualité (RBAC)
         run: npm run e2e:quality-gate
       - name: 🚧 Quarantaine et levée

@@ -15,6 +15,10 @@ import {
   MOVEMENT_TYPES,
   isBatchBlocked,
 } from '../../../logistics/constants/logistics.constants';
+import {
+  idempotencyService,
+  IDEMPOTENCY_TTL_MS,
+} from '../../../../shared/utils/idempotency/idempotency.service';
 
 export interface TransformationInput {
   organization_id: string;
@@ -25,12 +29,19 @@ export interface TransformationInput {
   date_peremption?: Date;
   note_technique?: Record<string, unknown>;
   created_by: string;
+  /** Clé d'idempotence optionnelle : un rejeu renvoie le 1er résultat au lieu de re-transformer. */
+  client_op_id?: string;
   inputs: Array<{
     id_lot_parent: string;
     quantite_prelevee: number;
     unite: string;
     lot_parent_epuise: boolean;
   }>;
+}
+
+interface TransformationResult {
+  transformation_id: string;
+  lot_enfant_id: string;
 }
 
 /**
@@ -41,8 +52,62 @@ export const transformationService = {
    * Enregistre une transformation : consomme des lots parents et crée un lot enfant.
    * Gère la traçabilité descendante.
    */
-  async createTransformation(data: TransformationInput) {
-    return await retryableTransaction(async (tx) => {
+  async createTransformation(data: TransformationInput): Promise<TransformationResult> {
+    return await retryableTransaction(
+      async (tx): Promise<TransformationResult> => {
+        // Idempotence optionnelle : un rejeu (coupure réseau mobile) renvoie le résultat du premier
+        // appel au lieu de re-prélever les lots parents. L'empreinte est NORMALISÉE — dates en ISO,
+        // inputs triés — car hashPayload garde l'ordre des tableaux et aplatit les Date : sans ça,
+        // un rejeu reconstruit dans un autre ordre serait vu comme un conflit à tort.
+        if (data.client_op_id) {
+          const empreinte = {
+            id_produit_fini: data.id_produit_fini,
+            id_materiel: data.id_materiel,
+            quantite_produite: data.quantite_produite,
+            unite_code: data.unite_code,
+            date_peremption: data.date_peremption?.toISOString() ?? null,
+            inputs: [...data.inputs].sort((a, b) =>
+              a.id_lot_parent.localeCompare(b.id_lot_parent)
+            ),
+          };
+          const claim = await idempotencyService.claim(tx, {
+            organizationId: data.organization_id,
+            clientOpId: data.client_op_id,
+            userId: data.created_by,
+            requestHash: idempotencyService.hashPayload(empreinte),
+            ttlMs: IDEMPOTENCY_TTL_MS,
+          });
+          if (claim.replay) {
+            return claim.payload as TransformationResult;
+          }
+        }
+
+        const result = await runTransformation(tx, data);
+
+        // Met en cache le résultat : un rejeu de la même clé le renverra sans re-transformer.
+        if (data.client_op_id) {
+          await idempotencyService.finalize(tx, {
+            organizationId: data.organization_id,
+            clientOpId: data.client_op_id,
+            payload: result,
+          });
+        }
+
+        return result;
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 30000 }
+    );
+  },
+};
+
+/**
+ * Le corps métier d'une transformation, exécuté dans la transaction. Extrait de
+ * `createTransformation` pour que le claim d'idempotence l'enveloppe proprement.
+ */
+async function runTransformation(
+  tx: Prisma.TransactionClient,
+  data: TransformationInput
+): Promise<TransformationResult> {
       // 0. Le produit fini doit appartenir à l'organisation (anti-référence cross-tenant,
       // symétrique aux contrôles fournisseur/client) — son GTIN sert aussi à l'URN LGTIN.
       const produitFini = await tx.product.findFirst({
@@ -343,6 +408,4 @@ export const transformationService = {
         transformation_id: transformation.id,
         lot_enfant_id: lotEnfant.id,
       };
-    });
-  },
-};
+}

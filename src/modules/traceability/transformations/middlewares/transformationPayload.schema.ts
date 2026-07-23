@@ -14,6 +14,9 @@ export const transformationSchema = vine.object({
   unite_code: vine.enum(VALID_UNITS),
   date_peremption: vine.string().optional(),
   note_technique: vine.record(vine.any()).optional(),
+  // Clé d'idempotence optionnelle : si le mobile la fournit, un rejeu (coupure réseau) renvoie le
+  // résultat du premier appel au lieu de re-prélever les lots parents. Absente = comportement direct.
+  client_op_id: vine.string().uuid().optional(),
 
   // Liste des composants utilisés (limité à 50 pour éviter les DoS)
   inputs: vine
