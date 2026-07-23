@@ -56,7 +56,11 @@ Tests **colocalisés** : `feature.service.test.ts` à côté de `feature.service
 8. **Ne lance jamais Prettier** : il n'est branché ni au hook ni à la CI. Le lancer reformaterait
    des milliers de lignes.
 9. **Commentaires rares**, en français : le *pourquoi* non évident, jamais le *quoi*.
-10. **Teste avec le rôle le plus faible** qui devrait être refusé. Le compte `owner` du seed masque
+10. **Identifiants en anglais, commentaires en français.** Une fonction ou une variable ne se nomme
+    jamais en français (`attendreVisibilite`, `contexteAppelant`, `statutRestaure` sont des fautes).
+    **Seule exception** : les champs du domaine persisté (`quantite_actuelle`, `unite_code`,
+    `statut`, `lot_number`…), qui viennent du schéma Prisma et ne se renomment pas.
+11. **Teste avec le rôle le plus faible** qui devrait être refusé. Le compte `owner` du seed masque
     tous les 403.
 
 ## La méthode
