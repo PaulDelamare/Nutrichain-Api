@@ -141,4 +141,40 @@ describe('MemberController', () => {
       });
     });
   });
+
+  /**
+   * Le contrôleur castait `req.activeOrgId as string`. Sans organisation active, le service
+   * recevait `undefined` et `prisma.member.findFirst({ where: { id, organizationId: undefined } })`
+   * ne filtre alors **rien** : Prisma omet les champs `undefined`. La requête se réduit à `{ id }`,
+   * donc on révoque le membre d'une AUTRE organisation. `ensureActiveOrg` couvre aujourd'hui ces
+   * deux routes, mais c'est une garde unique, en amont — et c'est exactement le motif que
+   * `authGuards.ts` documente comme piège.
+   */
+  describe('sans organisation active', () => {
+    it('refuse le changement de rôle plutôt que de requêter tous les tenants', async () => {
+      const req = {
+        params: { id: 'member-1' },
+        body: { role: 'viewer' },
+        auth: { user: { id: 'admin-session' } },
+      } as unknown as AuthenticatedRequest;
+
+      await expect(changeMemberRoleController(req, {} as Response)).rejects.toMatchObject({
+        status: 401,
+      });
+      expect(memberService.changeRole).not.toHaveBeenCalled();
+    });
+
+    it('refuse la révocation plutôt que de requêter tous les tenants', async () => {
+      const req = {
+        params: { id: 'member-1' },
+        body: {},
+        auth: { user: { id: 'admin-session' } },
+      } as unknown as AuthenticatedRequest;
+
+      await expect(revokeMemberController(req, {} as Response)).rejects.toMatchObject({
+        status: 401,
+      });
+      expect(memberService.revoke).not.toHaveBeenCalled();
+    });
+  });
 });
