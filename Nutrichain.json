@@ -151,7 +151,7 @@
             "params": [],
             "body": {
               "mode": "json",
-              "json": "{\n  \"email\": \"first.admin@nutrichain.local\",\n  \"password\": \"StrongPassw0rd!123\",\n  \"name\": \"First Admin\"\n}",
+              "json": "{\n  \"email\": \"first.admin@nutrichain.local\",\n  \"password\": \"{{admin_password}}\",\n  \"name\": \"First Admin\"\n}",
               "formUrlEncoded": [],
               "multipartForm": [],
               "file": []
@@ -177,7 +177,7 @@
             "params": [],
             "body": {
               "mode": "json",
-              "json": "{\n  \"email\": \"first.admin@nutrichain.local\",\n  \"password\": \"StrongPassw0rd!123\"\n}",
+              "json": "{\n  \"email\": \"first.admin@nutrichain.local\",\n  \"password\": \"{{admin_password}}\"\n}",
               "formUrlEncoded": [],
               "multipartForm": [],
               "file": []
@@ -302,7 +302,13 @@
           "request": {
             "url": "{{url}}telemetry/ping",
             "method": "POST",
-            "headers": [],
+            "headers": [
+              {
+                "name": "x-api-key",
+                "value": "{{iot_api_key}}",
+                "enabled": true
+              }
+            ],
             "params": [],
             "body": {
               "mode": "json",
@@ -463,7 +469,7 @@
             "params": [],
             "body": {
               "mode": "json",
-              "json": "{\n  \"id_fournisseur\": \"{{supplier_id}}\",\n  \"shipment_id\": \"EXP-TRUCK-001\",\n  \"id_produit\": \"{{product_id}}\",\n  \"quantite_actuelle\": 500,\n  \"unite_code\": \"KG\",\n  \"statut_controle\": \"OK\",\n  \"received_by\": \"{{user_id}}\"\n}",
+              "json": "{\n  \"id_fournisseur\": \"{{supplier_id}}\",\n  \"shipment_id\": \"EXP-TRUCK-001\",\n  \"id_produit\": \"{{product_id}}\",\n  \"quantite_actuelle\": 500,\n  \"unite_code\": \"KG\",\n  \"statut_controle\": \"OK\"\n}",
               "formUrlEncoded": [],
               "multipartForm": [],
               "file": []
@@ -701,7 +707,7 @@
             "params": [],
             "body": {
               "mode": "json",
-              "json": "{\n  \"id_client\": \"{{customer_id}}\",\n  \"transporteur\": \"Transports Nutri\",\n  \"destination_adresse\": \"12 rue de la Fromagerie, Paris\",\n  \"created_by\": \"{{user_id}}\",\n  \"date_expedition\": \"2026-05-27T10:00:00.000Z\",\n  \"shipment_id\": \"AUTO\",\n  \"lots\": [\n    {\n      \"id_lot\": \"{{batch_id}}\",\n      \"quantite_expediee\": 30\n    }\n  ]\n}",
+              "json": "{\n  \"id_client\": \"{{customer_id}}\",\n  \"transporteur\": \"Transports Nutri\",\n  \"destination_adresse\": \"12 rue de la Fromagerie, Paris\",\n  \"shipment_id\": \"AUTO\",\n  \"lots\": [\n    {\n      \"id_lot\": \"{{batch_id}}\",\n      \"quantite_expediee\": 30\n    }\n  ]\n}",
               "formUrlEncoded": [],
               "multipartForm": [],
               "file": []
@@ -742,7 +748,7 @@
             "params": [],
             "body": {
               "mode": "json",
-              "json": "{\n  \"items\": [\n    {\n      \"clientOpId\": \"550e8400-e29b-41d4-a716-446655440000\",\n      \"type\": \"receipt\",\n      \"payload\": {\n        \"id_fournisseur\": \"{{supplier_id}}\",\n        \"shipment_id\": \"SHIP-SYNC-001\",\n        \"id_produit\": \"{{product_id}}\",\n        \"quantite_actuelle\": 100,\n        \"unite_code\": \"KG\",\n        \"statut_controle\": \"OK\"\n      }\n    },\n    {\n      \"clientOpId\": \"550e8400-e29b-41d4-a716-446655440001\",\n      \"type\": \"receipt\",\n      \"payload\": {\n        \"id_fournisseur\": \"{{supplier_id}}\",\n        \"shipment_id\": \"SHIP-SYNC-002\",\n        \"id_produit\": \"{{product_id}}\",\n        \"quantite_actuelle\": 250,\n        \"unite_code\": \"KG\",\n        \"statut_controle\": \"OK\"\n      }\n    }\n  ],\n  \"actorUserId\": \"{{user_id}}\"\n}",
+              "json": "{\n  \"items\": [\n    {\n      \"clientOpId\": \"550e8400-e29b-41d4-a716-446655440000\",\n      \"type\": \"receipt\",\n      \"payload\": {\n        \"id_fournisseur\": \"{{supplier_id}}\",\n        \"shipment_id\": \"SHIP-SYNC-001\",\n        \"id_produit\": \"{{product_id}}\",\n        \"quantite_actuelle\": 100,\n        \"unite_code\": \"KG\",\n        \"statut_controle\": \"OK\"\n      }\n    },\n    {\n      \"clientOpId\": \"550e8400-e29b-41d4-a716-446655440001\",\n      \"type\": \"receipt\",\n      \"payload\": {\n        \"id_fournisseur\": \"{{supplier_id}}\",\n        \"shipment_id\": \"SHIP-SYNC-002\",\n        \"id_produit\": \"{{product_id}}\",\n        \"quantite_actuelle\": 250,\n        \"unite_code\": \"KG\",\n        \"statut_controle\": \"OK\"\n      }\n    }\n  ]\n}",
               "formUrlEncoded": [],
               "multipartForm": [],
               "file": []
@@ -751,7 +757,7 @@
             "vars": {},
             "assertions": [],
             "tests": "",
-            "docs": "Bulk sync mobile offline-first. Idempotence par clientOpId, reponse 207 Multi-Status. Session requise (owner/admin/operator) : actorUserId ignore, l'utilisateur est resolu depuis la session.",
+            "docs": "Bulk sync mobile offline-first. Idempotence par clientOpId, reponse 207 Multi-Status. Session requise (owner/admin/operator) : aucun champ d'auteur n'existe dans le schema, l'utilisateur est resolu depuis la session.",
             "auth": {
               "mode": "bearer",
               "bearer": {
@@ -2217,6 +2223,20 @@
           "value": "",
           "enabled": true,
           "secret": false,
+          "type": "text"
+        },
+        {
+          "name": "iot_api_key",
+          "value": "remplacez-par-IOT_API_KEY-de-votre-.env",
+          "enabled": true,
+          "secret": true,
+          "type": "text"
+        },
+        {
+          "name": "admin_password",
+          "value": "",
+          "enabled": true,
+          "secret": true,
           "type": "text"
         }
       ]
