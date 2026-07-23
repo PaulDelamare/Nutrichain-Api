@@ -35,9 +35,9 @@ export const BATCH_STATUSES = {
    * Barrière HACCP : rien ne quitte l'usine sans qu'un contrôle l'ait libéré.
    */
   PENDING_QC: 'EN_ATTENTE_QC',
-  /** Quarantaine qualité : non-conformité au contrôle (réception ou sortie). Levable. */
+  /** Quarantaine : non-conformité au contrôle (réception ou sortie) OU excursion chaîne du froid. Levable. */
   BLOCKED: 'BLOQUE',
-  /** Bloqué par un rappel produit ou une excursion chaîne du froid. */
+  /** Bloqué par un rappel produit. Irréversible. */
   ALERT: 'ALERTE',
   /** Totalité du lot expédiée. */
   SHIPPED: 'EXPEDIE',

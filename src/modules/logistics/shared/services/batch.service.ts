@@ -5,7 +5,12 @@ import { auditService } from '../../../../shared/utils/audit/audit.service';
 import { retryableTransaction } from '../../../../shared/utils/db/withWriteConflictRetry';
 import { gs1Utils } from '../../../../shared/utils/gs1/gs1.utils';
 import { enforceSeparationOfDuties, SELF_RELEASE_TRACE } from '../utils/separationOfDuties';
-import { BATCH_STATUSES, BatchStatus, MOVEMENT_TYPES } from '../../constants/logistics.constants';
+import {
+  BATCH_STATUSES,
+  BatchStatus,
+  MOVEMENT_TYPES,
+  QUALITY_RESULTS,
+} from '../../constants/logistics.constants';
 
 /** Plafond de l'historique renvoyé avec un lot (frise de la fiche lot). */
 const BATCH_HISTORY_LIMIT = 50;
@@ -160,6 +165,31 @@ export const batchService = {
           });
         }
 
+        // La levée de quarantaine ne traite QUE l'incident froid. Si le dernier verdict qualité du
+        // lot est « non conforme », il ne se libère pas par ce canal : réparer la chambre froide ne
+        // rend pas consommable un produit contaminé. La garde vaut pour tout lot BLOQUE condamné,
+        // qu'il ait ou non subi une excursion — un contrôle non conforme laisse le lot BLOQUE
+        // (nextStatus, qualityControl.service) et un tel lot n'a, à ce stade du modèle, pas d'autre
+        // issue que le rebut : on refuse de le remettre en circulation, on ne promet pas de retour.
+        // Tiebreak par `id` : à date_test égale, l'ordre reste déterministe.
+        const dernierControle = await tx.qualityControl.findFirst({
+          where: { id_lot: id, organization_id: activeOrgId },
+          orderBy: [{ date_test: 'desc' }, { id: 'desc' }],
+          select: { resultat: true },
+        });
+
+        if (dernierControle?.resultat === QUALITY_RESULTS.NON_CONFORM) {
+          throw new APIError(409, {
+            error: [
+              {
+                field: 'statut',
+                message:
+                  'Ce lot a échoué un contrôle qualité : il ne se libère pas par la levée de quarantaine froid.',
+              },
+            ],
+          });
+        }
+
         const autoSignee = await enforceSeparationOfDuties(tx, {
           organizationId: activeOrgId,
           batchCreatedBy: batch.created_by,
@@ -167,10 +197,16 @@ export const batchService = {
           field: 'batch',
         });
 
+        // On revient au statut d'AVANT la quarantaine froid : un produit fini qui attendait son
+        // contrôle de sortie (EN_ATTENTE_QC) y retourne, il ne devient pas expédiable. Faute de
+        // statut mémorisé (lot né BLOQUE à une réception non conforme), on retombe sur EN_STOCK.
+        const statutRestaure = batch.statut_avant_blocage ?? BATCH_STATUSES.IN_STOCK;
+
         const updated = await tx.batch.update({
           where: { id },
           data: {
-            statut: BATCH_STATUSES.IN_STOCK,
+            statut: statutRestaure,
+            statut_avant_blocage: null,
             version: { increment: 1 },
           },
         });
@@ -184,7 +220,7 @@ export const batchService = {
             quantite: batch.quantite_actuelle,
             unite: batch.unite_code,
             id_user: userId,
-            metadata: { motif, statut_precedent: batch.statut },
+            metadata: { motif, statut_precedent: batch.statut, statut_resultant: statutRestaure },
           },
         });
 
@@ -197,7 +233,7 @@ export const batchService = {
             entityId: id,
             oldValue: { statut: batch.statut },
             newValue: {
-              statut: BATCH_STATUSES.IN_STOCK,
+              statut: statutRestaure,
               motif,
               ...(autoSignee ? { separation_des_taches: SELF_RELEASE_TRACE } : {}),
             },

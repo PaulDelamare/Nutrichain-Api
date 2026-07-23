@@ -128,7 +128,7 @@ export const liftBatchQuarantineController = catchAsync(
     }
 
     const batch = await batchService.liftQuarantine(id, activeOrgId, userId, motif);
-    sendSuccess(res, 200, 'Quarantaine levée, lot remis en stock', batch);
+    sendSuccess(res, 200, 'Quarantaine levée', batch);
   }
 );
 
