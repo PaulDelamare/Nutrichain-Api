@@ -27,6 +27,7 @@
     "e2e:connectors": "tsx --env-file=.env scripts/e2e-connectors.ts",
     "e2e:quarantine": "tsx --env-file=.env scripts/e2e-quarantine.ts",
     "e2e:quarantine-restore": "tsx --env-file=.env scripts/e2e-quarantine-restore.ts",
+    "e2e:move-batch": "tsx --env-file=.env scripts/e2e-move-batch.ts",
     "e2e:units-referential": "tsx --env-file=.env scripts/e2e-units-referential.ts",
     "bench:genealogy": "tsx --env-file=.env scripts/bench-genealogy.ts",
     "backup:postgres": "tsx --env-file=.env scripts/backup-postgres.ts",

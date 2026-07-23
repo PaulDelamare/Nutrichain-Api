@@ -8,9 +8,11 @@ import { enforceSeparationOfDuties, SELF_RELEASE_TRACE } from '../utils/separati
 import {
   BATCH_STATUSES,
   BatchStatus,
+  MOVABLE_BATCH_STATUSES,
   MOVEMENT_TYPES,
   QUALITY_RESULTS,
 } from '../../constants/logistics.constants';
+import { STORAGE_EQUIPMENT_TYPES } from '../../../organization/middlewares/equipment.schema';
 
 /** Plafond de l'historique renvoyé avec un lot (frise de la fiche lot). */
 const BATCH_HISTORY_LIMIT = 50;
@@ -242,6 +244,117 @@ export const batchService = {
         );
 
         return updated;
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+    );
+  },
+
+  /**
+   * Déplace un lot vers un autre emplacement de stockage. Corrige un angle mort sanitaire : la
+   * quarantaine froid cible les lots par `id_materiel_actuel` — une position figée à la création
+   * rendait la surveillance fausse dès le premier déplacement réel (faux négatifs ET faux positifs).
+   *
+   * Seul un lot LIBRE bouge (cf. MOVABLE_BATCH_STATUSES) : un lot en quarantaine ou sous rappel est
+   * immobilisé. Le matériel cible doit être un emplacement de STOCKAGE (pas une cuve/mixeur). Tracé
+   * dans l'audit WORM, comme toute écriture à conséquence sanitaire.
+   */
+  async moveBatch(id: string, activeOrgId: string, userId: string, idMateriel: string) {
+    return retryableTransaction(
+      async (tx) => {
+        const batch = await tx.batch.findFirst({
+          where: { id, organization_id: activeOrgId },
+        });
+
+        if (!batch) {
+          throw new APIError(404, {
+            error: [{ field: 'batch', message: 'Lot introuvable dans cette organisation' }],
+          });
+        }
+
+        // Idempotent : le lot est déjà là. Un retry réseau d'un déplacement réussi ne doit pas
+        // renvoyer une erreur ni ré-écrire un mouvement fantôme — on renvoie l'état, sans rien faire.
+        if (batch.id_materiel_actuel === idMateriel) {
+          return batch;
+        }
+
+        if (!(MOVABLE_BATCH_STATUSES as readonly string[]).includes(batch.statut)) {
+          throw new APIError(409, {
+            error: [
+              {
+                field: 'statut',
+                message: `Un lot dans l'état ${batch.statut} ne peut pas être déplacé. Seul un lot disponible (EN_STOCK ou EN_ATTENTE_QC) se range ailleurs.`,
+              },
+            ],
+          });
+        }
+
+        const materiel = await tx.equipment.findFirst({
+          where: { id: idMateriel, organization_id: activeOrgId },
+        });
+
+        if (!materiel) {
+          throw new APIError(404, {
+            error: [{ field: 'id_materiel', message: 'Matériel introuvable dans cette organisation' }],
+          });
+        }
+
+        if (!(STORAGE_EQUIPMENT_TYPES as readonly string[]).includes(materiel.type)) {
+          throw new APIError(400, {
+            error: [
+              {
+                field: 'id_materiel',
+                message: `Un lot se range dans un emplacement de stockage (frigo, congélateur, étagère), pas dans un équipement de type ${materiel.type}.`,
+              },
+            ],
+          });
+        }
+
+        // Verrou optimiste : la version lue est dans le where. Si une excursion froid concurrente a
+        // fait passer le lot BLOQUE entre-temps, l'écriture ne mord pas (count 0) → 409, on ne
+        // déplace pas un lot dont l'état a changé sous nos yeux.
+        const updated = await tx.batch.updateMany({
+          where: { id, organization_id: activeOrgId, version: batch.version },
+          data: { id_materiel_actuel: idMateriel, version: { increment: 1 } },
+        });
+
+        if (updated.count === 0) {
+          throw new APIError(409, {
+            error: [
+              {
+                field: 'statut',
+                message:
+                  "L'état du lot a changé pendant le déplacement. Rechargez sa fiche avant de réessayer.",
+              },
+            ],
+          });
+        }
+
+        // `quantite`/`unite` portent la quantité concernée par le geste, pas un mouvement de matière.
+        await tx.batch_Mouvement.create({
+          data: {
+            id_lot: id,
+            type_action: MOVEMENT_TYPES.MOVE,
+            quantite: batch.quantite_actuelle,
+            unite: batch.unite_code,
+            id_user: userId,
+            metadata: { from: batch.id_materiel_actuel, to: idMateriel },
+          },
+        });
+
+        await auditService.logAction(
+          {
+            organizationId: activeOrgId,
+            userId,
+            action: 'MOVE_BATCH',
+            entity: 'Batch',
+            entityId: id,
+            oldValue: { id_materiel_actuel: batch.id_materiel_actuel },
+            newValue: { id_materiel_actuel: idMateriel },
+          },
+          tx
+        );
+
+        return tx.batch.findFirst({ where: { id, organization_id: activeOrgId } });
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
     );

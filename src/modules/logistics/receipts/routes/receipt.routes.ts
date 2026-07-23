@@ -7,12 +7,14 @@ import {
   getBatchLabelController,
   listReceiptsController,
   liftBatchQuarantineController,
+  moveBatchController,
   resolveBatchByLotNumberController,
 } from '../controllers/receipt.controller';
 import { validateReceiptParams } from '../middlewares/validateReceipt.middleware';
 import { validateBatchResolve } from '../middlewares/validateBatchResolve.middleware';
 import { validateReceiptQuery } from '../middlewares/validateReceiptQuery.middleware';
 import { validateQuarantineLift } from '../middlewares/validateQuarantineLift.middleware';
+import { validateMoveBatch } from '../middlewares/validateMoveBatch.middleware';
 import { sessionAuth } from '../../../../shared/middlewares/sessionAuth';
 import { verifyReceiptAccess } from '../../middlewares/verifyReceiptAccess.middleware';
 import { verifyBatchAccess } from '../../middlewares/verifyBatchAccess.middleware';
@@ -282,6 +284,47 @@ router.post(
   verifyBatchAccess,
   validateQuarantineLift,
   liftBatchQuarantineController
+);
+
+/**
+ * @swagger
+ * /api/logistics/batches/{id}/location:
+ *   patch:
+ *     summary: Déplace un lot vers un autre emplacement de stockage
+ *     description: >
+ *       Met à jour la position physique du lot (matériel). Seul un lot disponible (EN_STOCK ou
+ *       EN_ATTENTE_QC) est déplaçable ; le matériel cible doit être un emplacement de stockage
+ *       (FRIGO, CONGELATEUR, ETAGERE). Réservé à owner/admin/operator.
+ *     tags: [Logistics - Batches]
+ *     security: [{ sessionAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [id_materiel]
+ *             properties:
+ *               id_materiel: { type: string, format: uuid }
+ *     responses:
+ *       200: { description: Lot déplacé (ou déjà à cet emplacement) }
+ *       400: { description: Matériel manquant, ou pas un emplacement de stockage }
+ *       401: { description: Aucune session }
+ *       403: { description: Rôle insuffisant }
+ *       404: { description: Lot ou matériel introuvable dans l'organisation active }
+ *       409: { description: Lot non déplaçable (quarantaine, rappel, expédié) ou état modifié }
+ */
+router.patch(
+  '/logistics/batches/:id/location',
+  sessionAuth(WRITE_ROLES),
+  verifyBatchAccess,
+  validateMoveBatch,
+  moveBatchController
 );
 
 export default router;
