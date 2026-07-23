@@ -33,33 +33,8 @@
         },
         {
           "type": "http",
-          "name": "Service",
-          "seq": 2,
-          "request": {
-            "url": "{{url}}service",
-            "method": "POST",
-            "headers": [],
-            "params": [],
-            "body": {
-              "mode": "none",
-              "formUrlEncoded": [],
-              "multipartForm": [],
-              "file": []
-            },
-            "script": {},
-            "vars": {},
-            "assertions": [],
-            "tests": "",
-            "docs": "Exemple de route protegee par cle API.",
-            "auth": {
-              "mode": "none"
-            }
-          }
-        },
-        {
-          "type": "http",
           "name": "Error",
-          "seq": 3,
+          "seq": 2,
           "request": {
             "url": "{{url}}error",
             "method": "POST",
@@ -84,7 +59,7 @@
         {
           "type": "http",
           "name": "Health Live",
-          "seq": 4,
+          "seq": 3,
           "request": {
             "url": "{{url}}health",
             "method": "GET",
@@ -100,7 +75,7 @@
             "vars": {},
             "assertions": [],
             "tests": "",
-            "docs": "Liveness probe.",
+            "docs": "Liveness probe (public).",
             "auth": {
               "mode": "none"
             }
@@ -109,7 +84,7 @@
         {
           "type": "http",
           "name": "Health Ready",
-          "seq": 5,
+          "seq": 4,
           "request": {
             "url": "{{url}}health/ready",
             "method": "GET",
@@ -125,7 +100,7 @@
             "vars": {},
             "assertions": [],
             "tests": "",
-            "docs": "Readiness probe.",
+            "docs": "Readiness probe (public).",
             "auth": {
               "mode": "none"
             }
@@ -134,7 +109,7 @@
         {
           "type": "http",
           "name": "Me",
-          "seq": 6,
+          "seq": 5,
           "request": {
             "url": "{{url}}me",
             "method": "GET",
@@ -150,7 +125,7 @@
             "vars": {},
             "assertions": [],
             "tests": "",
-            "docs": "Renvoie l'utilisateur, la session et l'org active. Bearer requis.",
+            "docs": "Renvoie l'utilisateur, la session, l'org active, le role dans l'org active et le flag admin de plateforme. Bearer requis.",
             "auth": {
               "mode": "bearer",
               "bearer": {
@@ -185,7 +160,7 @@
             "vars": {},
             "assertions": [],
             "tests": "",
-            "docs": "Inscription. Bloquee (403) sauf si email invite ou premier utilisateur.",
+            "docs": "Inscription. Bloquee (403) sauf si email invite (token) ou tout premier utilisateur du systeme. x-api-key requis.",
             "auth": {
               "mode": "none"
             }
@@ -220,7 +195,7 @@
             },
             "assertions": [],
             "tests": "",
-            "docs": "Connexion. Stocke le token dans la variable {{token}}. Ajustez le chemin si Better-Auth renvoie ailleurs.",
+            "docs": "Connexion. Stocke le token dans la variable {{token}}. x-api-key requis.",
             "auth": {
               "mode": "none"
             }
@@ -245,122 +220,7 @@
             "vars": {},
             "assertions": [],
             "tests": "",
-            "docs": "Deconnexion.",
-            "auth": {
-              "mode": "bearer",
-              "bearer": {
-                "token": "{{token}}"
-              }
-            }
-          }
-        },
-        {
-          "type": "http",
-          "name": "Get Session",
-          "seq": 4,
-          "request": {
-            "url": "{{url}}auth/get-session",
-            "method": "GET",
-            "headers": [],
-            "params": [],
-            "body": {
-              "mode": "none",
-              "formUrlEncoded": [],
-              "multipartForm": [],
-              "file": []
-            },
-            "script": {},
-            "vars": {},
-            "assertions": [],
-            "tests": "",
-            "docs": "Recupere la session courante.",
-            "auth": {
-              "mode": "bearer",
-              "bearer": {
-                "token": "{{token}}"
-              }
-            }
-          }
-        },
-        {
-          "type": "http",
-          "name": "Organization Create",
-          "seq": 5,
-          "request": {
-            "url": "{{url}}auth/organization/create",
-            "method": "POST",
-            "headers": [],
-            "params": [],
-            "body": {
-              "mode": "json",
-              "json": "{\n  \"name\": \"Usine du Nord\",\n  \"slug\": \"usine-nord\"\n}",
-              "formUrlEncoded": [],
-              "multipartForm": [],
-              "file": []
-            },
-            "script": {},
-            "vars": {},
-            "assertions": [],
-            "tests": "",
-            "docs": "Cree une organisation via le plugin Better-Auth organization.",
-            "auth": {
-              "mode": "bearer",
-              "bearer": {
-                "token": "{{token}}"
-              }
-            }
-          }
-        },
-        {
-          "type": "http",
-          "name": "Organization Set Active",
-          "seq": 6,
-          "request": {
-            "url": "{{url}}auth/organization/set-active",
-            "method": "POST",
-            "headers": [],
-            "params": [],
-            "body": {
-              "mode": "json",
-              "json": "{\n  \"organizationId\": \"{{org_id}}\"\n}",
-              "formUrlEncoded": [],
-              "multipartForm": [],
-              "file": []
-            },
-            "script": {},
-            "vars": {},
-            "assertions": [],
-            "tests": "",
-            "docs": "Selectionne l'organisation active pour la session.",
-            "auth": {
-              "mode": "bearer",
-              "bearer": {
-                "token": "{{token}}"
-              }
-            }
-          }
-        },
-        {
-          "type": "http",
-          "name": "Two Factor Enable",
-          "seq": 7,
-          "request": {
-            "url": "{{url}}auth/two-factor/enable",
-            "method": "POST",
-            "headers": [],
-            "params": [],
-            "body": {
-              "mode": "json",
-              "json": "{\n  \"password\": \"StrongPassw0rd!123\"\n}",
-              "formUrlEncoded": [],
-              "multipartForm": [],
-              "file": []
-            },
-            "script": {},
-            "vars": {},
-            "assertions": [],
-            "tests": "",
-            "docs": "Active la MFA pour l'utilisateur connecte. Retourne un QR code TOTP.",
+            "docs": "Deconnexion. Bearer + x-api-key.",
             "auth": {
               "mode": "bearer",
               "bearer": {
@@ -395,12 +255,37 @@
             "vars": {},
             "assertions": [],
             "tests": "",
-            "docs": "Genere une invitation et envoie un email. Reserve owner/admin.",
+            "docs": "Genere une invitation et envoie un email. Reserve owner/admin de l'org active. x-api-key + Bearer.",
             "auth": {
               "mode": "bearer",
               "bearer": {
                 "token": "{{token}}"
               }
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "Preview Invitation",
+          "seq": 2,
+          "request": {
+            "url": "{{url}}identity/invitations/{{invitation_token}}/preview",
+            "method": "GET",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "none",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Previsualise une invitation depuis la page d'inscription (pas encore de session). x-api-key seul.",
+            "auth": {
+              "mode": "none"
             }
           }
         }
@@ -430,7 +315,7 @@
             "vars": {},
             "assertions": [],
             "tests": "",
-            "docs": "Ingestion d'une trame capteur. L'org est resolue cote serveur depuis la passerelle (IotGateway) qui presente la cle.",
+            "docs": "Ingestion d'une trame capteur. L'org est resolue cote serveur depuis la passerelle (IotGateway) qui presente sa cle via x-api-key.",
             "auth": {
               "mode": "none"
             }
@@ -455,7 +340,7 @@
             "vars": {},
             "assertions": [],
             "tests": "",
-            "docs": "Historique d'un capteur. x-api-key + session + role.",
+            "docs": "Historique d'un capteur. x-api-key + session (tous les roles).",
             "auth": {
               "mode": "bearer",
               "bearer": {
@@ -472,16 +357,15 @@
       "items": [
         {
           "type": "http",
-          "name": "Resolve Alert",
+          "name": "List Alert Batches",
           "seq": 1,
           "request": {
-            "url": "{{url}}alerts/{{alert_id}}/resolve",
-            "method": "PATCH",
+            "url": "{{url}}alerts/{{alert_id}}/batches",
+            "method": "GET",
             "headers": [],
             "params": [],
             "body": {
-              "mode": "json",
-              "json": "{\n  \"note\": \"Nettoyage capteur effectué — fausse alerte porte ouverte 2min.\"\n}",
+              "mode": "none",
               "formUrlEncoded": [],
               "multipartForm": [],
               "file": []
@@ -490,7 +374,36 @@
             "vars": {},
             "assertions": [],
             "tests": "",
-            "docs": "Résout une Alert (transition ACTIVE → RESOLVED). Idempotent. Owner/admin uniquement. 404 anti-enum cross-org. PRODUCT_RECALL : message contextuel — ne ferme pas le Recall.",
+            "docs": "Liste les lots rattaches a une alerte de l'org active. Tous les roles. 404 anti-enum cross-org.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "Resolve Alert",
+          "seq": 2,
+          "request": {
+            "url": "{{url}}alerts/{{alert_id}}/resolve",
+            "method": "PATCH",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "json",
+              "json": "{\n  \"note\": \"Nettoyage capteur effectue - fausse alerte porte ouverte 2min.\"\n}",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Resout une Alert (ACTIVE -> RESOLVED). Idempotent. Owner/admin/quality. 404 anti-enum cross-org. PRODUCT_RECALL : message contextuel, ne ferme pas le Recall.",
             "auth": {
               "mode": "bearer",
               "bearer": {
@@ -524,7 +437,7 @@
             "vars": {},
             "assertions": [],
             "tests": "",
-            "docs": "Vérifie l'intégrité de la chaîne WORM Audit_Log de l'org active (recompute SHA256 + prev_hash + truncation via checkpoint). 200 même si valid:false. Cache-Control: no-store. Owner/admin uniquement. Voir docs/18.",
+            "docs": "Verifie l'integrite de la chaine WORM Audit_Log de l'org active. 200 meme si valid:false. Owner/admin uniquement.",
             "auth": {
               "mode": "bearer",
               "bearer": {
@@ -559,9 +472,12 @@
             "vars": {},
             "assertions": [],
             "tests": "",
-            "docs": "Cree une reception et genere automatiquement le lot associe.",
+            "docs": "Cree une reception et genere automatiquement le lot associe. Session requise (owner/admin/operator).",
             "auth": {
-              "mode": "none"
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
             }
           }
         },
@@ -584,9 +500,12 @@
             "vars": {},
             "assertions": [],
             "tests": "",
-            "docs": "Liste les receptions de l'organisation active.",
+            "docs": "Liste paginee des receptions de l'org active (query: page, limit). Tous les roles.",
             "auth": {
-              "mode": "none"
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
             }
           }
         },
@@ -609,9 +528,12 @@
             "vars": {},
             "assertions": [],
             "tests": "",
-            "docs": "Statistiques agregees de reception (admin/owner).",
+            "docs": "Statistiques agregees de reception. Owner/admin uniquement.",
             "auth": {
-              "mode": "none"
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
             }
           }
         },
@@ -634,9 +556,12 @@
             "vars": {},
             "assertions": [],
             "tests": "",
-            "docs": "Detail d'une reception. Filtree par organization_id.",
+            "docs": "Detail d'une reception. Filtree par organization_id (404 anti-enum). Tous les roles.",
             "auth": {
-              "mode": "none"
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
             }
           }
         }
@@ -648,8 +573,36 @@
       "items": [
         {
           "type": "http",
-          "name": "Get Batch by ID",
+          "name": "Resolve Batch by Lot Number",
           "seq": 1,
+          "request": {
+            "url": "{{url}}logistics/batches/resolve?lot_number=FRN-ABC123",
+            "method": "GET",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "none",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Resout un lot par son numero de lot scanne (query lot_number, 1-20 caracteres). Tous les roles.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "Get Batch by ID",
+          "seq": 2,
           "request": {
             "url": "{{url}}logistics/batches/{{batch_id}}",
             "method": "GET",
@@ -665,16 +618,19 @@
             "vars": {},
             "assertions": [],
             "tests": "",
-            "docs": "Detail d'un lot. Filtree par organization_id.",
+            "docs": "Detail d'un lot. Filtree par organization_id (404 anti-enum). Tous les roles.",
             "auth": {
-              "mode": "none"
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
             }
           }
         },
         {
           "type": "http",
           "name": "Generate QR Label",
-          "seq": 2,
+          "seq": 3,
           "request": {
             "url": "{{url}}logistics/batches/{{batch_id}}/label",
             "method": "GET",
@@ -690,9 +646,41 @@
             "vars": {},
             "assertions": [],
             "tests": "",
-            "docs": "Genere l'etiquette QR GS1 Digital Link du lot.",
+            "docs": "Genere l'etiquette QR GS1 Digital Link du lot (reponse image/png). Tous les roles. 400 si le produit n'a pas de GTIN.",
             "auth": {
-              "mode": "none"
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "Lift Batch Quarantine",
+          "seq": 4,
+          "request": {
+            "url": "{{url}}logistics/batches/{{batch_id}}/release",
+            "method": "POST",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "json",
+              "json": "{\n  \"motif\": \"Second controle conforme - contre-analyse laboratoire recue.\"\n}",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Leve la quarantaine d'un lot (BLOQUE -> EN_STOCK). Motif obligatoire, scelle dans le WORM. Owner/admin/quality + separation des taches HACCP. 409 si le lot n'est pas en quarantaine.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
             }
           }
         }
@@ -713,7 +701,7 @@
             "params": [],
             "body": {
               "mode": "json",
-              "json": "{\n  \"id_client\": \"{{customer_id}}\",\n  \"transporteur\": \"Transports Nutri\",\n  \"destination_adresse\": \"12 rue de la Fromagerie, Paris\",\n  \"created_by\": \"{{user_id}}\",\n  \"date_expedition\": \"2026-05-27T10:00:00.000Z\",\n  \"shipment_id\": \"AUTO\",\n  \"lots\": [\n    { \"id_lot\": \"{{batch_id}}\", \"quantite_expediee\": 30 }\n  ]\n}",
+              "json": "{\n  \"id_client\": \"{{customer_id}}\",\n  \"transporteur\": \"Transports Nutri\",\n  \"destination_adresse\": \"12 rue de la Fromagerie, Paris\",\n  \"created_by\": \"{{user_id}}\",\n  \"date_expedition\": \"2026-05-27T10:00:00.000Z\",\n  \"shipment_id\": \"AUTO\",\n  \"lots\": [\n    {\n      \"id_lot\": \"{{batch_id}}\",\n      \"quantite_expediee\": 30\n    }\n  ]\n}",
               "formUrlEncoded": [],
               "multipartForm": [],
               "file": []
@@ -722,9 +710,12 @@
             "vars": {},
             "assertions": [],
             "tests": "",
-            "docs": "Cree une expedition multi-lots. shipment_id='AUTO' genere un SSCC GS1.",
+            "docs": "Cree une expedition multi-lots. shipment_id='AUTO' genere un SSCC GS1. Session requise (owner/admin/operator).",
             "auth": {
-              "mode": "none"
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
             }
           }
         }
@@ -760,13 +751,11 @@
             "vars": {},
             "assertions": [],
             "tests": "",
-            "docs": "Bulk sync mobile offline-first. Idempotency par clientOpId, reponse 207 Multi-Status. Mode M2M (x-api-key) : actorUserId requis. Mode session (Bearer / Cookie) : actorUserId ignore, l'utilisateur est resolu depuis req.auth. Voir docs/14_sync_mobile_offline.md.",
+            "docs": "Bulk sync mobile offline-first. Idempotence par clientOpId, reponse 207 Multi-Status. Session requise (owner/admin/operator) : actorUserId ignore, l'utilisateur est resolu depuis la session.",
             "auth": {
-              "mode": "apikey",
-              "apikey": {
-                "key": "x-api-key",
-                "value": "{{api_key}}",
-                "placement": "header"
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
               }
             }
           }
@@ -796,7 +785,7 @@
             "vars": {},
             "assertions": [],
             "tests": "",
-            "docs": "Liste des produits du catalogue de l'organisation active.",
+            "docs": "Liste des produits du catalogue de l'org active. Tous les roles.",
             "auth": {
               "mode": "bearer",
               "bearer": {
@@ -824,7 +813,7 @@
             "vars": {},
             "assertions": [],
             "tests": "",
-            "docs": "Liste des lots actifs de l'organisation.",
+            "docs": "Liste des lots actifs de l'org active. Tous les roles.",
             "auth": {
               "mode": "bearer",
               "bearer": {
@@ -859,7 +848,7 @@
             "vars": {},
             "assertions": [],
             "tests": "",
-            "docs": "Enregistre une transformation : consomme des parents, cree un enfant. Transaction atomique + audit WORM.",
+            "docs": "Enregistre une transformation : consomme des parents, cree un enfant. Transaction atomique + audit WORM. Owner/admin/operator.",
             "auth": {
               "mode": "bearer",
               "bearer": {
@@ -887,7 +876,7 @@
             "vars": {},
             "assertions": [],
             "tests": "",
-            "docs": "Arbre genealogique d'un lot (upstream + downstream) via CTE recursive.",
+            "docs": "Arbre genealogique d'un lot (upstream + downstream) via CTE recursive. Tous les roles.",
             "auth": {
               "mode": "bearer",
               "bearer": {
@@ -916,7 +905,41 @@
             "vars": {},
             "assertions": [],
             "tests": "",
-            "docs": "Declenche un rappel : bloque le lot et sa descendance en une transaction. Owner/admin uniquement.",
+            "docs": "Declenche un rappel : bloque le lot et sa descendance en une transaction. Owner/admin/quality.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "folder",
+      "name": "Traceability - Events",
+      "items": [
+        {
+          "type": "http",
+          "name": "List EPCIS Events",
+          "seq": 1,
+          "request": {
+            "url": "{{url}}traceability/events?page=1&limit=20",
+            "method": "GET",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "none",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Liste paginee et cloisonnee des evenements EPCIS de l'org active (materialise la tracabilite GS1). Filtres optionnels : event_type, related_entity. Tous les roles (session) ou cle API M2M.",
             "auth": {
               "mode": "bearer",
               "bearer": {
@@ -953,6 +976,1126 @@
             "docs": "Scan public consommateur. 404 si le lot n'est pas EXPEDIE ou ALERTE. Rate-limite 100/15min/IP.",
             "auth": {
               "mode": "none"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "folder",
+      "name": "Connectors",
+      "items": [
+        {
+          "type": "http",
+          "name": "Import Products (CSV)",
+          "seq": 1,
+          "request": {
+            "url": "{{url}}connectors/imports/products",
+            "method": "POST",
+            "headers": [
+              {
+                "name": "Content-Type",
+                "value": "text/csv",
+                "enabled": true
+              }
+            ],
+            "params": [],
+            "body": {
+              "mode": "text",
+              "text": "nom,code_gtin,categorie,duree_conservation_defaut,seuil_alerte_stock,unite_reference\nLait demi-ecreme 1L,3001234567890,Frais,30,10,L\n",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Import catalogue produit : corps CSV brut (text/csv). Upsert idempotent par (org, code_gtin), succes partiel ligne a ligne, journalise en WORM. Owner/admin.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "Import Customers (CSV)",
+          "seq": 2,
+          "request": {
+            "url": "{{url}}connectors/imports/customers",
+            "method": "POST",
+            "headers": [
+              {
+                "name": "Content-Type",
+                "value": "text/csv",
+                "enabled": true
+              }
+            ],
+            "params": [],
+            "body": {
+              "mode": "text",
+              "text": "external_ref,nom_enseigne,email,contact_urgence,adresse_livraison,notes\nERP-001,Carrefour Nord,contact@carrefour-nord.fr,+33100000000,12 rue du Commerce,\n",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Import fichier clients : corps CSV brut (text/csv). Upsert idempotent par (org, external_ref). Colonnes requises : external_ref, nom_enseigne, adresse_livraison. Owner/admin.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "Export Events (CSV)",
+          "seq": 3,
+          "request": {
+            "url": "{{url}}connectors/exports/events",
+            "method": "GET",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "none",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Export des evenements EPCIS de l'org active au format CSV. Tous les roles (session) ou cle API M2M.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "folder",
+      "name": "Organization - Lectures",
+      "items": [
+        {
+          "type": "http",
+          "name": "List Members",
+          "seq": 1,
+          "request": {
+            "url": "{{url}}organization/members",
+            "method": "GET",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "none",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Annuaire du personnel de l'org (donnee personnelle). Owner/admin uniquement.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "List Alerts",
+          "seq": 2,
+          "request": {
+            "url": "{{url}}organization/alerts",
+            "method": "GET",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "none",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Alertes de l'org active. Tous les roles.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "List Audit Logs",
+          "seq": 3,
+          "request": {
+            "url": "{{url}}organization/audit-logs?limit=50",
+            "method": "GET",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "none",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Journal WORM nominatif de l'org (donnee personnelle). Owner/admin. Query optionnelle : limit, lotId.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "List Quality Controls",
+          "seq": 4,
+          "request": {
+            "url": "{{url}}organization/quality-controls",
+            "method": "GET",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "none",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Controles qualite de l'org active. Tous les roles.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "List Quarantine Batches",
+          "seq": 5,
+          "request": {
+            "url": "{{url}}organization/quarantine-batches",
+            "method": "GET",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "none",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Lots en quarantaine de l'org active. Tous les roles.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "List Equipment",
+          "seq": 6,
+          "request": {
+            "url": "{{url}}organization/equipment",
+            "method": "GET",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "none",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Materiel (frigos, cuves...) de l'org active. Tous les roles.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "List Movements",
+          "seq": 7,
+          "request": {
+            "url": "{{url}}organization/movements?limit=50",
+            "method": "GET",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "none",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Mouvements de stock de l'org. Tous les roles (le nom de l'auteur est masque aux non-admins). Query optionnelle : limit, lotId.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "List Suppliers",
+          "seq": 8,
+          "request": {
+            "url": "{{url}}organization/suppliers",
+            "method": "GET",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "none",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Fournisseurs de l'org (identite metier pour tous ; contact/adresse reserves owner/admin). Tous les roles.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "List Customers",
+          "seq": 9,
+          "request": {
+            "url": "{{url}}organization/customers",
+            "method": "GET",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "none",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Clients de l'org (identite metier pour tous ; contact/email/adresse reserves owner/admin). Tous les roles.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "List Shipments",
+          "seq": 10,
+          "request": {
+            "url": "{{url}}organization/shipments",
+            "method": "GET",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "none",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Expeditions de l'org active. Tous les roles.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "List Locations",
+          "seq": 11,
+          "request": {
+            "url": "{{url}}organization/locations",
+            "method": "GET",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "none",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Emplacements du plan d'usine de l'org active. Tous les roles.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "List Pending Quality Control",
+          "seq": 12,
+          "request": {
+            "url": "{{url}}organization/pending-quality-control",
+            "method": "GET",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "none",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Lots en attente de controle qualite (EN_ATTENTE_QC). Tous les roles.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "Get Equipment Label",
+          "seq": 13,
+          "request": {
+            "url": "{{url}}organization/equipment/{{equipment_id}}/label",
+            "method": "GET",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "none",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Etiquette a imprimer et coller sur le materiel. Tous les roles.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "List IoT Gateways",
+          "seq": 14,
+          "request": {
+            "url": "{{url}}organization/iot-gateways",
+            "method": "GET",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "none",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Passerelles IoT de l'org active. Owner/admin uniquement.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "folder",
+      "name": "Organization - Ecritures",
+      "items": [
+        {
+          "type": "http",
+          "name": "Create Quality Control",
+          "seq": 1,
+          "request": {
+            "url": "{{url}}organization/quality-controls",
+            "method": "POST",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "json",
+              "json": "{\n  \"id_lot\": \"{{batch_id}}\",\n  \"type_test\": \"Analyse microbiologique\",\n  \"resultat\": \"CONFORME\",\n  \"notes\": \"RAS\"\n}",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Enregistre un controle qualite (libere ou met en quarantaine le lot). L'auteur vient de la session. Owner/admin/quality.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "Create Equipment",
+          "seq": 2,
+          "request": {
+            "url": "{{url}}organization/equipment",
+            "method": "POST",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "json",
+              "json": "{\n  \"nom\": \"Chambre froide 1\",\n  \"type\": \"FRIGO\",\n  \"id_lieu\": \"{{location_id}}\",\n  \"temp_seuil_max\": 4,\n  \"sensor_id\": \"sensor-frigo-01\"\n}",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Cree un materiel du plan d'usine. Owner/admin. type parmi FRIGO, CONGELATEUR, CUVE, ETAGERE, MIXEUR.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "Create Supplier",
+          "seq": 3,
+          "request": {
+            "url": "{{url}}organization/suppliers",
+            "method": "POST",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "json",
+              "json": "{\n  \"nom_ferme\": \"Ferme du Val\",\n  \"adresse_siege\": \"3 route des Champs, Rennes\",\n  \"type_produit\": \"Lait cru\",\n  \"contact_qualite\": \"qualite@fermeduval.fr\"\n}",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Cree un fournisseur. Owner/admin.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "Update Supplier",
+          "seq": 4,
+          "request": {
+            "url": "{{url}}organization/suppliers/{{supplier_id}}",
+            "method": "PATCH",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "json",
+              "json": "{\n  \"contact_qualite\": \"nouveau.contact@fermeduval.fr\"\n}",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Met a jour un fournisseur (au moins un champ). Owner/admin.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "Set Supplier Active",
+          "seq": 5,
+          "request": {
+            "url": "{{url}}organization/suppliers/{{supplier_id}}/active",
+            "method": "PATCH",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "json",
+              "json": "{\n  \"active\": false\n}",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Archive ou reactive un fournisseur (desactivation douce, FK Restrict). Owner/admin.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "Create Location",
+          "seq": 6,
+          "request": {
+            "url": "{{url}}organization/locations",
+            "method": "POST",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "json",
+              "json": "{\n  \"nom\": \"Quai de reception\",\n  \"type\": \"RECEPTION\",\n  \"description\": \"Zone de dechargement\"\n}",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Cree un emplacement du plan d'usine. Owner/admin. type libre (ex: RECEPTION, COLD_STORAGE, PRODUCTION).",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "Update Location",
+          "seq": 7,
+          "request": {
+            "url": "{{url}}organization/locations/{{location_id}}",
+            "method": "PATCH",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "json",
+              "json": "{\n  \"description\": \"Zone de dechargement principale\"\n}",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Met a jour un emplacement (au moins un champ). Owner/admin.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "Set Location Active",
+          "seq": 8,
+          "request": {
+            "url": "{{url}}organization/locations/{{location_id}}/active",
+            "method": "PATCH",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "json",
+              "json": "{\n  \"active\": false\n}",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Archive ou reactive un emplacement. Owner/admin.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "Create Customer",
+          "seq": 9,
+          "request": {
+            "url": "{{url}}organization/customers",
+            "method": "POST",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "json",
+              "json": "{\n  \"nom_enseigne\": \"Carrefour Nord\",\n  \"adresse_livraison\": \"12 rue du Commerce, Lille\",\n  \"email\": \"contact@carrefour-nord.fr\",\n  \"contact_urgence\": \"+33100000000\"\n}",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Cree un client. Owner/admin.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "Update Customer",
+          "seq": 10,
+          "request": {
+            "url": "{{url}}organization/customers/{{customer_id}}",
+            "method": "PATCH",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "json",
+              "json": "{\n  \"email\": \"nouveau@carrefour-nord.fr\"\n}",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Met a jour un client (au moins un champ). Owner/admin.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "Set Customer Active",
+          "seq": 11,
+          "request": {
+            "url": "{{url}}organization/customers/{{customer_id}}/active",
+            "method": "PATCH",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "json",
+              "json": "{\n  \"active\": false\n}",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Archive ou reactive un client. Owner/admin.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "Create Product",
+          "seq": 12,
+          "request": {
+            "url": "{{url}}organization/products",
+            "method": "POST",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "json",
+              "json": "{\n  \"nom\": \"Yaourt nature 125g\",\n  \"code_gtin\": \"3001234567890\",\n  \"categorie\": \"Frais\",\n  \"duree_conservation_defaut\": 30,\n  \"seuil_alerte_stock\": 10,\n  \"unite_reference\": \"U\"\n}",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Cree un produit au catalogue. Owner/admin. code_gtin : 8 a 14 chiffres.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "Update Product",
+          "seq": 13,
+          "request": {
+            "url": "{{url}}organization/products/{{product_id}}",
+            "method": "PATCH",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "json",
+              "json": "{\n  \"seuil_alerte_stock\": 20\n}",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Met a jour un produit (GTIN et unite non editables). Owner/admin.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "Set Product Active",
+          "seq": 14,
+          "request": {
+            "url": "{{url}}organization/products/{{product_id}}/active",
+            "method": "PATCH",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "json",
+              "json": "{\n  \"active\": false\n}",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Archive ou reactive un produit. Owner/admin.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "Change Member Role",
+          "seq": 15,
+          "request": {
+            "url": "{{url}}organization/members/{{member_id}}/role",
+            "method": "PATCH",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "json",
+              "json": "{\n  \"role\": \"quality\"\n}",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Change le role d'un membre (jamais le proprietaire ni soi-meme). Owner/admin. role parmi admin, quality, operator, viewer.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "Revoke Member",
+          "seq": 16,
+          "request": {
+            "url": "{{url}}organization/members/{{member_id}}/revoke",
+            "method": "POST",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "none",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Revoque l'acces d'un membre (jamais le proprietaire ni soi-meme). Owner/admin.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "Create IoT Gateway",
+          "seq": 17,
+          "request": {
+            "url": "{{url}}organization/iot-gateways",
+            "method": "POST",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "json",
+              "json": "{\n  \"nom\": \"Passerelle atelier froid\"\n}",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Cree une passerelle IoT (la cle est generee par le serveur). Owner/admin.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "Revoke IoT Gateway",
+          "seq": 18,
+          "request": {
+            "url": "{{url}}organization/iot-gateways/{{gateway_id}}/revoke",
+            "method": "POST",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "none",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Revoque une passerelle IoT. Owner/admin.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "folder",
+      "name": "Platform",
+      "items": [
+        {
+          "type": "http",
+          "name": "Create Organization",
+          "seq": 1,
+          "request": {
+            "url": "{{url}}platform/organizations",
+            "method": "POST",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "json",
+              "json": "{\n  \"name\": \"Usine du Nord\",\n  \"slug\": \"usine-nord\",\n  \"gs1_company_prefix\": \"3012345\"\n}",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Cree une organisation. Reserve a un admin de PLATEFORME (x-api-key + session plateforme, pas d'org active). slug : minuscules/chiffres/tirets.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "List Organizations",
+          "seq": 2,
+          "request": {
+            "url": "{{url}}platform/organizations",
+            "method": "GET",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "none",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Liste les organisations. Reserve a un admin de PLATEFORME.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            }
+          }
+        },
+        {
+          "type": "http",
+          "name": "Invite Owner",
+          "seq": 3,
+          "request": {
+            "url": "{{url}}platform/organizations/{{org_id}}/owner",
+            "method": "POST",
+            "headers": [],
+            "params": [],
+            "body": {
+              "mode": "json",
+              "json": "{\n  \"email\": \"owner@usine-nord.local\"\n}",
+              "formUrlEncoded": [],
+              "multipartForm": [],
+              "file": []
+            },
+            "script": {},
+            "vars": {},
+            "assertions": [],
+            "tests": "",
+            "docs": "Invite le proprietaire d'une organisation. Reserve a un admin de PLATEFORME.",
+            "auth": {
+              "mode": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
             }
           }
         }
@@ -1028,6 +2171,13 @@
           "type": "text"
         },
         {
+          "name": "location_id",
+          "value": "",
+          "enabled": true,
+          "secret": false,
+          "type": "text"
+        },
+        {
           "name": "batch_id",
           "value": "",
           "enabled": true,
@@ -1036,6 +2186,34 @@
         },
         {
           "name": "receipt_id",
+          "value": "",
+          "enabled": true,
+          "secret": false,
+          "type": "text"
+        },
+        {
+          "name": "alert_id",
+          "value": "",
+          "enabled": true,
+          "secret": false,
+          "type": "text"
+        },
+        {
+          "name": "member_id",
+          "value": "",
+          "enabled": true,
+          "secret": false,
+          "type": "text"
+        },
+        {
+          "name": "gateway_id",
+          "value": "",
+          "enabled": true,
+          "secret": false,
+          "type": "text"
+        },
+        {
+          "name": "invitation_token",
           "value": "",
           "enabled": true,
           "secret": false,
