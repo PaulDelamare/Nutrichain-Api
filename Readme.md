@@ -159,13 +159,18 @@ npm run lint     # ESLint
 ### Ou tout lancer avec Docker
 
 ```bash
-docker compose up --build   # API (port 3000) + PostgreSQL + MongoDB, migrations appliquées au démarrage
+docker compose up --build   # PostgreSQL + MongoDB + seed automatique, puis l'API (port 3000)
 ```
 
 Les valeurs par défaut suffisent pour une démo locale (surchargées par votre `.env` s'il existe).
-Le conteneur applique les migrations mais **ne seede pas** : sans les deux commandes ci-dessous,
-aucun compte n'existe et la connexion est impossible. PostgreSQL est exposé sur le port 5433 pour
-que le seed puisse être lancé depuis l'hôte.
+Un service `seed` one-shot applique les migrations puis les **deux** seeds (socle + démonstration)
+avant que l'API ne démarre : après `git clone`, `cp .env.example .env`, `docker compose up --build`,
+la connexion fonctionne avec les comptes ci-dessus, écrans peuplés.
+
+Ce service est bâti sur l'étape `builder` du Dockerfile — la seule à embarquer `tsx`, absent de
+l'image de production (`npm ci --omit=dev`), sans lequel `prisma db seed` échouait.
+
+Le seed depuis l'hôte reste possible si besoin (PostgreSQL est exposé sur le port 5433) :
 
 ```bash
 # bash / zsh
