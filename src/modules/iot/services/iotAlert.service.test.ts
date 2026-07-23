@@ -18,7 +18,7 @@ const { txClient } = vi.hoisted(() => ({
 
 vi.mock('../../../shared/configs/prismaClient.config', () => ({
   prisma: {
-    equipment: { findFirst: vi.fn() },
+    equipment: { findFirst: vi.fn(), updateMany: vi.fn() },
     alert: { findFirst: vi.fn(), create: vi.fn() },
     member: { findMany: vi.fn() },
     $queryRawUnsafe: vi.fn(),
@@ -81,6 +81,7 @@ beforeEach(() => {
   _clearThresholdCacheForTests();
   // Defaults : equipment trouvé, lock OK, dédup OK (pas d'alert), member admin
   vi.mocked(prisma.equipment.findFirst).mockResolvedValue(buildEquipment() as never);
+  vi.mocked(prisma.equipment.updateMany).mockResolvedValue({ count: 1 } as never);
   vi.mocked(prisma.alert.findFirst).mockResolvedValue(null);
   vi.mocked(prisma.member.findMany).mockResolvedValue([
     { user: { email: 'admin@nutrichain.local', name: 'Admin' } },
@@ -106,6 +107,25 @@ describe('iotAlertService.checkAndAlert', () => {
     currentTemp: 8,
     timestamp: new Date(),
   };
+
+  it('écrit la température courante du matériel à CHAQUE ping, même sous le seuil (fast-path)', async () => {
+    // 2°C < seuil 4°C : pas d'excursion, mais le front doit quand même voir la vraie température.
+    // Sans ça, il lit une valeur figée du seed (le frigo affichait 3,2°C pendant une alerte PANIC).
+    await iotAlertService.checkAndAlert({ ...baseParams, currentTemp: 2 });
+
+    expect(prisma.equipment.updateMany).toHaveBeenCalledWith({
+      where: { id: 'equip-1', organization_id: 'org-1' },
+      data: { temp_actuelle: 2 },
+    });
+  });
+
+  it("n'écrit aucune température si le capteur n'est rattaché à aucun matériel", async () => {
+    vi.mocked(prisma.equipment.findFirst).mockResolvedValue(null);
+
+    await iotAlertService.checkAndAlert({ ...baseParams, currentTemp: 2 });
+
+    expect(prisma.equipment.updateMany).not.toHaveBeenCalled();
+  });
 
   it("sensor sans mapping Equipment → logger.warn(sensorId), pas d'Alert", async () => {
     vi.mocked(prisma.equipment.findFirst).mockResolvedValue(null);
