@@ -13,6 +13,7 @@ import {
 } from '../../../../shared/constants/epcis.constants';
 import { gs1Utils } from '../../../../shared/utils/gs1/gs1.utils';
 import { resolveGs1Prefix } from '../../../../shared/utils/gs1/gs1Prefix';
+import { normalizeUnitCode } from '../../../../shared/constants/units.constants';
 import {
   BATCH_STATUSES,
   MOVEMENT_TYPES,
@@ -169,9 +170,13 @@ async function createReceiptInTx(tx: Prisma.TransactionClient, data: CreateRecei
   }
 
   if (data.unite_code) {
+    // Tolérant à la casse en entrée, strict en base : `kg` reçu → `KG` stocké (cf. units.constants).
+    data.unite_code = normalizeUnitCode(data.unite_code);
     const unit = await tx.unit.findUnique({ where: { code: data.unite_code } });
     if (!unit) {
-      throw new APIError(400, { error: [{ field: 'unite_code', message: 'Unité inconnue' }] });
+      throw new APIError(400, {
+        error: [{ field: 'unite_code', message: `Unité inconnue : ${data.unite_code}` }],
+      });
     }
   }
 
