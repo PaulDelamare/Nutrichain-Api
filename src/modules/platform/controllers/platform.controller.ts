@@ -6,7 +6,10 @@ import { platformService } from '../services/platform.service';
 
 export const createOrganizationController = catchAsync(
   async (req: AuthenticatedRequest, res: Response) => {
-    const org = await platformService.createOrganization(req.body, req.auth!.user.id);
+    const org = await platformService.createOrganization(
+      req.validatedCreateOrganization!,
+      req.auth!.user.id
+    );
     sendSuccess(res, 201, 'Organisation créée.', org);
   }
 );
@@ -20,7 +23,7 @@ export const listOrganizationsController = catchAsync(
 
 export const inviteOwnerController = catchAsync(
   async (req: AuthenticatedRequest, res: Response) => {
-    const result = await platformService.inviteOwner(req.params.id, req.body.email, {
+    const result = await platformService.inviteOwner(req.params.id, req.validatedInviteOwner!.email, {
       id: req.auth!.user.id,
       email: req.auth!.user.email,
     });
