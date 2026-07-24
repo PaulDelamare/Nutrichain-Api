@@ -11,11 +11,11 @@ describe('iotGateway', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('ne stocke jamais la clé en clair', () => {
-    const empreinte = hashGatewayKey('cle-passerelle');
+    const fingerprint = hashGatewayKey('cle-passerelle');
 
-    expect(empreinte).not.toContain('cle-passerelle');
-    expect(empreinte).toMatch(/^[0-9a-f]{64}$/);
-    expect(hashGatewayKey('cle-passerelle')).toBe(empreinte);
+    expect(fingerprint).not.toContain('cle-passerelle');
+    expect(fingerprint).toMatch(/^[0-9a-f]{64}$/);
+    expect(hashGatewayKey('cle-passerelle')).toBe(fingerprint);
   });
 
   it("cherche l'empreinte, jamais la clé, et ignore les passerelles révoquées", async () => {

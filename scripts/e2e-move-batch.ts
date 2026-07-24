@@ -33,75 +33,75 @@ async function main() {
   const unit = await prisma.unit.findFirstOrThrow();
   const location = await prisma.location.findFirstOrThrow({ where: { organization_id: ORG_ID! } });
 
-  const frigoA = await prisma.equipment.create({
+  const fridgeA = await prisma.equipment.create({
     data: {
       organization_id: ORG_ID!, nom: `E2E-MV-A-${stamp}`, type: 'FRIGO',
       id_lieu: location.id, qr_code_id: `E2E-MV-QRA-${stamp}`,
     },
   });
-  const frigoB = await prisma.equipment.create({
+  const fridgeB = await prisma.equipment.create({
     data: {
       organization_id: ORG_ID!, nom: `E2E-MV-B-${stamp}`, type: 'ETAGERE',
       id_lieu: location.id, qr_code_id: `E2E-MV-QRB-${stamp}`,
     },
   });
-  const cuve = await prisma.equipment.create({
+  const tank = await prisma.equipment.create({
     data: {
       organization_id: ORG_ID!, nom: `E2E-MV-CUVE-${stamp}`, type: 'CUVE',
       id_lieu: location.id, qr_code_id: `E2E-MV-QRC-${stamp}`,
     },
   });
 
-  const makeBatch = (statut: string, materiel: string) =>
+  const makeBatch = (status: string, equipmentId: string) =>
     prisma.batch.create({
       data: {
-        organization_id: ORG_ID!, id_produit: product.id, lot_number: `E2E-MV-${stamp}-${statut}`,
-        quantite_actuelle: 50, quantite_base: 50, unite_code: unit.code, statut,
-        id_materiel_actuel: materiel, created_by: member.userId,
+        organization_id: ORG_ID!, id_produit: product.id, lot_number: `E2E-MV-${stamp}-${status}`,
+        quantite_actuelle: 50, quantite_base: 50, unite_code: unit.code, statut: status,
+        id_materiel_actuel: equipmentId, created_by: member.userId,
       },
     });
 
-  const lot = await makeBatch('EN_STOCK', frigoA.id);
-  const bloque = await makeBatch('BLOQUE', frigoA.id);
+  const batch = await makeBatch('EN_STOCK', fridgeA.id);
+  const blockedBatch = await makeBatch('BLOQUE', fridgeA.id);
 
   console.log('\n[E2E] 1 — un lot EN_STOCK se déplace de A vers B');
-  await batchService.moveBatch(lot.id, ORG_ID!, member.userId, frigoB.id);
-  const apres = await prisma.batch.findUniqueOrThrow({ where: { id: lot.id } });
-  assert(apres.id_materiel_actuel === frigoB.id, 'position mise à jour vers le frigo B');
-  const mvt = await prisma.batch_Mouvement.findFirst({
-    where: { id_lot: lot.id, type_action: 'DEPLACEMENT' },
+  await batchService.moveBatch(batch.id, ORG_ID!, member.userId, fridgeB.id);
+  const after = await prisma.batch.findUniqueOrThrow({ where: { id: batch.id } });
+  assert(after.id_materiel_actuel === fridgeB.id, 'position mise à jour vers le frigo B');
+  const movement = await prisma.batch_Mouvement.findFirst({
+    where: { id_lot: batch.id, type_action: 'DEPLACEMENT' },
   });
-  assert(mvt !== null, 'un mouvement DEPLACEMENT est tracé');
+  assert(movement !== null, 'un mouvement DEPLACEMENT est tracé');
 
   console.log('\n[E2E] 2 — déplacer vers l’emplacement actuel est idempotent (pas de 2e mouvement)');
-  await batchService.moveBatch(lot.id, ORG_ID!, member.userId, frigoB.id);
-  const mvtCount = await prisma.batch_Mouvement.count({
-    where: { id_lot: lot.id, type_action: 'DEPLACEMENT' },
+  await batchService.moveBatch(batch.id, ORG_ID!, member.userId, fridgeB.id);
+  const movementCount = await prisma.batch_Mouvement.count({
+    where: { id_lot: batch.id, type_action: 'DEPLACEMENT' },
   });
-  assert(mvtCount === 1, 'toujours un seul mouvement DEPLACEMENT (no-op)');
+  assert(movementCount === 1, 'toujours un seul mouvement DEPLACEMENT (no-op)');
 
   console.log('\n[E2E] 3 — un lot BLOQUE ne se déplace pas (409)');
-  let refuseBloque = false;
+  let rejectedBlocked = false;
   try {
-    await batchService.moveBatch(bloque.id, ORG_ID!, member.userId, frigoB.id);
+    await batchService.moveBatch(blockedBatch.id, ORG_ID!, member.userId, fridgeB.id);
   } catch (e) {
-    refuseBloque = (e as { status?: number }).status === 409;
+    rejectedBlocked = (e as { status?: number }).status === 409;
   }
-  assert(refuseBloque, 'déplacement d’un lot BLOQUE refusé en 409');
+  assert(rejectedBlocked, 'déplacement d’un lot BLOQUE refusé en 409');
 
   console.log('\n[E2E] 4 — on ne range pas un lot dans une CUVE (400)');
-  let refuseCuve = false;
+  let rejectedTank = false;
   try {
-    await batchService.moveBatch(lot.id, ORG_ID!, member.userId, cuve.id);
+    await batchService.moveBatch(batch.id, ORG_ID!, member.userId, tank.id);
   } catch (e) {
-    refuseCuve = (e as { status?: number }).status === 400;
+    rejectedTank = (e as { status?: number }).status === 400;
   }
-  assert(refuseCuve, 'déplacement vers une CUVE refusé en 400');
+  assert(rejectedTank, 'déplacement vers une CUVE refusé en 400');
 
   // Cleanup
-  await prisma.batch_Mouvement.deleteMany({ where: { id_lot: { in: [lot.id, bloque.id] } } });
-  await prisma.batch.deleteMany({ where: { id: { in: [lot.id, bloque.id] } } });
-  await prisma.equipment.deleteMany({ where: { id: { in: [frigoA.id, frigoB.id, cuve.id] } } });
+  await prisma.batch_Mouvement.deleteMany({ where: { id_lot: { in: [batch.id, blockedBatch.id] } } });
+  await prisma.batch.deleteMany({ where: { id: { in: [batch.id, blockedBatch.id] } } });
+  await prisma.equipment.deleteMany({ where: { id: { in: [fridgeA.id, fridgeB.id, tank.id] } } });
   await prisma.$disconnect();
 
   if (failures.length > 0) {

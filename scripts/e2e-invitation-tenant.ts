@@ -21,10 +21,10 @@ import { prisma } from '../src/shared/configs/prismaClient.config';
 
 const API_BASE = process.env.API_BASE || 'http://localhost:3000';
 const API_KEY = process.env.API_KEY;
-const ORG_LEGITIME = process.env.API_KEY_ORG_ID;
+const ORG_LEGITIMATE = process.env.API_KEY_ORG_ID;
 const FRONTEND_URL = process.env.FRONTEND_URL ?? 'http://localhost:5173';
 
-if (!API_KEY || !ORG_LEGITIME) {
+if (!API_KEY || !ORG_LEGITIMATE) {
   console.error('[E2E] API_KEY et API_KEY_ORG_ID requis dans .env');
   process.exit(1);
 }
@@ -34,12 +34,12 @@ const fail = (msg: string): never => {
   throw new Error(msg);
 };
 
-const suffixe = randomBytes(4).toString('hex');
-const EMAIL = `e2e-invite-${suffixe}@nutrichain.local`;
-const MOT_DE_PASSE = 'NutriChain!2026';
-const ORG_PIRATE = `e2e-pirate-${suffixe}`;
+const suffix = randomBytes(4).toString('hex');
+const EMAIL = `e2e-invite-${suffix}@nutrichain.local`;
+const PASSWORD = 'NutriChain!2026';
+const ORG_PIRATE = `e2e-pirate-${suffix}`;
 
-async function creerInvitation(organizationId: string, role: string, inviterId: string) {
+async function createInvitation(organizationId: string, role: string, inviterId: string) {
   return prisma.invitation.create({
     data: {
       id: randomUUID(),
@@ -56,11 +56,11 @@ async function creerInvitation(organizationId: string, role: string, inviterId: 
 async function main() {
   console.log("\n✉️  L'inscription enrôle dans l'organisation du jeton, et d'aucune autre\n");
 
-  const inviteur = await prisma.user.findFirst({
+  const inviter = await prisma.user.findFirst({
     where: { email: 'admin@nutrichain.local' },
     select: { id: true },
   });
-  if (!inviteur) {
+  if (!inviter) {
     fail('Compte propriétaire introuvable : lance `npm run seed` avant cette preuve.');
   }
 
@@ -69,8 +69,8 @@ async function main() {
   });
 
   // L'ordre compte : l'invitation pirate est posée d'abord, c'est celle que l'ancien code retenait.
-  const pirate = await creerInvitation(ORG_PIRATE, 'admin', inviteur.id);
-  const legitime = await creerInvitation(ORG_LEGITIME!, 'operator', inviteur.id);
+  const pirate = await createInvitation(ORG_PIRATE, 'admin', inviter.id);
+  const legitimate = await createInvitation(ORG_LEGITIMATE!, 'operator', inviter.id);
 
   try {
     const res = await fetch(`${API_BASE}/api/auth/sign-up/email`, {
@@ -82,9 +82,9 @@ async function main() {
       },
       body: JSON.stringify({
         email: EMAIL,
-        password: MOT_DE_PASSE,
+        password: PASSWORD,
         name: 'Invité E2E',
-        token: legitime.id,
+        token: legitimate.id,
       }),
     });
 
@@ -93,43 +93,43 @@ async function main() {
     }
     ok('Inscription acceptée avec le jeton de son organisation');
 
-    const utilisateur = await prisma.user.findUnique({
+    const user = await prisma.user.findUnique({
       where: { email: EMAIL },
       select: { id: true },
     });
-    if (!utilisateur) {
+    if (!user) {
       fail('Utilisateur non créé.');
     }
 
-    const membre = await prisma.member.findFirst({
-      where: { userId: utilisateur.id },
+    const member = await prisma.member.findFirst({
+      where: { userId: user.id },
       select: { organizationId: true, role: true },
     });
-    if (!membre) {
+    if (!member) {
       fail("Aucun rattachement créé : l'utilisateur n'appartient à aucune organisation.");
     }
 
-    if (membre.organizationId === ORG_PIRATE) {
+    if (member.organizationId === ORG_PIRATE) {
       fail(
-        `DÉTOURNEMENT : l'utilisateur a été enrôlé dans l'organisation pirate (${ORG_PIRATE}) avec le rôle ${membre.role}, alors que son jeton désignait ${ORG_LEGITIME}`
+        `DÉTOURNEMENT : l'utilisateur a été enrôlé dans l'organisation pirate (${ORG_PIRATE}) avec le rôle ${member.role}, alors que son jeton désignait ${ORG_LEGITIMATE}`
       );
     }
-    if (membre.organizationId !== ORG_LEGITIME) {
-      fail(`Organisation inattendue : ${membre.organizationId}`);
+    if (member.organizationId !== ORG_LEGITIMATE) {
+      fail(`Organisation inattendue : ${member.organizationId}`);
     }
-    ok(`Rattaché à l'organisation de son jeton (${ORG_LEGITIME}), pas à l'organisation pirate`);
+    ok(`Rattaché à l'organisation de son jeton (${ORG_LEGITIMATE}), pas à l'organisation pirate`);
 
-    if (membre.role !== 'operator') {
-      fail(`Rôle inattendu : ${membre.role} — attendu operator, celui de l'invitation légitime`);
+    if (member.role !== 'operator') {
+      fail(`Rôle inattendu : ${member.role} — attendu operator, celui de l'invitation légitime`);
     }
     ok("Rôle repris de l'invitation légitime (operator), pas de l'invitation pirate (admin)");
 
-    const pirateApres = await prisma.invitation.findUnique({
+    const pirateAfter = await prisma.invitation.findUnique({
       where: { id: pirate.id },
       select: { status: true },
     });
-    if (pirateApres?.status !== 'pending') {
-      fail(`L'invitation pirate a été consommée (statut ${pirateApres?.status}) — elle ne devait pas l'être`);
+    if (pirateAfter?.status !== 'pending') {
+      fail(`L'invitation pirate a été consommée (statut ${pirateAfter?.status}) — elle ne devait pas l'être`);
     }
     ok("L'invitation pirate reste en attente : elle n'a pas été consommée au passage");
 

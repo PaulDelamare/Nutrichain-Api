@@ -19,11 +19,11 @@ export const startCleanupLoginAttemptsJob = () => {
   cron.schedule('30 3 * * *', async () => {
     try {
       logger.info('[CronTask] Nettoyage des compteurs de tentatives de connexion...');
-      const seuil = new Date(Date.now() - RETENTION_HOURS * 60 * 60 * 1000);
+      const threshold = new Date(Date.now() - RETENTION_HOURS * 60 * 60 * 1000);
 
       const result = await prisma.loginAttempt.deleteMany({
         where: {
-          updated_at: { lt: seuil },
+          updated_at: { lt: threshold },
           // Un verrou encore actif ne se purge pas : ce serait déverrouiller un compte attaqué.
           OR: [{ locked_until: null }, { locked_until: { lt: new Date() } }],
         },

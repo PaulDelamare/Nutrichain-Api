@@ -18,7 +18,7 @@ interface PlatformActor {
   email: string;
 }
 
-const slugDejaPris = () =>
+const slugAlreadyTaken = () =>
   new APIError(409, {
     error: [{ field: 'slug', message: 'Ce libellé court (slug) est déjà utilisé.' }],
   });
@@ -36,8 +36,8 @@ export const platformService = {
     // Pré-vérification pour un message immédiat. Elle ne SUFFIT pas : deux créations concurrentes
     // du même slug la passeraient toutes les deux — l'unicité réelle est la contrainte `@@unique`,
     // dont on traduit la violation (P2002) en 409 plutôt qu'en 500.
-    const existant = await prisma.organization.findUnique({ where: { slug: input.slug } });
-    if (existant) throw slugDejaPris();
+    const existing = await prisma.organization.findUnique({ where: { slug: input.slug } });
+    if (existing) throw slugAlreadyTaken();
 
     try {
       return await retryableTransaction(async (tx) => {
@@ -68,7 +68,7 @@ export const platformService = {
       });
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002')
-        throw slugDejaPris();
+        throw slugAlreadyTaken();
       throw e;
     }
   },
@@ -79,7 +79,7 @@ export const platformService = {
       orderBy: { createdAt: 'desc' },
     });
 
-    // Le nombre de membres, pas leur identité : l'admin de plateforme ne voit pas l'annuaire.
+    // Le nombre de members, pas leur identité : l'admin de plateforme ne voit pas l'annuaire.
     return Promise.all(
       orgs.map(async (org) => ({
         ...org,
@@ -104,14 +104,14 @@ export const platformService = {
     // Un pilote unique : ni membre déjà en place, ni invitation d'owner encore en attente.
     // Sans le second test, on inviterait plusieurs owners (emails distincts) avant qu'aucun
     // n'accepte — l'org se retrouverait avec plusieurs propriétaires légitimes.
-    const [membres, ownerEnAttente] = await Promise.all([
+    const [members, pendingOwner] = await Promise.all([
       prisma.member.count({ where: { organizationId } }),
       prisma.invitation.count({
         where: { organizationId, role: ROLES.OWNER, status: 'pending' },
       }),
     ]);
 
-    if (membres > 0 || ownerEnAttente > 0) {
+    if (members > 0 || pendingOwner > 0) {
       throw new APIError(409, {
         error: [
           {

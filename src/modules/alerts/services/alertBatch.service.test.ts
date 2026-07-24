@@ -15,7 +15,7 @@ vi.mock('../../../shared/configs/prismaClient.config', () => ({
 const findMany = vi.mocked(prisma.batch_Mouvement.findMany);
 
 const ALERT_ID = 'alert-froid-1';
-const AUTRE_ALERTE = 'alert-froid-2';
+const OTHER_ALERT = 'alert-froid-2';
 const ORG_ID = 'org-1';
 
 const alert = {
@@ -41,23 +41,23 @@ const candidate = (lotId: string, lotNumber: string) => ({
  * Un mouvement de l'historique. `id` est la clé d'ordre (auto-incrément) : c'est elle qui dit ce qui
  * s'est passé APRÈS quoi — jamais `created_at`, qui peut être identique au sein d'une transaction.
  */
-const isolement = (id: number, lotId: string, idAlerte = ALERT_ID) => ({
+const isolation = (id: number, lotId: string, alertId = ALERT_ID) => ({
   id,
   id_lot: lotId,
   type_action: 'QUARANTAINE_FROID',
-  metadata: { id_alerte: idAlerte },
+  metadata: { id_alerte: alertId },
 });
-const levee = (id: number, lotId: string) => ({
+const lift = (id: number, lotId: string) => ({
   id,
   id_lot: lotId,
   type_action: 'LEVEE_QUARANTAINE',
   metadata: {},
 });
-const controle = (id: number, lotId: string, resultat: 'CONFORME' | 'NON_CONFORME') => ({
+const control = (id: number, lotId: string, result: 'CONFORME' | 'NON_CONFORME') => ({
   id,
   id_lot: lotId,
   type_action: 'CONTROLE_QUALITE',
-  metadata: { resultat },
+  metadata: { resultat: result },
 });
 
 // 1re requête : les lots candidats. 2e : leur historique de blocage.
@@ -76,9 +76,9 @@ describe('alertBatchService.listBatchesIsolatedByAlert', () => {
     // Un rappel produit bloque sa descendance en ALERTE via des mouvements RAPPEL. Répondre « 0 lot »
     // laisserait croire qu'il ne concerne personne : le mensonge le plus grave que puisse faire
     // cet endpoint. On ne confond pas « il n'y en a pas » et « la question n'a pas de sens ici ».
-    const rappel = { ...alert, type: 'PRODUCT_RECALL' } as Alert;
+    const recall = { ...alert, type: 'PRODUCT_RECALL' } as Alert;
 
-    await expect(alertBatchService.listBatchesIsolatedByAlert(rappel)).rejects.toThrow(APIError);
+    await expect(alertBatchService.listBatchesIsolatedByAlert(recall)).rejects.toThrow(APIError);
     expect(findMany).not.toHaveBeenCalled();
   });
 
@@ -101,7 +101,7 @@ describe('alertBatchService.listBatchesIsolatedByAlert', () => {
   });
 
   it('liste un lot isolé par cette alerte, encore bloqué, et sans contrôle non conforme', async () => {
-    mockQueries([candidate('lot-a', 'LOT-A')], [isolement(1, 'lot-a')]);
+    mockQueries([candidate('lot-a', 'LOT-A')], [isolation(1, 'lot-a')]);
 
     const [batch] = await alertBatchService.listBatchesIsolatedByAlert(alert);
 
@@ -123,7 +123,7 @@ describe('alertBatchService.listBatchesIsolatedByAlert', () => {
     // l'alerte EN COURS retient, frigo toujours en panne.
     mockQueries(
       [candidate('lot-a', 'LOT-A')],
-      [isolement(1, 'lot-a'), levee(2, 'lot-a'), isolement(3, 'lot-a', AUTRE_ALERTE)]
+      [isolation(1, 'lot-a'), lift(2, 'lot-a'), isolation(3, 'lot-a', OTHER_ALERT)]
     );
 
     expect(await alertBatchService.listBatchesIsolatedByAlert(alert)).toEqual([]);
@@ -136,7 +136,7 @@ describe('alertBatchService.listBatchesIsolatedByAlert', () => {
     // l'ancienne alerte ne doit toujours pas revendiquer un lot que la nouvelle retient.
     mockQueries(
       [candidate('lot-a', 'LOT-A')],
-      [isolement(1, 'lot-a'), isolement(2, 'lot-a', AUTRE_ALERTE)]
+      [isolation(1, 'lot-a'), isolation(2, 'lot-a', OTHER_ALERT)]
     );
 
     expect(await alertBatchService.listBatchesIsolatedByAlert(alert)).toEqual([]);
@@ -145,7 +145,7 @@ describe('alertBatchService.listBatchesIsolatedByAlert', () => {
   it('EXCLUT un lot dont notre isolement a été levé et qui est bloqué pour autre chose depuis', async () => {
     mockQueries(
       [candidate('lot-a', 'LOT-A')],
-      [isolement(1, 'lot-a'), levee(2, 'lot-a'), controle(3, 'lot-a', 'NON_CONFORME')]
+      [isolation(1, 'lot-a'), lift(2, 'lot-a'), control(3, 'lot-a', 'NON_CONFORME')]
     );
 
     expect(await alertBatchService.listBatchesIsolatedByAlert(alert)).toEqual([]);
@@ -156,7 +156,7 @@ describe('alertBatchService.listBatchesIsolatedByAlert', () => {
     // ÉCRIT le mouvement. Le lot est isolé par le froid ET impropre : réparer le frigo n'y change rien.
     mockQueries(
       [candidate('lot-a', 'LOT-A')],
-      [isolement(1, 'lot-a'), controle(2, 'lot-a', 'NON_CONFORME')]
+      [isolation(1, 'lot-a'), control(2, 'lot-a', 'NON_CONFORME')]
     );
 
     const [batch] = await alertBatchService.listBatchesIsolatedByAlert(alert);
@@ -170,7 +170,7 @@ describe('alertBatchService.listBatchesIsolatedByAlert', () => {
     // Le condamner sur cette vieille non-conformité le bloquerait pour toujours.
     mockQueries(
       [candidate('lot-a', 'LOT-A')],
-      [controle(1, 'lot-a', 'NON_CONFORME'), levee(2, 'lot-a'), isolement(3, 'lot-a')]
+      [control(1, 'lot-a', 'NON_CONFORME'), lift(2, 'lot-a'), isolation(3, 'lot-a')]
     );
 
     const [batch] = await alertBatchService.listBatchesIsolatedByAlert(alert);
@@ -182,7 +182,7 @@ describe('alertBatchService.listBatchesIsolatedByAlert', () => {
   it('un contrôle CONFORME postérieur ne condamne pas le lot', async () => {
     mockQueries(
       [candidate('lot-a', 'LOT-A')],
-      [isolement(1, 'lot-a'), controle(2, 'lot-a', 'CONFORME')]
+      [isolation(1, 'lot-a'), control(2, 'lot-a', 'CONFORME')]
     );
 
     const [batch] = await alertBatchService.listBatchesIsolatedByAlert(alert);
@@ -193,7 +193,7 @@ describe('alertBatchService.listBatchesIsolatedByAlert', () => {
   it("n'attribue pas la non-conformité d'un lot à un AUTRE lot de la même alerte", async () => {
     mockQueries(
       [candidate('lot-a', 'LOT-A'), candidate('lot-b', 'LOT-B')],
-      [isolement(1, 'lot-a'), isolement(2, 'lot-b'), controle(3, 'lot-b', 'NON_CONFORME')]
+      [isolation(1, 'lot-a'), isolation(2, 'lot-b'), control(3, 'lot-b', 'NON_CONFORME')]
     );
 
     const batches = await alertBatchService.listBatchesIsolatedByAlert(alert);

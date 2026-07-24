@@ -25,7 +25,7 @@ export const customerImportService = {
       validateRow: (row) => validateData(customerImportRowSchema, blankToUndefined(row)),
       upsertRow: (data) =>
         retryableTransaction(async (tx) => {
-          const champs = {
+          const fields = {
             nom_enseigne: data.nom_enseigne,
             email: data.email,
             contact_urgence: data.contact_urgence,
@@ -34,12 +34,12 @@ export const customerImportService = {
           };
 
           // Lu DANS la transaction : l'état journalisé est celui sur lequel l'écriture a porté.
-          const existant = await tx.customer.findFirst({
+          const existing = await tx.customer.findFirst({
             where: { organization_id: organizationId, external_ref: data.external_ref },
           });
 
-          if (existant) {
-            const customer = await tx.customer.update({ where: { id: existant.id }, data: champs });
+          if (existing) {
+            const customer = await tx.customer.update({ where: { id: existing.id }, data: fields });
 
             await auditService.logAction(
               {
@@ -47,8 +47,8 @@ export const customerImportService = {
                 userId: actorUserId,
                 action: 'IMPORT_UPDATE_CUSTOMER',
                 entity: 'Customer',
-                entityId: existant.id,
-                oldValue: existant as unknown as Record<string, unknown>,
+                entityId: existing.id,
+                oldValue: existing as unknown as Record<string, unknown>,
                 newValue: customer as unknown as Record<string, unknown>,
               },
               tx
@@ -60,7 +60,7 @@ export const customerImportService = {
           // La course entre deux imports concurrents est arbitrée par la contrainte
           // `@@unique([organization_id, external_ref])`, déjà en base.
           const customer = await tx.customer.create({
-            data: { organization_id: organizationId, external_ref: data.external_ref, ...champs },
+            data: { organization_id: organizationId, external_ref: data.external_ref, ...fields },
           });
 
           await auditService.logAction(

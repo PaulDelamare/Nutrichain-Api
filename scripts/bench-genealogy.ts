@@ -43,7 +43,7 @@ interface SeedResult {
   sourceId: string;
   deepestLeafId: string;
   batchIds: string[];
-  transfoIds: string[];
+  transformationIds: string[];
 }
 
 async function refs() {
@@ -110,10 +110,10 @@ async function seed(): Promise<SeedResult> {
     })),
   });
 
-  const transfoIds = edges.map(() => randomUUID());
+  const transformationIds = edges.map(() => randomUUID());
   await prisma.transformation.createMany({
     data: edges.map((e, i) => ({
-      id: transfoIds[i],
+      id: transformationIds[i],
       id_lot_enfant: e.child,
       id_produit_fini: product.id,
       id_user: member.userId,
@@ -123,7 +123,7 @@ async function seed(): Promise<SeedResult> {
   });
   await prisma.transformationComposition.createMany({
     data: edges.map((e, i) => ({
-      id_transformation: transfoIds[i],
+      id_transformation: transformationIds[i],
       id_lot_parent: e.parent,
       quantite_prelevee: 1,
       unite: product.unite_reference,
@@ -131,7 +131,7 @@ async function seed(): Promise<SeedResult> {
     })),
   });
 
-  return { sourceId, deepestLeafId, batchIds, transfoIds };
+  return { sourceId, deepestLeafId, batchIds, transformationIds };
 }
 
 async function explainDownstream(sourceId: string): Promise<string> {
@@ -161,7 +161,7 @@ async function main() {
     const t0 = process.hrtime.bigint();
     seeded = await seed();
     console.log(
-      `  ${seeded.batchIds.length} lots / ${seeded.transfoIds.length} transformations en ${(
+      `  ${seeded.batchIds.length} lots / ${seeded.transformationIds.length} transformations en ${(
         Number(process.hrtime.bigint() - t0) / 1e6
       ).toFixed(0)} ms`
     );
@@ -185,9 +185,9 @@ async function main() {
     if (seeded) {
       console.log('\n[BENCH] Cleanup...');
       await prisma.transformationComposition.deleteMany({
-        where: { id_transformation: { in: seeded.transfoIds } },
+        where: { id_transformation: { in: seeded.transformationIds } },
       });
-      await prisma.transformation.deleteMany({ where: { id: { in: seeded.transfoIds } } });
+      await prisma.transformation.deleteMany({ where: { id: { in: seeded.transformationIds } } });
       // Les mouvements référencent le lot (FK) : les purger d'abord.
       await prisma.batch_Mouvement.deleteMany({ where: { id_lot: { in: seeded.batchIds } } });
       await prisma.batch_Mouvement.deleteMany({ where: { id_lot: { in: seeded.batchIds } } });

@@ -50,7 +50,7 @@ interface Fixtures {
   supplierId: string;
   customerId: string;
   productId: string;
-  uniteCode: string;
+  unitCode: string;
   equipmentId: string;
   userId: string;
   /** Décideur qualité, DISTINCT de `userId` : on ne libère pas le lot qu'on a soi-même produit. */
@@ -98,7 +98,7 @@ async function setup(): Promise<Fixtures> {
     supplierId: supplier.id,
     customerId: customer.id,
     productId: product.id,
-    uniteCode: product.unite_reference,
+    unitCode: product.unite_reference,
     equipmentId: equipment.id,
     userId: member.userId,
     qualityUserId: qualityMember.userId,
@@ -114,7 +114,7 @@ async function receiveBatch(f: Fixtures, qty: number): Promise<string> {
     shipment_id: `E2E-QG-${stamp}-${f.batchIds.length}`,
     id_produit: f.productId,
     quantite_actuelle: qty,
-    unite_code: f.uniteCode,
+    unite_code: f.unitCode,
     statut_controle: 'OK',
     received_by: f.userId,
   });
@@ -129,10 +129,10 @@ async function transform(f: Fixtures, parentId: string, qty: number): Promise<st
     id_produit_fini: f.productId,
     id_materiel: f.equipmentId,
     quantite_produite: qty,
-    unite_code: f.uniteCode,
+    unite_code: f.unitCode,
     created_by: f.userId,
     inputs: [
-      { id_lot_parent: parentId, quantite_prelevee: qty, unite: f.uniteCode, lot_parent_epuise: false },
+      { id_lot_parent: parentId, quantite_prelevee: qty, unite: f.unitCode, lot_parent_epuise: false },
     ],
   });
   f.batchIds.push(res.lot_enfant_id);
@@ -140,7 +140,7 @@ async function transform(f: Fixtures, parentId: string, qty: number): Promise<st
 }
 
 let shipSeq = 0;
-function ship(f: Fixtures, lotId: string, qty: number) {
+function ship(f: Fixtures, batchId: string, qty: number) {
   shipSeq += 1;
   return shipmentService.createShipment({
     organization_id: ORG_ID!,
@@ -149,11 +149,11 @@ function ship(f: Fixtures, lotId: string, qty: number) {
     transporteur: 'E2E',
     date_envoi: new Date(),
     created_by: f.userId,
-    items: [{ id_lot: lotId, quantite: qty }],
+    items: [{ id_lot: batchId, quantite: qty }],
   });
 }
 
-async function statutOf(id: string): Promise<string> {
+async function statusOf(id: string): Promise<string> {
   const b = await prisma.batch.findUniqueOrThrow({ where: { id } });
   return b.statut;
 }
@@ -185,16 +185,16 @@ async function main() {
 
     console.log('\n1 — Un lot fini sort de transformation EN ATTENTE de contrôle');
     const parent = await receiveBatch(f, 500);
-    const fini = await transform(f, parent, 100);
+    const finishedBatch = await transform(f, parent, 100);
     assert(
-      (await statutOf(fini)) === BATCH_STATUSES.PENDING_QC,
-      `lot fini en ${BATCH_STATUSES.PENDING_QC} (reçu ${await statutOf(fini)})`
+      (await statusOf(finishedBatch)) === BATCH_STATUSES.PENDING_QC,
+      `lot fini en ${BATCH_STATUSES.PENDING_QC} (reçu ${await statusOf(finishedBatch)})`
     );
 
     console.log('\n2 — Il ne peut PAS sortir de l’usine sans contrôle');
-    assert(await isRejected(ship(f, fini, 10)), 'expédition du lot non contrôlé REFUSÉE');
+    assert(await isRejected(ship(f, finishedBatch, 10)), 'expédition du lot non contrôlé REFUSÉE');
     assert(
-      await isRejected(transform(f, fini, 10)),
+      await isRejected(transform(f, finishedBatch, 10)),
       'transformation du lot non contrôlé REFUSÉE'
     );
 
@@ -203,7 +203,7 @@ async function main() {
       await isRejected(
         qualityControlService.createQualityControl({
           organization_id: ORG_ID!,
-          id_lot: fini,
+          id_lot: finishedBatch,
           type_test: 'Analyse microbiologique',
           resultat: 'CONFORME',
           id_user_labo: f.userId,
@@ -214,38 +214,38 @@ async function main() {
 
     await qualityControlService.createQualityControl({
       organization_id: ORG_ID!,
-      id_lot: fini,
+      id_lot: finishedBatch,
       type_test: 'Analyse microbiologique',
       resultat: 'CONFORME',
       id_user_labo: f.qualityUserId,
     });
-    assert((await statutOf(fini)) === BATCH_STATUSES.IN_STOCK, 'lot libéré (EN_STOCK)');
-    await ship(f, fini, 10);
+    assert((await statusOf(finishedBatch)) === BATCH_STATUSES.IN_STOCK, 'lot libéré (EN_STOCK)');
+    await ship(f, finishedBatch, 10);
     assert(true, 'expédition ACCEPTÉE après contrôle conforme');
 
     console.log('\n4 — Un contrôle NON CONFORME met en quarantaine');
     const parent2 = await receiveBatch(f, 200);
-    const fini2 = await transform(f, parent2, 50);
+    const finishedBatch2 = await transform(f, parent2, 50);
     await qualityControlService.createQualityControl({
       organization_id: ORG_ID!,
-      id_lot: fini2,
+      id_lot: finishedBatch2,
       type_test: 'Analyse microbiologique',
       resultat: 'NON_CONFORME',
       id_user_labo: f.userId,
     });
-    assert((await statutOf(fini2)) === BATCH_STATUSES.BLOCKED, 'lot non conforme en quarantaine');
-    assert(await isRejected(ship(f, fini2, 5)), 'expédition du lot en quarantaine REFUSÉE');
+    assert((await statusOf(finishedBatch2)) === BATCH_STATUSES.BLOCKED, 'lot non conforme en quarantaine');
+    assert(await isRejected(ship(f, finishedBatch2, 5)), 'expédition du lot en quarantaine REFUSÉE');
 
     console.log('\n5 — ⚠️ Un contrôle CONFORME ne libère JAMAIS un lot sous RAPPEL');
     const parent3 = await receiveBatch(f, 200);
-    const fini3 = await transform(f, parent3, 50);
-    await recallService.triggerRecall(fini3, ORG_ID!, f.userId, 'E2E rappel barrière qualité');
-    assert((await statutOf(fini3)) === BATCH_STATUSES.ALERT, 'lot sous rappel (ALERTE)');
+    const finishedBatch3 = await transform(f, parent3, 50);
+    await recallService.triggerRecall(finishedBatch3, ORG_ID!, f.userId, 'E2E rappel barrière qualité');
+    assert((await statusOf(finishedBatch3)) === BATCH_STATUSES.ALERT, 'lot sous rappel (ALERTE)');
     assert(
       await isRejected(
         qualityControlService.createQualityControl({
           organization_id: ORG_ID!,
-          id_lot: fini3,
+          id_lot: finishedBatch3,
           type_test: 'Analyse microbiologique',
           resultat: 'CONFORME',
           id_user_labo: f.userId,
@@ -253,15 +253,15 @@ async function main() {
       ),
       'contrôle CONFORME sur un lot rappelé REFUSÉ (le rappel est irréversible)'
     );
-    assert((await statutOf(fini3)) === BATCH_STATUSES.ALERT, 'le lot rappelé est TOUJOURS en ALERTE');
+    assert((await statusOf(finishedBatch3)) === BATCH_STATUSES.ALERT, 'le lot rappelé est TOUJOURS en ALERTE');
 
     console.log('\n6 — La liste des lots en attente de contrôle');
     const pending = await qualityControlService.listPendingQualityControl(ORG_ID!);
     const parent4 = await receiveBatch(f, 100);
-    const fini4 = await transform(f, parent4, 20);
+    const finishedBatch4 = await transform(f, parent4, 20);
     const pending2 = await qualityControlService.listPendingQualityControl(ORG_ID!);
     assert(
-      pending2.length === pending.length + 1 && pending2.some((b) => b.id === fini4),
+      pending2.length === pending.length + 1 && pending2.some((b) => b.id === finishedBatch4),
       'le lot en attente apparaît dans la liste (sinon il serait invisible et bloqué à jamais)'
     );
   } catch (err) {

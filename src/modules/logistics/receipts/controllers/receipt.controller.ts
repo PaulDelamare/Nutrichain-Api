@@ -140,20 +140,20 @@ export const moveBatchController = catchAsync(
     const id = req.params.id as string;
     const activeOrgId = req.activeOrgId as string;
     const userId = req.auth?.user?.id ?? req.user?.id;
-    const idMateriel = req.validatedMoveBatch?.id_materiel;
+    const equipmentId = req.validatedMoveBatch?.id_materiel;
 
     if (!userId) {
       throw new APIError(401, {
         error: [{ field: 'user', message: 'Utilisateur requis pour déplacer un lot.' }],
       });
     }
-    if (!idMateriel) {
+    if (!equipmentId) {
       throw new APIError(400, {
         error: [{ field: 'id_materiel', message: 'Matériel de destination manquant.' }],
       });
     }
 
-    const batch = await batchService.moveBatch(id, activeOrgId, userId, idMateriel);
+    const batch = await batchService.moveBatch(id, activeOrgId, userId, equipmentId);
     sendSuccess(res, 200, 'Lot déplacé', batch);
   }
 );

@@ -29,9 +29,9 @@ describe('sessionAuth', () => {
 
     sessionAuth(['owner', 'admin'])(buildReq({ 'x-api-key': 'une-cle-valide' }), res, next);
 
-    const erreur = vi.mocked(next).mock.calls[0][0] as APIError;
-    expect(erreur).toBeInstanceOf(APIError);
-    expect(erreur.status).toBe(401);
+    const error = vi.mocked(next).mock.calls[0][0] as APIError;
+    expect(error).toBeInstanceOf(APIError);
+    expect(error.status).toBe(401);
     // Et surtout : on n'a même pas consulté la clé. Sa validité n'entre pas en ligne de compte.
     expect(requireOrgRole).not.toHaveBeenCalled();
   });
@@ -67,10 +67,10 @@ describe('sessionAuth', () => {
     sessionAuth(['owner'])(req, res, next);
 
     // requireOrgRole appelle son `next` : ici l'organisation n'a pas été résolue.
-    const suite = vi.mocked(requireOrgRoleInner).mock.calls[0][2] as NextFunction;
-    suite();
+    const continuation = vi.mocked(requireOrgRoleInner).mock.calls[0][2] as NextFunction;
+    continuation();
 
-    const erreur = vi.mocked(next).mock.calls[0][0] as APIError;
-    expect(erreur.status).toBe(401);
+    const error = vi.mocked(next).mock.calls[0][0] as APIError;
+    expect(error.status).toBe(401);
   });
 });

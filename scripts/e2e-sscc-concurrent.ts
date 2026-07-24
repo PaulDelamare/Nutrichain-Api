@@ -20,7 +20,7 @@ const API_KEY = process.env.API_KEY;
 const ORG_ID = process.env.API_KEY_ORG_ID;
 const PRODUCT_ID = '44444444-4444-4444-8444-444444444444';
 const CUSTOMER_ID = '22222222-2222-4222-8222-222222222222';
-const CONCURRENCE = 12;
+const CONCURRENCY = 12;
 
 if (!API_KEY || !ORG_ID) {
   console.error('[E2E] API_KEY et API_KEY_ORG_ID requis dans .env');
@@ -32,7 +32,7 @@ const fail = (msg: string): never => {
   throw new Error(msg);
 };
 
-const suffixe = randomBytes(4).toString('hex');
+const suffix = randomBytes(4).toString('hex');
 
 async function main() {
   console.log('\n📦 Un identifiant logistique se réserve, il ne se compte pas\n');
@@ -45,13 +45,13 @@ async function main() {
 
   // Un lot par expédition : sans cela, c'est le verrou optimiste du stock qui sérialiserait les
   // requêtes, et la concurrence sur la numérotation ne serait jamais exercée.
-  const lots = [];
-  for (let i = 0; i < CONCURRENCE; i++) {
-    lots.push(
+  const batches = [];
+  for (let i = 0; i < CONCURRENCY; i++) {
+    batches.push(
       await prisma.batch.create({
         data: {
           organization_id: ORG_ID!,
-          lot_number: `E2E-SSCC-${suffixe}-${i}`,
+          lot_number: `E2E-SSCC-${suffix}-${i}`,
           id_produit: PRODUCT_ID,
           quantite_actuelle: 100,
           quantite_base: 100,
@@ -64,8 +64,8 @@ async function main() {
   }
 
   try {
-    const reponses = await Promise.all(
-      lots.map((lot) =>
+    const responses = await Promise.all(
+      batches.map((batch) =>
         fetch(`${API_BASE}/api/logistics/shipments`, {
           method: 'POST',
           headers: {
@@ -77,63 +77,63 @@ async function main() {
             shipment_id: 'AUTO',
             transporteur: 'E2E',
             destination_adresse: '1 rue de la Livraison, Paris',
-            lots: [{ id_lot: lot.id, quantite_expediee: 1 }],
+            lots: [{ id_lot: batch.id, quantite_expediee: 1 }],
           }),
         }).then(async (r) => ({ status: r.status, body: await r.json().catch(() => null) }))
       )
     );
 
-    const echecs = reponses.filter((r) => r.status >= 400);
-    if (echecs.length > 0) {
+    const failures = responses.filter((r) => r.status >= 400);
+    if (failures.length > 0) {
       fail(
-        `${echecs.length}/${CONCURRENCE} expéditions refusées (statuts ${[...new Set(echecs.map((e) => e.status))].join(', ')}) — une expédition légitime ne doit pas se perdre\n${JSON.stringify(echecs[0].body)}`
+        `${failures.length}/${CONCURRENCY} expéditions refusées (statuts ${[...new Set(failures.map((e) => e.status))].join(', ')}) — une expédition légitime ne doit pas se perdre\n${JSON.stringify(failures[0].body)}`
       );
     }
-    ok(`${CONCURRENCE} expéditions simultanées acceptées, aucune perdue`);
+    ok(`${CONCURRENCY} expéditions simultanées acceptées, aucune perdue`);
 
-    const identifiants = reponses.map(
+    const identifiers = responses.map(
       (r) => (r.body as { data?: { shipment?: { shipment_id?: string } } })?.data?.shipment?.shipment_id
     );
-    const uniques = new Set(identifiants);
-    if (uniques.size !== CONCURRENCE) {
-      fail(`SSCC en collision : ${CONCURRENCE} expéditions pour ${uniques.size} identifiants`);
+    const uniqueIds = new Set(identifiers);
+    if (uniqueIds.size !== CONCURRENCY) {
+      fail(`SSCC en collision : ${CONCURRENCY} expéditions pour ${uniqueIds.size} identifiants`);
     }
-    ok(`${uniques.size} SSCC distincts — la séquence réserve, elle ne relit pas`);
+    ok(`${uniqueIds.size} SSCC distincts — la séquence réserve, elle ne relit pas`);
 
-    if (identifiants.some((id) => !id || !/^[0-9]{18}$/.test(id))) {
-      fail(`Un identifiant généré n'est pas un SSCC à 18 chiffres : ${identifiants.join(', ')}`);
+    if (identifiers.some((id) => !id || !/^[0-9]{18}$/.test(id))) {
+      fail(`Un identifiant généré n'est pas un SSCC à 18 chiffres : ${identifiers.join(', ')}`);
     }
     ok('Tous conformes GS1 (18 chiffres, check digit)');
 
     // Second volet de l'issue : un identifiant saisi à la main et déjà pris rendait un 500.
-    const manuel = `E2E-DUP-${suffixe}`;
-    const corps = (id: string) => ({
+    const manual = `E2E-DUP-${suffix}`;
+    const body = (id: string) => ({
       id_client: CUSTOMER_ID,
       shipment_id: id,
       transporteur: 'E2E',
       destination_adresse: '1 rue de la Livraison, Paris',
-      lots: [{ id_lot: lots[0].id, quantite_expediee: 1 }],
+      lots: [{ id_lot: batches[0].id, quantite_expediee: 1 }],
     });
-    const envoyer = (id: string) =>
+    const send = (id: string) =>
       fetch(`${API_BASE}/api/logistics/shipments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.token}` },
-        body: JSON.stringify(corps(id)),
+        body: JSON.stringify(body(id)),
       });
 
-    const premier = await envoyer(manuel);
-    if (premier.status !== 201) {
-      fail(`Expédition manuelle : attendu 201, reçu ${premier.status}`);
+    const first = await send(manual);
+    if (first.status !== 201) {
+      fail(`Expédition manuelle : attendu 201, reçu ${first.status}`);
     }
-    const doublon = await envoyer(manuel);
-    if (doublon.status !== 409) {
-      fail(`Doublon d'identifiant : attendu 409, reçu ${doublon.status}`);
+    const duplicate = await send(manual);
+    if (duplicate.status !== 409) {
+      fail(`Doublon d'identifiant : attendu 409, reçu ${duplicate.status}`);
     }
     ok("Doublon d'identifiant saisi à la main : 409 explicite, plus de 500");
 
     console.log('\n🎉 Numérotation réservée : plus de collision, plus de 500.\n');
   } finally {
-    const ids = lots.map((l) => l.id);
+    const ids = batches.map((l) => l.id);
     await prisma.liaison_Shipment.deleteMany({ where: { id_lot: { in: ids } } });
     await prisma.batch_Mouvement.deleteMany({ where: { id_lot: { in: ids } } });
     await prisma.batch.deleteMany({ where: { id: { in: ids } } });

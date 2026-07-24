@@ -18,7 +18,7 @@ import { customerImportService } from './customerImport.service';
 import { prisma } from '../../../shared/configs/prismaClient.config';
 
 const orgId = 'org-1';
-const ACTEUR = 'user-admin';
+const ACTOR = 'user-admin';
 const header = 'external_ref,nom_enseigne,email,contact_urgence,adresse_livraison,notes';
 
 describe('customerImportService.importCustomers', () => {
@@ -32,7 +32,7 @@ describe('customerImportService.importCustomers', () => {
   it('crée les clients valides (avec email) et cloisonne par organisation', async () => {
     const csv = `${header}\nERP-001,Magasin A,a@x.com,+33100000000,1 rue A,\nERP-002,Magasin B,b@x.com,,2 rue B,VIP`;
 
-    const report = await customerImportService.importCustomers(orgId, csv, ACTEUR);
+    const report = await customerImportService.importCustomers(orgId, csv, ACTOR);
 
     expect(report).toMatchObject({ total: 2, created: 2, errors: 0 });
     const firstCreate = vi.mocked(prisma.customer.create).mock.calls[0][0];
@@ -50,7 +50,7 @@ describe('customerImportService.importCustomers', () => {
     vi.mocked(prisma.customer.findFirst).mockResolvedValue({ id: 'cust-1' } as never);
     const csv = `${header}\nERP-001,Magasin A,a@x.com,,1 rue A,`;
 
-    const report = await customerImportService.importCustomers(orgId, csv, ACTEUR);
+    const report = await customerImportService.importCustomers(orgId, csv, ACTOR);
 
     expect(report).toMatchObject({ total: 1, created: 0, updated: 1 });
     expect(prisma.customer.update).toHaveBeenCalledWith(
@@ -64,7 +64,7 @@ describe('customerImportService.importCustomers', () => {
   it('rejette un email invalide en erreur de ligne sans bloquer les valides', async () => {
     const csv = `${header}\nERP-001,Magasin A,a@x.com,,1 rue A,\nERP-002,Magasin B,pas-un-email,,2 rue B,`;
 
-    const report = await customerImportService.importCustomers(orgId, csv, ACTEUR);
+    const report = await customerImportService.importCustomers(orgId, csv, ACTOR);
 
     expect(report.created).toBe(1);
     expect(report.errors).toBe(1);
@@ -74,7 +74,7 @@ describe('customerImportService.importCustomers', () => {
   it('rejette une ligne sans external_ref ni enseigne', async () => {
     const csv = `${header}\n,,a@x.com,,,`;
 
-    const report = await customerImportService.importCustomers(orgId, csv, ACTEUR);
+    const report = await customerImportService.importCustomers(orgId, csv, ACTOR);
 
     expect(report.errors).toBe(1);
     expect(prisma.customer.create).not.toHaveBeenCalled();

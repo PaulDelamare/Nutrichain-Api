@@ -174,13 +174,13 @@ export const batchService = {
         // (nextStatus, qualityControl.service) et un tel lot n'a, à ce stade du modèle, pas d'autre
         // issue que le rebut : on refuse de le remettre en circulation, on ne promet pas de retour.
         // Tiebreak par `id` : à date_test égale, l'ordre reste déterministe.
-        const dernierControle = await tx.qualityControl.findFirst({
+        const lastQualityControl = await tx.qualityControl.findFirst({
           where: { id_lot: id, organization_id: activeOrgId },
           orderBy: [{ date_test: 'desc' }, { id: 'desc' }],
           select: { resultat: true },
         });
 
-        if (dernierControle?.resultat === QUALITY_RESULTS.NON_CONFORM) {
+        if (lastQualityControl?.resultat === QUALITY_RESULTS.NON_CONFORM) {
           throw new APIError(409, {
             error: [
               {
@@ -192,7 +192,7 @@ export const batchService = {
           });
         }
 
-        const autoSignee = await enforceSeparationOfDuties(tx, {
+        const autoSigned = await enforceSeparationOfDuties(tx, {
           organizationId: activeOrgId,
           batchCreatedBy: batch.created_by,
           actorUserId: userId,
@@ -202,12 +202,12 @@ export const batchService = {
         // On revient au statut d'AVANT la quarantaine froid : un produit fini qui attendait son
         // contrôle de sortie (EN_ATTENTE_QC) y retourne, il ne devient pas expédiable. Faute de
         // statut mémorisé (lot né BLOQUE à une réception non conforme), on retombe sur EN_STOCK.
-        const statutRestaure = batch.statut_avant_blocage ?? BATCH_STATUSES.IN_STOCK;
+        const restoredStatus = batch.statut_avant_blocage ?? BATCH_STATUSES.IN_STOCK;
 
         const updated = await tx.batch.update({
           where: { id },
           data: {
-            statut: statutRestaure,
+            statut: restoredStatus,
             statut_avant_blocage: null,
             version: { increment: 1 },
           },
@@ -222,7 +222,7 @@ export const batchService = {
             quantite: batch.quantite_actuelle,
             unite: batch.unite_code,
             id_user: userId,
-            metadata: { motif, statut_precedent: batch.statut, statut_resultant: statutRestaure },
+            metadata: { motif, statut_precedent: batch.statut, statut_resultant: restoredStatus },
           },
         });
 
@@ -235,9 +235,9 @@ export const batchService = {
             entityId: id,
             oldValue: { statut: batch.statut },
             newValue: {
-              statut: statutRestaure,
+              statut: restoredStatus,
               motif,
-              ...(autoSignee ? { separation_des_taches: SELF_RELEASE_TRACE } : {}),
+              ...(autoSigned ? { separation_des_taches: SELF_RELEASE_TRACE } : {}),
             },
           },
           tx
@@ -258,7 +258,7 @@ export const batchService = {
    * immobilisé. Le matériel cible doit être un emplacement de STOCKAGE (pas une cuve/mixeur). Tracé
    * dans l'audit WORM, comme toute écriture à conséquence sanitaire.
    */
-  async moveBatch(id: string, activeOrgId: string, userId: string, idMateriel: string) {
+  async moveBatch(id: string, activeOrgId: string, userId: string, equipmentId: string) {
     return retryableTransaction(
       async (tx) => {
         const batch = await tx.batch.findFirst({
@@ -273,7 +273,7 @@ export const batchService = {
 
         // Idempotent : le lot est déjà là. Un retry réseau d'un déplacement réussi ne doit pas
         // renvoyer une erreur ni ré-écrire un mouvement fantôme — on renvoie l'état, sans rien faire.
-        if (batch.id_materiel_actuel === idMateriel) {
+        if (batch.id_materiel_actuel === equipmentId) {
           return batch;
         }
 
@@ -288,22 +288,22 @@ export const batchService = {
           });
         }
 
-        const materiel = await tx.equipment.findFirst({
-          where: { id: idMateriel, organization_id: activeOrgId },
+        const equipment = await tx.equipment.findFirst({
+          where: { id: equipmentId, organization_id: activeOrgId },
         });
 
-        if (!materiel) {
+        if (!equipment) {
           throw new APIError(404, {
             error: [{ field: 'id_materiel', message: 'Matériel introuvable dans cette organisation' }],
           });
         }
 
-        if (!(STORAGE_EQUIPMENT_TYPES as readonly string[]).includes(materiel.type)) {
+        if (!(STORAGE_EQUIPMENT_TYPES as readonly string[]).includes(equipment.type)) {
           throw new APIError(400, {
             error: [
               {
                 field: 'id_materiel',
-                message: `Un lot se range dans un emplacement de stockage (frigo, congélateur, étagère), pas dans un équipement de type ${materiel.type}.`,
+                message: `Un lot se range dans un emplacement de stockage (frigo, congélateur, étagère), pas dans un équipement de type ${equipment.type}.`,
               },
             ],
           });
@@ -314,7 +314,7 @@ export const batchService = {
         // déplace pas un lot dont l'état a changé sous nos yeux.
         const updated = await tx.batch.updateMany({
           where: { id, organization_id: activeOrgId, version: batch.version },
-          data: { id_materiel_actuel: idMateriel, version: { increment: 1 } },
+          data: { id_materiel_actuel: equipmentId, version: { increment: 1 } },
         });
 
         if (updated.count === 0) {
@@ -337,7 +337,7 @@ export const batchService = {
             quantite: batch.quantite_actuelle,
             unite: batch.unite_code,
             id_user: userId,
-            metadata: { from: batch.id_materiel_actuel, to: idMateriel },
+            metadata: { from: batch.id_materiel_actuel, to: equipmentId },
           },
         });
 
@@ -349,7 +349,7 @@ export const batchService = {
             entity: 'Batch',
             entityId: id,
             oldValue: { id_materiel_actuel: batch.id_materiel_actuel },
-            newValue: { id_materiel_actuel: idMateriel },
+            newValue: { id_materiel_actuel: equipmentId },
           },
           tx
         );

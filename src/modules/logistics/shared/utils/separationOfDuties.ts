@@ -39,7 +39,7 @@ export async function enforceSeparationOfDuties(
 ): Promise<boolean> {
   if (params.batchCreatedBy !== params.actorUserId) return false;
 
-  const autreDecideur = await tx.member.findFirst({
+  const otherDecider = await tx.member.findFirst({
     where: {
       organizationId: params.organizationId,
       userId: { not: params.actorUserId },
@@ -48,7 +48,7 @@ export async function enforceSeparationOfDuties(
     select: { id: true },
   });
 
-  if (!autreDecideur) return true;
+  if (!otherDecider) return true;
 
   throw new APIError(403, {
     error: [
