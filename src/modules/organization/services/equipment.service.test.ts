@@ -20,7 +20,7 @@ vi.mock('../../../shared/utils/audit/audit.service', () => ({
 const ORG = 'org-1';
 const USER = 'user-1';
 
-const LIEU = { id: 'lieu-1', organization_id: ORG, nom: 'Chambre froide A', is_active: true };
+const LOCATION = { id: 'lieu-1', organization_id: ORG, nom: 'Chambre froide A', is_active: true };
 
 describe('equipmentService.createEquipment', () => {
   beforeEach(() => vi.clearAllMocks());
@@ -28,7 +28,7 @@ describe('equipmentService.createEquipment', () => {
   it('rattache le matériel au lieu et lui donne une étiquette scannable', async () => {
     // Sans étiquette, l'opérateur ne peut pas scanner l'emplacement du lot — et un lot sans
     // emplacement n'est JAMAIS mis en quarantaine si son frigo dérive.
-    vi.mocked(prisma.location.findFirst).mockResolvedValue(LIEU as never);
+    vi.mocked(prisma.location.findFirst).mockResolvedValue(LOCATION as never);
     vi.mocked(prisma.equipment.create).mockImplementation((async ({
       data,
     }: {
@@ -40,7 +40,7 @@ describe('equipmentService.createEquipment', () => {
       created_by: USER,
       nom: 'Chambre froide B',
       type: 'FRIGO',
-      id_lieu: LIEU.id,
+      id_lieu: LOCATION.id,
       temp_seuil_max: 4,
     });
 
@@ -49,7 +49,7 @@ describe('equipmentService.createEquipment', () => {
     const { data } = vi.mocked(prisma.equipment.create).mock.calls[0][0] as {
       data: Record<string, unknown>;
     };
-    expect(data).toMatchObject({ organization_id: ORG, id_lieu: LIEU.id, type: 'FRIGO' });
+    expect(data).toMatchObject({ organization_id: ORG, id_lieu: LOCATION.id, type: 'FRIGO' });
   });
 
   it('refuse un lieu qui appartient à une autre organisation', async () => {
@@ -71,7 +71,7 @@ describe('equipmentService.createEquipment', () => {
 
   it('trace la création dans le journal d’audit', async () => {
     const { auditService } = await import('../../../shared/utils/audit/audit.service');
-    vi.mocked(prisma.location.findFirst).mockResolvedValue(LIEU as never);
+    vi.mocked(prisma.location.findFirst).mockResolvedValue(LOCATION as never);
     vi.mocked(prisma.equipment.create).mockResolvedValue({ id: 'eq-1', nom: 'Frigo' } as never);
 
     await equipmentService.createEquipment({
@@ -79,7 +79,7 @@ describe('equipmentService.createEquipment', () => {
       created_by: USER,
       nom: 'Frigo',
       type: 'FRIGO',
-      id_lieu: LIEU.id,
+      id_lieu: LOCATION.id,
     });
 
     // Dans la transaction : logAction reçoit la `tx` en second argument (audit atomique).

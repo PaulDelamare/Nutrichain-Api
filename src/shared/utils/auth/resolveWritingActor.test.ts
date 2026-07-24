@@ -17,8 +17,8 @@ describe('resolveWritingActor', () => {
 
     try {
       resolveWritingActor({});
-    } catch (erreur) {
-      expect((erreur as APIError).status).toBe(401);
+    } catch (error) {
+      expect((error as APIError).status).toBe(401);
     }
   });
 });

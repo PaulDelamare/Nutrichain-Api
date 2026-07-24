@@ -97,7 +97,7 @@ export const qualityControlService = {
 
         // La garde ne porte que sur la LIBÉRATION : déclarer son propre lot non conforme reste
         // permis, et doit le rester (cf. `enforceSeparationOfDuties`).
-        const autoSignee =
+        const selfSigned =
           target === BATCH_STATUSES.IN_STOCK &&
           (await enforceSeparationOfDuties(tx, {
             organizationId: data.organization_id,
@@ -172,7 +172,7 @@ export const qualityControlService = {
               statut: target ?? batch.statut,
               resultat: data.resultat,
               type_test: data.type_test,
-              ...(autoSignee ? { separation_des_taches: SELF_RELEASE_TRACE } : {}),
+              ...(selfSigned ? { separation_des_taches: SELF_RELEASE_TRACE } : {}),
             },
           },
           tx
