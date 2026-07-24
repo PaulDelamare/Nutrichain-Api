@@ -25,12 +25,12 @@ export async function resolveActiveOrgRole(
 ): Promise<Role | null> {
   if (!activeOrgId) return null;
 
-  const membre = await prisma.member.findFirst({
+  const member = await prisma.member.findFirst({
     where: { userId, organizationId: activeOrgId },
     select: { role: true },
   });
 
-  if (!membre) return null;
+  if (!member) return null;
 
-  return (ALL_ROLES as string[]).includes(membre.role) ? (membre.role as Role) : null;
+  return (ALL_ROLES as string[]).includes(member.role) ? (member.role as Role) : null;
 }

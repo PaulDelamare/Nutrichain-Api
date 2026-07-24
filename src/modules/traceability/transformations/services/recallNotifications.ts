@@ -28,10 +28,10 @@ export async function notifyRecallCustomers(
 ): Promise<void> {
   try {
     const withEmail = targets.filter((t) => t.customerEmail);
-    const sansEmail = targets.length - withEmail.length;
-    if (sansEmail > 0) {
+    const withoutEmail = targets.length - withEmail.length;
+    if (withoutEmail > 0) {
       logger.warn(
-        `[RECALL] ${sansEmail} client(s) sans email → notification manuelle requise (téléphone/adresse).`
+        `[RECALL] ${withoutEmail} client(s) sans email → notification manuelle requise (téléphone/adresse).`
       );
     }
 

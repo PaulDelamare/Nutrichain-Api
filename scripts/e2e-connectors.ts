@@ -34,9 +34,9 @@ async function main() {
   if (!unit) throw new Error('aucune unité seedée');
 
   // Chaque ligne importée est journalisée au nom de l'acteur : sans lui, l'audit dirait « null ».
-  const membre = await prisma.member.findFirst({ where: { organizationId: ORG_ID! } });
-  if (!membre) throw new Error('aucun membre seedé pour cette organisation');
-  const ACTEUR = membre.userId;
+  const member = await prisma.member.findFirst({ where: { organizationId: ORG_ID! } });
+  if (!member) throw new Error('aucun membre seedé pour cette organisation');
+  const ACTOR = member.userId;
 
   let customerExternalRef: string | null = null;
   const gtin = `39${Date.now().toString().slice(-11)}`; // 13 chiffres, unique par run
@@ -46,7 +46,7 @@ async function main() {
 
   try {
     // 1. Import (création)
-    const r1 = await productImportService.importProducts(ORG_ID!, csv, ACTEUR);
+    const r1 = await productImportService.importProducts(ORG_ID!, csv, ACTOR);
     assert(r1.created === 1 && r1.errors === 0, `import → 1 créé (créés=${r1.created}, err=${r1.errors})`);
     const created = await prisma.product.findFirst({
       where: { organization_id: ORG_ID!, code_gtin: gtin },
@@ -59,18 +59,18 @@ async function main() {
       where: { organization_id: ORG_ID!, action: 'IMPORT_CREATE_PRODUCT', entity_id: created!.id },
     });
     assert(!!traceCreation, "l'import journalise la création dans l'audit WORM");
-    assert(traceCreation?.id_user === ACTEUR, "la trace porte l'auteur de l'import, pas null");
+    assert(traceCreation?.id_user === ACTOR, "la trace porte l'auteur de l'import, pas null");
 
     // 2. Ré-import (idempotent : update, pas de doublon)
-    const r2 = await productImportService.importProducts(ORG_ID!, csv, ACTEUR);
+    const r2 = await productImportService.importProducts(ORG_ID!, csv, ACTOR);
     assert(r2.updated === 1 && r2.created === 0, `ré-import → update (maj=${r2.updated}, créés=${r2.created})`);
 
-    const traceMaj = await prisma.audit_Log.findFirst({
+    const updateTrace = await prisma.audit_Log.findFirst({
       where: { organization_id: ORG_ID!, action: 'IMPORT_UPDATE_PRODUCT', entity_id: created!.id },
     });
-    assert(!!traceMaj, "le ré-import journalise la modification");
+    assert(!!updateTrace, "le ré-import journalise la modification");
     assert(
-      traceMaj?.ancienne_valeur !== null && traceMaj?.ancienne_valeur !== undefined,
+      updateTrace?.ancienne_valeur !== null && updateTrace?.ancienne_valeur !== undefined,
       "la trace conserve l'état PRÉCÉDENT (sinon on ne sait pas ce qui a été écrasé)"
     );
     const count = await prisma.product.count({
@@ -80,7 +80,7 @@ async function main() {
 
     // 3. Ligne invalide n'annule pas les valides
     const mixed = `${header}\nBon,${gtin}1,Test,30,5,${unit.code}\nMauvais,123,Test,30,5,${unit.code}`;
-    const r3 = await productImportService.importProducts(ORG_ID!, mixed, ACTEUR);
+    const r3 = await productImportService.importProducts(ORG_ID!, mixed, ACTOR);
     assert(r3.created === 1 && r3.errors === 1, `succès partiel (créés=${r3.created}, err=${r3.errors})`);
 
     // 4. Import CLIENTS (idempotent par external_ref) — alimente Customer.email pour le rappel (#20)
@@ -88,14 +88,14 @@ async function main() {
     const custHeader = 'external_ref,nom_enseigne,email,contact_urgence,adresse_livraison,notes';
     const custCsv = `${custHeader}\n${extRef},E2E-Client,e2e-client@example.com,,1 rue Test,`;
 
-    const c1 = await customerImportService.importCustomers(ORG_ID!, custCsv, ACTEUR);
+    const c1 = await customerImportService.importCustomers(ORG_ID!, custCsv, ACTOR);
     assert(c1.created === 1 && c1.errors === 0, `import client → 1 créé (créés=${c1.created})`);
     const cust = await prisma.customer.findFirst({
       where: { organization_id: ORG_ID!, external_ref: extRef },
     });
     assert(cust?.email === 'e2e-client@example.com', 'client persisté avec email (prêt pour notif rappel)');
 
-    const c2 = await customerImportService.importCustomers(ORG_ID!, custCsv, ACTEUR);
+    const c2 = await customerImportService.importCustomers(ORG_ID!, custCsv, ACTOR);
     assert(c2.updated === 1 && c2.created === 0, `ré-import client → update (maj=${c2.updated})`);
     const custCount = await prisma.customer.count({
       where: { organization_id: ORG_ID!, external_ref: extRef },

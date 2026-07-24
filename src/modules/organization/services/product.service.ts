@@ -11,7 +11,7 @@ export interface ProductInput {
   unite_reference: string;
 }
 
-const introuvable = () =>
+const notFound = () =>
   new APIError(404, {
     error: [{ field: 'id', message: 'Produit introuvable ou accès refusé.' }],
   });
@@ -26,11 +26,11 @@ export const productService = {
       // contrainte `@@unique([organization_id, code_gtin])` en base : deux créations simultanées
       // franchissaient ce test toutes les deux, et le catalogue se retrouvait avec deux produits
       // pour un même GTIN — après quoi l'import CSV n'en met à jour qu'un, arbitrairement.
-      const doublon = await tx.product.findFirst({
+      const duplicate = await tx.product.findFirst({
         where: { organization_id: organizationId, code_gtin: input.code_gtin },
         select: { id: true },
       });
-      if (doublon) {
+      if (duplicate) {
         throw new APIError(409, {
           error: [{ field: 'code_gtin', message: 'Un produit avec ce GTIN existe déjà.' }],
         });
@@ -66,14 +66,14 @@ export const productService = {
     // porté, et un échec de l'audit annule la modification. (Ce n'est pas un verrou : en Read
     // Committed, la ligne n'est pas figée entre le `findFirst` et l'`update`.)
     return retryableTransaction(async (tx) => {
-      const existant = await tx.product.findFirst({
+      const existing = await tx.product.findFirst({
         where: { id, organization_id: organizationId },
       });
-      if (!existant) throw introuvable();
+      if (!existing) throw notFound();
 
       // Changer l'unité d'un produit déjà utilisé mélangerait des lots en L et en kg sans conversion
       // (le stock n'applique aucun facteur) : on l'interdit tant qu'un lot existe.
-      if (input.unite_reference && input.unite_reference !== existant.unite_reference) {
+      if (input.unite_reference && input.unite_reference !== existing.unite_reference) {
         const lots = await tx.batch.count({ where: { id_produit: id } });
         if (lots > 0) {
           throw new APIError(409, {
@@ -97,7 +97,7 @@ export const productService = {
           action: 'UPDATE_PRODUCT',
           entity: 'Product',
           entityId: id,
-          oldValue: existant as unknown as Record<string, unknown>,
+          oldValue: existing as unknown as Record<string, unknown>,
           newValue: product as unknown as Record<string, unknown>,
         },
         tx
@@ -113,12 +113,12 @@ export const productService = {
    */
   async setActive(id: string, active: boolean, organizationId: string, actorUserId: string) {
     return retryableTransaction(async (tx) => {
-      const existant = await tx.product.findFirst({
+      const existing = await tx.product.findFirst({
         where: { id, organization_id: organizationId },
       });
-      if (!existant) throw introuvable();
+      if (!existing) throw notFound();
 
-      if (existant.is_active === active) return existant;
+      if (existing.is_active === active) return existing;
 
       const product = await tx.product.update({ where: { id }, data: { is_active: active } });
 

@@ -185,25 +185,25 @@ describe('requireInvitationOrFirstUser', () => {
       buildInvitation({ id: 'inv-de-org-a' }) as never
     );
 
-    let vuParLeHook: string | undefined;
+    let seenByHook: string | undefined;
     const req = buildReq({ email: 'invited@nutrichain.local', token: 'inv-de-org-a' });
     await requireInvitationOrFirstUser(req, {} as Response, (() => {
-      vuParLeHook = getValidatedInvitationId();
+      seenByHook = getValidatedInvitationId();
     }) as NextFunction);
 
-    expect(vuParLeHook).toBe('inv-de-org-a');
+    expect(seenByHook).toBe('inv-de-org-a');
   });
 
   it('ne transmet aucune invitation au bootstrap du premier utilisateur', async () => {
     vi.mocked(bdd.user.count).mockResolvedValue(0);
 
-    let vuParLeHook: string | undefined = 'valeur-parasite';
+    let seenByHook: string | undefined = 'valeur-parasite';
     const req = buildReq({ email: 'premier@nutrichain.local' });
     await requireInvitationOrFirstUser(req, {} as Response, (() => {
-      vuParLeHook = getValidatedInvitationId();
+      seenByHook = getValidatedInvitationId();
     }) as NextFunction);
 
     // Sans invitation, le hook doit bien retomber sur la création d'organisation.
-    expect(vuParLeHook).toBeUndefined();
+    expect(seenByHook).toBeUndefined();
   });
 });

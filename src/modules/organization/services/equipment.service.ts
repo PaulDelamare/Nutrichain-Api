@@ -24,17 +24,17 @@ function generateScannableCode(): string {
 
 export const equipmentService = {
   async createEquipment(data: CreateEquipmentData) {
-    const lieu = await prisma.location.findFirst({
+    const location = await prisma.location.findFirst({
       where: { id: data.id_lieu, organization_id: data.organization_id },
     });
 
-    if (!lieu) {
+    if (!location) {
       throw new APIError(400, {
         error: [{ field: 'id_lieu', message: 'Lieu introuvable ou accès refusé' }],
       });
     }
     // Un lieu archivé n'accueille pas de nouveau matériel (le matériel déjà placé reste valable).
-    if (!lieu.is_active) {
+    if (!location.is_active) {
       throw new APIError(409, {
         error: [{ field: 'id_lieu', message: 'Cet emplacement est archivé.' }],
       });

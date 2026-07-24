@@ -31,7 +31,7 @@ export const productImportService = {
           : `Unité inconnue : ${data.unite_reference}`,
       upsertRow: (data) =>
         retryableTransaction(async (tx) => {
-          const champs = {
+          const fields = {
             nom: data.nom,
             categorie: data.categorie,
             duree_conservation_defaut: data.duree_conservation_defaut,
@@ -40,12 +40,12 @@ export const productImportService = {
           };
 
           // Lu DANS la transaction : l'état journalisé est celui sur lequel l'écriture a porté.
-          const existant = await tx.product.findFirst({
+          const existing = await tx.product.findFirst({
             where: { organization_id: organizationId, code_gtin: data.code_gtin },
           });
 
-          if (existant) {
-            const product = await tx.product.update({ where: { id: existant.id }, data: champs });
+          if (existing) {
+            const product = await tx.product.update({ where: { id: existing.id }, data: fields });
 
             await auditService.logAction(
               {
@@ -53,8 +53,8 @@ export const productImportService = {
                 userId: actorUserId,
                 action: 'IMPORT_UPDATE_PRODUCT',
                 entity: 'Product',
-                entityId: existant.id,
-                oldValue: existant as unknown as Record<string, unknown>,
+                entityId: existing.id,
+                oldValue: existing as unknown as Record<string, unknown>,
                 newValue: product as unknown as Record<string, unknown>,
               },
               tx
@@ -67,7 +67,7 @@ export const productImportService = {
           // `@@unique([organization_id, code_gtin])` : le perdant remonte en erreur de ligne
           // plutôt que de créer un doublon silencieux.
           const product = await tx.product.create({
-            data: { organization_id: organizationId, code_gtin: data.code_gtin, ...champs },
+            data: { organization_id: organizationId, code_gtin: data.code_gtin, ...fields },
           });
 
           await auditService.logAction(

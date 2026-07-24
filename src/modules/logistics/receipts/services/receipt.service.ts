@@ -213,7 +213,7 @@ async function createReceiptInTx(tx: Prisma.TransactionClient, data: CreateRecei
 
   // Sans DLC, la garde « lot périmé » du reste du système est du code mort : jusqu'ici, 100 % des
   // lots réels naissaient sans date (seuls ceux du seed en avaient, ce qui masquait le trou).
-  const datePeremption = data.date_peremption
+  const expiryDate = data.date_peremption
     ? parseExpiryDay(data.date_peremption)
     : shelfLifeFrom(product);
 
@@ -226,7 +226,7 @@ async function createReceiptInTx(tx: Prisma.TransactionClient, data: CreateRecei
     // Casse normalisée : sans ça, `abc123` et `ABC123` sont deux lots distincts pour la contrainte
     // d'unicité — la même palette serait réceptionnée deux fois selon la façon dont on la saisit.
     lot_number: data.lot_number?.toUpperCase(),
-    date_peremption: datePeremption,
+    date_peremption: expiryDate,
     statut: isQuarantined ? BATCH_STATUSES.BLOCKED : BATCH_STATUSES.IN_STOCK,
     id_materiel_actuel: data.id_materiel,
     // Lien tracé (FK) vers la réception : c'est lui qui fait remonter la généalogie du lot jusqu'au

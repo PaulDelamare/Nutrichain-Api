@@ -10,9 +10,9 @@ import { resolveGatewayOrg } from '../utils/iotGateway/iotGateway';
 import { APIError } from '../utils/errorHandler/APIError';
 import { AuthenticatedRequest } from '../../modules/identity/types/auth.types';
 
-const buildReq = (cle?: string) =>
+const buildReq = (key?: string) =>
   ({
-    header: (nom: string) => (nom === 'x-api-key' ? cle : undefined),
+    header: (name: string) => (name === 'x-api-key' ? key : undefined),
   }) as unknown as AuthenticatedRequest;
 
 describe('machineAuth', () => {
@@ -46,9 +46,9 @@ describe('machineAuth', () => {
 
     await machineAuth()(req, res, next);
 
-    const erreur = vi.mocked(next).mock.calls[0][0] as APIError;
-    expect(erreur).toBeInstanceOf(APIError);
-    expect(erreur.status).toBe(401);
+    const error = vi.mocked(next).mock.calls[0][0] as APIError;
+    expect(error).toBeInstanceOf(APIError);
+    expect(error.status).toBe(401);
     expect(req.activeOrgId).toBeUndefined();
   });
 

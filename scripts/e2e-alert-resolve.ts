@@ -52,7 +52,7 @@ interface Fixtures {
   sensorId: string;
   locationId: string;
   productId: string;
-  uniteId: string;
+  unitId: string;
   resolverUserId: string;
   initialAlertId: string;
   recallBatchId?: string;
@@ -132,7 +132,7 @@ async function setup(): Promise<Fixtures> {
     sensorId,
     locationId: location.id,
     productId: product.id,
-    uniteId: unit.code,
+    unitId: unit.code,
     resolverUserId: adminMember.user.id,
     initialAlertId: initialAlert.id,
   };
@@ -259,7 +259,7 @@ async function main(): Promise<void> {
         organization_id: ORG_ID!,
         lot_number: `e2e-resolve-${Date.now()}`,
         id_produit: fixtures.productId,
-        unite_code: fixtures.uniteId,
+        unite_code: fixtures.unitId,
         quantite_actuelle: 100,
         quantite_base: 100,
         statut: 'ALERTE',

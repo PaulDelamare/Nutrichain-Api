@@ -32,7 +32,7 @@ async function main() {
   const product = await prisma.product.findFirstOrThrow({ where: { organization_id: ORG_ID! } });
   const unit = await prisma.unit.findFirstOrThrow();
   const location = await prisma.location.findFirstOrThrow({ where: { organization_id: ORG_ID! } });
-  const cuve = await prisma.equipment.create({
+  const tank = await prisma.equipment.create({
     data: {
       organization_id: ORG_ID!, nom: `E2E-IDEM-CUVE-${stamp}`, type: 'CUVE',
       id_lieu: location.id, qr_code_id: `E2E-IDEM-QR-${stamp}`,
@@ -51,7 +51,7 @@ async function main() {
     transformationService.createTransformation({
       organization_id: ORG_ID!,
       id_produit_fini: product.id,
-      id_materiel: cuve.id,
+      id_materiel: tank.id,
       quantite_produite: 10,
       unite_code: unit.code,
       created_by: member.userId,
@@ -63,10 +63,10 @@ async function main() {
 
   console.log('\n[E2E] 1 — deux appels avec le MÊME client_op_id');
   const r1 = await call(clientOpId);
-  const stockApres1 = (await prisma.batch.findUniqueOrThrow({ where: { id: parent.id } }))
+  const stockAfter1 = (await prisma.batch.findUniqueOrThrow({ where: { id: parent.id } }))
     .quantite_actuelle;
   const r2 = await call(clientOpId);
-  const stockApres2 = (await prisma.batch.findUniqueOrThrow({ where: { id: parent.id } }))
+  const stockAfter2 = (await prisma.batch.findUniqueOrThrow({ where: { id: parent.id } }))
     .quantite_actuelle;
 
   assert(
@@ -74,30 +74,30 @@ async function main() {
     'le 2e appel renvoie la MÊME transformation (replay)'
   );
   assert(
-    Number(stockApres1) === Number(stockApres2),
-    `le stock parent n'est prélevé qu'une fois (${stockApres1} → inchangé après replay)`
+    Number(stockAfter1) === Number(stockAfter2),
+    `le stock parent n'est prélevé qu'une fois (${stockAfter1} → inchangé après replay)`
   );
-  const nbTransfos = await prisma.transformation.count({
+  const transformationCount = await prisma.transformation.count({
     where: { id_lot_enfant: r1.lot_enfant_id },
   });
-  assert(nbTransfos === 1, 'une seule transformation en base');
+  assert(transformationCount === 1, 'une seule transformation en base');
 
   console.log('\n[E2E] 2 — un client_op_id DIFFÉRENT re-prélève (opération distincte)');
   const r3 = await call(crypto.randomUUID());
   assert(r3.transformation_id !== r1.transformation_id, 'nouvelle transformation créée');
-  const stockApres3 = (await prisma.batch.findUniqueOrThrow({ where: { id: parent.id } }))
+  const stockAfter3 = (await prisma.batch.findUniqueOrThrow({ where: { id: parent.id } }))
     .quantite_actuelle;
-  assert(Number(stockApres3) < Number(stockApres2), 'le stock parent a de nouveau baissé');
+  assert(Number(stockAfter3) < Number(stockAfter2), 'le stock parent a de nouveau baissé');
 
   // Cleanup
-  const enfants = [r1.lot_enfant_id, r3.lot_enfant_id];
+  const children = [r1.lot_enfant_id, r3.lot_enfant_id];
   await prisma.idempotencyKey.deleteMany({ where: { organization_id: ORG_ID!, client_op_id: clientOpId } });
   await prisma.ePCIS_Event.deleteMany({ where: { related_id: { in: [r1.transformation_id, r3.transformation_id] } } });
-  await prisma.batch_Mouvement.deleteMany({ where: { id_lot: { in: [parent.id, ...enfants] } } });
+  await prisma.batch_Mouvement.deleteMany({ where: { id_lot: { in: [parent.id, ...children] } } });
   await prisma.transformationComposition.deleteMany({ where: { id_lot_parent: parent.id } });
-  await prisma.transformation.deleteMany({ where: { id_lot_enfant: { in: enfants } } });
-  await prisma.batch.deleteMany({ where: { id: { in: [parent.id, ...enfants] } } });
-  await prisma.equipment.delete({ where: { id: cuve.id } });
+  await prisma.transformation.deleteMany({ where: { id_lot_enfant: { in: children } } });
+  await prisma.batch.deleteMany({ where: { id: { in: [parent.id, ...children] } } });
+  await prisma.equipment.delete({ where: { id: tank.id } });
   await prisma.$disconnect();
 
   if (failures.length > 0) {

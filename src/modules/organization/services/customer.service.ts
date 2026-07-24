@@ -10,7 +10,7 @@ export interface CustomerInput {
   notes?: string;
 }
 
-const introuvable = () =>
+const notFound = () =>
   new APIError(404, {
     error: [{ field: 'id', message: 'Client introuvable ou accès refusé.' }],
   });
@@ -51,10 +51,10 @@ export const customerService = {
     // porté, et un échec de l'audit annule la modification. (Ce n'est pas un verrou : en Read
     // Committed, la ligne n'est pas figée entre le `findFirst` et l'`update`.)
     return retryableTransaction(async (tx) => {
-      const existant = await tx.customer.findFirst({
+      const existing = await tx.customer.findFirst({
         where: { id, organization_id: organizationId },
       });
-      if (!existant) throw introuvable();
+      if (!existing) throw notFound();
 
       const customer = await tx.customer.update({ where: { id }, data: input });
 
@@ -65,7 +65,7 @@ export const customerService = {
           action: 'UPDATE_CUSTOMER',
           entity: 'Customer',
           entityId: id,
-          oldValue: existant as unknown as Record<string, unknown>,
+          oldValue: existing as unknown as Record<string, unknown>,
           newValue: customer as unknown as Record<string, unknown>,
         },
         tx
@@ -82,12 +82,12 @@ export const customerService = {
    */
   async setActive(id: string, active: boolean, organizationId: string, actorUserId: string) {
     return retryableTransaction(async (tx) => {
-      const existant = await tx.customer.findFirst({
+      const existing = await tx.customer.findFirst({
         where: { id, organization_id: organizationId },
       });
-      if (!existant) throw introuvable();
+      if (!existing) throw notFound();
 
-      if (existant.is_active === active) return existant;
+      if (existing.is_active === active) return existing;
 
       const customer = await tx.customer.update({ where: { id }, data: { is_active: active } });
 

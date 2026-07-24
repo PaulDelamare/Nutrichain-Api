@@ -9,7 +9,7 @@ export interface SupplierInput {
   contact_qualite?: string;
 }
 
-const introuvable = () =>
+const notFound = () =>
   new APIError(404, {
     error: [{ field: 'id', message: 'Fournisseur introuvable ou accès refusé.' }],
   });
@@ -51,10 +51,10 @@ export const supplierService = {
     // porté, et un échec de l'audit annule la modification. (Ce n'est pas un verrou : en Read
     // Committed, la ligne n'est pas figée entre le `findFirst` et l'`update`.)
     return retryableTransaction(async (tx) => {
-      const existant = await tx.supplier.findFirst({
+      const existing = await tx.supplier.findFirst({
         where: { id, organization_id: organizationId },
       });
-      if (!existant) throw introuvable();
+      if (!existing) throw notFound();
 
       const supplier = await tx.supplier.update({ where: { id }, data: input });
 
@@ -65,7 +65,7 @@ export const supplierService = {
           action: 'UPDATE_SUPPLIER',
           entity: 'Supplier',
           entityId: id,
-          oldValue: existant as unknown as Record<string, unknown>,
+          oldValue: existing as unknown as Record<string, unknown>,
           newValue: supplier as unknown as Record<string, unknown>,
         },
         tx
@@ -82,13 +82,13 @@ export const supplierService = {
    */
   async setActive(id: string, active: boolean, organizationId: string, actorUserId: string) {
     return retryableTransaction(async (tx) => {
-      const existant = await tx.supplier.findFirst({
+      const existing = await tx.supplier.findFirst({
         where: { id, organization_id: organizationId },
       });
-      if (!existant) throw introuvable();
+      if (!existing) throw notFound();
 
       // Idempotent : archiver un fournisseur déjà archivé n'ajoute pas une 2e ligne à l'audit WORM.
-      if (existant.is_active === active) return existant;
+      if (existing.is_active === active) return existing;
 
       const supplier = await tx.supplier.update({ where: { id }, data: { is_active: active } });
 

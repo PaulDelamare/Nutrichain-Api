@@ -35,13 +35,13 @@ describe('withWriteConflictRetry', () => {
   });
 
   it('NE rejoue PAS une requête brute invalide (P2010 sans conflit de sérialisation)', async () => {
-    const erreurSql = new Prisma.PrismaClientKnownRequestError(
+    const sqlError = new Prisma.PrismaClientKnownRequestError(
       'Raw query failed. Code: `42601`. Message: `syntax error`',
       { code: 'P2010', clientVersion: 'test', meta: { code: '42601' } }
     );
-    const op = vi.fn().mockRejectedValue(erreurSql);
+    const op = vi.fn().mockRejectedValue(sqlError);
 
-    await expect(withWriteConflictRetry(op)).rejects.toBe(erreurSql);
+    await expect(withWriteConflictRetry(op)).rejects.toBe(sqlError);
     expect(op).toHaveBeenCalledTimes(1);
   });
 

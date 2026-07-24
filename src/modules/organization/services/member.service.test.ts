@@ -27,7 +27,7 @@ const { memberService } = await import('./member.service');
 
 const ORG = 'org-1';
 const ACTOR = 'admin-user'; // l'appelant
-const membre = (over: Record<string, unknown> = {}) => ({
+const member = (over: Record<string, unknown> = {}) => ({
   id: 'm1',
   userId: 'target-user',
   organizationId: ORG,
@@ -49,8 +49,8 @@ beforeEach(() => {
 
 describe('memberService.changeRole', () => {
   it('change le rôle d’un membre et le journalise (ancien → nouveau)', async () => {
-    memberFindFirst.mockResolvedValue(membre({ role: 'operator' }));
-    memberUpdate.mockResolvedValue(membre({ role: 'quality' }));
+    memberFindFirst.mockResolvedValue(member({ role: 'operator' }));
+    memberUpdate.mockResolvedValue(member({ role: 'quality' }));
 
     await memberService.changeRole('m1', 'quality', ORG, ACTOR);
 
@@ -65,7 +65,7 @@ describe('memberService.changeRole', () => {
   });
 
   it("n'écrit rien si le rôle est déjà celui demandé (pas d'audit fantôme)", async () => {
-    memberFindFirst.mockResolvedValue(membre({ role: 'operator' }));
+    memberFindFirst.mockResolvedValue(member({ role: 'operator' }));
 
     await memberService.changeRole('m1', 'operator', ORG, ACTOR);
 
@@ -81,7 +81,7 @@ describe('memberService.changeRole', () => {
   });
 
   it("refuse de toucher un OWNER (coup d'État)", async () => {
-    memberFindFirst.mockResolvedValue(membre({ role: 'owner' }));
+    memberFindFirst.mockResolvedValue(member({ role: 'owner' }));
     await expect(memberService.changeRole('m1', 'admin', ORG, ACTOR)).rejects.toMatchObject({
       status: 403,
     });
@@ -89,7 +89,7 @@ describe('memberService.changeRole', () => {
   });
 
   it('refuse de changer son PROPRE rôle (auto-verrouillage)', async () => {
-    memberFindFirst.mockResolvedValue(membre({ userId: ACTOR, role: 'admin' }));
+    memberFindFirst.mockResolvedValue(member({ userId: ACTOR, role: 'admin' }));
     await expect(memberService.changeRole('m1', 'viewer', ORG, ACTOR)).rejects.toMatchObject({
       status: 403,
     });
@@ -98,7 +98,7 @@ describe('memberService.changeRole', () => {
 
 describe('memberService.revoke', () => {
   it('supprime le membre, annule ses invitations pending et ses sessions, dans une transaction', async () => {
-    memberFindFirst.mockResolvedValue(membre({ userId: 'target-user', role: 'operator' }));
+    memberFindFirst.mockResolvedValue(member({ userId: 'target-user', role: 'operator' }));
 
     await memberService.revoke('m1', ORG, ACTOR);
 
@@ -116,7 +116,7 @@ describe('memberService.revoke', () => {
   });
 
   it('refuse de révoquer un OWNER', async () => {
-    memberFindFirst.mockResolvedValue(membre({ role: 'owner' }));
+    memberFindFirst.mockResolvedValue(member({ role: 'owner' }));
     await expect(memberService.revoke('m1', ORG, ACTOR)).rejects.toMatchObject({
       status: 403,
     });
@@ -124,7 +124,7 @@ describe('memberService.revoke', () => {
   });
 
   it('refuse de se révoquer soi-même', async () => {
-    memberFindFirst.mockResolvedValue(membre({ userId: ACTOR }));
+    memberFindFirst.mockResolvedValue(member({ userId: ACTOR }));
     await expect(memberService.revoke('m1', ORG, ACTOR)).rejects.toMatchObject({
       status: 403,
     });

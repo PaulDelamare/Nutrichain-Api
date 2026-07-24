@@ -36,12 +36,12 @@ function assert(condition: boolean, label: string) {
   }
 }
 
-async function ingestExcursion(sensorId: string, seuil: number) {
+async function ingestExcursion(sensorId: string, threshold: number) {
   const now = Date.now();
   const docs = Array.from({ length: 10 }, (_, i) => ({
     metadata: { sensor_id: sensorId, organization_id: ORG_ID! },
     timestamp: new Date(now - (10 - i) * 60_000),
-    temperature: seuil + 4,
+    temperature: threshold + 4,
     humidity: 60,
     battery_level: 90,
   }));
@@ -55,7 +55,7 @@ async function ingestExcursion(sensorId: string, seuil: number) {
   await iotAlertService.checkAndAlert({
     sensorId,
     organizationId: ORG_ID!,
-    currentTemp: seuil + 4,
+    currentTemp: threshold + 4,
     timestamp: new Date(now),
   });
 }
@@ -66,22 +66,22 @@ async function main() {
 
   // Deux acteurs distincts : la séparation des tâches interdit au producteur de lever sa propre
   // quarantaine. Le leveur (décideur qualité) doit être un autre membre.
-  const membres = await prisma.member.findMany({
+  const members = await prisma.member.findMany({
     where: { organizationId: ORG_ID!, role: { in: ['owner', 'admin', 'quality'] } },
     take: 2,
   });
-  if (membres.length < 2) throw new Error('Il faut au moins 2 membres habilités dans le seed.');
-  const producteur = membres[0].userId;
-  const leveur = membres[1].userId;
+  if (members.length < 2) throw new Error('Il faut au moins 2 membres habilités dans le seed.');
+  const producer = members[0].userId;
+  const lifter = members[1].userId;
 
-  const produit = await prisma.product.findFirst({ where: { organization_id: ORG_ID! } });
-  const unite = await prisma.unit.findFirst();
-  if (!produit || !unite) throw new Error('Produit ou unité absent du seed.');
+  const product = await prisma.product.findFirst({ where: { organization_id: ORG_ID! } });
+  const unit = await prisma.unit.findFirst();
+  if (!product || !unit) throw new Error('Produit ou unité absent du seed.');
 
   const location = await prisma.location.create({
     data: { organization_id: ORG_ID!, nom: `E2E-QR-Loc-${stamp}`, type: 'COLD_STORAGE' },
   });
-  const frigo = await prisma.equipment.create({
+  const fridge = await prisma.equipment.create({
     data: {
       organization_id: ORG_ID!,
       nom: `E2E-QR-Frigo-${stamp}`,
@@ -97,68 +97,68 @@ async function main() {
     prisma.batch.create({
       data: {
         organization_id: ORG_ID!,
-        id_produit: produit.id,
+        id_produit: product.id,
         lot_number: `E2E-QR-${stamp}-${suffix}`,
         quantite_actuelle: 100,
         quantite_base: 100,
-        unite_code: unite.code,
+        unite_code: unit.code,
         statut: 'EN_ATTENTE_QC',
-        id_materiel_actuel: frigo.id,
-        created_by: producteur,
+        id_materiel_actuel: fridge.id,
+        created_by: producer,
       },
     });
 
   // ---- Scénario 1 : restauration du statut ----
   console.log('\n[E2E] Scénario 1 — un lot EN_ATTENTE_QC revient EN_ATTENTE_QC à la levée');
-  const lot1 = await makeBatch('RESTORE');
-  await ingestExcursion(frigo.sensor_id!, 4);
+  const batch1 = await makeBatch('RESTORE');
+  await ingestExcursion(fridge.sensor_id!, 4);
 
-  const apresExcursion = await prisma.batch.findUniqueOrThrow({ where: { id: lot1.id } });
-  assert(apresExcursion.statut === 'BLOQUE', 'excursion → lot BLOQUE');
+  const afterExcursion = await prisma.batch.findUniqueOrThrow({ where: { id: batch1.id } });
+  assert(afterExcursion.statut === 'BLOQUE', 'excursion → lot BLOQUE');
   assert(
-    apresExcursion.statut_avant_blocage === 'EN_ATTENTE_QC',
+    afterExcursion.statut_avant_blocage === 'EN_ATTENTE_QC',
     'statut_avant_blocage mémorise EN_ATTENTE_QC'
   );
 
-  await batchService.liftQuarantine(lot1.id, ORG_ID!, leveur, 'Frigo réparé, chaîne du froid OK');
-  const apresLevee = await prisma.batch.findUniqueOrThrow({ where: { id: lot1.id } });
+  await batchService.liftQuarantine(batch1.id, ORG_ID!, lifter, 'Frigo réparé, chaîne du froid OK');
+  const afterLift = await prisma.batch.findUniqueOrThrow({ where: { id: batch1.id } });
   assert(
-    apresLevee.statut === 'EN_ATTENTE_QC',
+    afterLift.statut === 'EN_ATTENTE_QC',
     'levée → lot revient EN_ATTENTE_QC (barrière HACCP préservée)'
   );
-  assert(apresLevee.statut !== 'EN_STOCK', 'levée → lot N EST PAS remis en stock (bug d origine)');
-  assert(apresLevee.statut_avant_blocage === null, 'statut_avant_blocage remis à null');
+  assert(afterLift.statut !== 'EN_STOCK', 'levée → lot N EST PAS remis en stock (bug d origine)');
+  assert(afterLift.statut_avant_blocage === null, 'statut_avant_blocage remis à null');
 
   // ---- Scénario 2 : lot condamné, levée refusée ----
   console.log('\n[E2E] Scénario 2 — un lot condamné par un contrôle non conforme ne se lève pas');
-  const lot2 = await makeBatch('CONDAMNE');
-  await ingestExcursion(frigo.sensor_id!, 4);
+  const batch2 = await makeBatch('CONDAMNE');
+  await ingestExcursion(fridge.sensor_id!, 4);
   await qualityControlService.createQualityControl({
     organization_id: ORG_ID!,
-    id_lot: lot2.id,
+    id_lot: batch2.id,
     type_test: 'Analyse microbiologique',
     resultat: 'NON_CONFORME',
-    id_user_labo: leveur,
+    id_user_labo: lifter,
   });
 
-  let refuse = false;
+  let rejected = false;
   try {
-    await batchService.liftQuarantine(lot2.id, ORG_ID!, leveur, 'Tentative de levée');
+    await batchService.liftQuarantine(batch2.id, ORG_ID!, lifter, 'Tentative de levée');
   } catch (e) {
-    refuse = (e as { status?: number }).status === 409;
+    rejected = (e as { status?: number }).status === 409;
   }
-  assert(refuse, 'levée d un lot condamné → refusée en 409');
-  const lot2Final = await prisma.batch.findUniqueOrThrow({ where: { id: lot2.id } });
-  assert(lot2Final.statut === 'BLOQUE', 'lot condamné reste BLOQUE, jamais libéré');
+  assert(rejected, 'levée d un lot condamné → refusée en 409');
+  const batch2Final = await prisma.batch.findUniqueOrThrow({ where: { id: batch2.id } });
+  assert(batch2Final.statut === 'BLOQUE', 'lot condamné reste BLOQUE, jamais libéré');
 
   // ---- Cleanup ----
-  await prisma.batch_Mouvement.deleteMany({ where: { id_lot: { in: [lot1.id, lot2.id] } } });
-  await prisma.qualityControl.deleteMany({ where: { id_lot: { in: [lot1.id, lot2.id] } } });
-  await prisma.batch.deleteMany({ where: { id: { in: [lot1.id, lot2.id] } } });
-  await prisma.alert.deleteMany({ where: { id_materiel: frigo.id } });
-  await prisma.equipment.delete({ where: { id: frigo.id } });
+  await prisma.batch_Mouvement.deleteMany({ where: { id_lot: { in: [batch1.id, batch2.id] } } });
+  await prisma.qualityControl.deleteMany({ where: { id_lot: { in: [batch1.id, batch2.id] } } });
+  await prisma.batch.deleteMany({ where: { id: { in: [batch1.id, batch2.id] } } });
+  await prisma.alert.deleteMany({ where: { id_materiel: fridge.id } });
+  await prisma.equipment.delete({ where: { id: fridge.id } });
   await prisma.location.delete({ where: { id: location.id } });
-  await TelemetryModel.deleteMany({ 'metadata.sensor_id': frigo.sensor_id });
+  await TelemetryModel.deleteMany({ 'metadata.sensor_id': fridge.sensor_id });
 
   await disconnectMongoDB();
   await prisma.$disconnect();

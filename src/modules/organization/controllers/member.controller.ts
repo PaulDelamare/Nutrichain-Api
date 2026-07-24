@@ -11,7 +11,7 @@ import { APIError } from '../../../shared/utils/errorHandler/APIError';
  * `undefined` — et révoque donc le membre d'une autre organisation. `ensureActiveOrg` le couvre
  * en amont : cette garde est la seconde barrière, celle qui reste si la route change.
  */
-function contexteAppelant(req: AuthenticatedRequest) {
+function callerContext(req: AuthenticatedRequest) {
   const activeOrgId = req.activeOrgId;
   const actorUserId = req.auth?.user?.id;
 
@@ -26,7 +26,7 @@ function contexteAppelant(req: AuthenticatedRequest) {
 
 export const changeMemberRoleController = catchAsync(
   async (req: AuthenticatedRequest, res: Response) => {
-    const { activeOrgId, actorUserId } = contexteAppelant(req);
+    const { activeOrgId, actorUserId } = callerContext(req);
 
     const member = await memberService.changeRole(
       req.params.id,
@@ -40,7 +40,7 @@ export const changeMemberRoleController = catchAsync(
 
 export const revokeMemberController = catchAsync(
   async (req: AuthenticatedRequest, res: Response) => {
-    const { activeOrgId, actorUserId } = contexteAppelant(req);
+    const { activeOrgId, actorUserId } = callerContext(req);
 
     await memberService.revoke(req.params.id, activeOrgId, actorUserId);
     sendSuccess(res, 200, 'Accès du membre révoqué', { id: req.params.id });

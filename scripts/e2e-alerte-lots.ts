@@ -54,9 +54,9 @@ interface Fixtures {
   equipmentId: string;
   sensorId: string;
   batchIds: string[];
-  froidStock: string;
-  froidQc: string;
-  intrusQc: string;
+  coldStock: string;
+  coldQc: string;
+  intruderQc: string;
 }
 
 async function setup(): Promise<Fixtures> {
@@ -81,40 +81,40 @@ async function setup(): Promise<Fixtures> {
     },
   });
 
-  const produit = await prisma.product.findFirst({ where: { organization_id: ORG_ID! } });
+  const product = await prisma.product.findFirst({ where: { organization_id: ORG_ID! } });
   const user = await prisma.member.findFirst({
     where: { organizationId: ORG_ID! },
     select: { userId: true },
   });
-  if (!produit || !user) throw new Error('Seed manquant : il faut un produit et un membre.');
+  if (!product || !user) throw new Error('Seed manquant : il faut un produit et un membre.');
 
-  const makeBatch = async (lotNumber: string, statut: string) =>
+  const makeBatch = async (lotNumber: string, status: string) =>
     prisma.batch.create({
       data: {
         organization_id: ORG_ID!,
         lot_number: lotNumber,
-        id_produit: produit.id,
+        id_produit: product.id,
         quantite_actuelle: 10,
         quantite_base: 10,
-        unite_code: produit.unite_reference,
-        statut,
+        unite_code: product.unite_reference,
+        statut: status,
         id_materiel_actuel: equipment.id,
         created_by: user.userId,
       },
     });
 
-  const froidStock = await makeBatch(`E2E-FROID-STOCK-${stamp}`, BATCH_STATUSES.IN_STOCK);
-  const froidQc = await makeBatch(`E2E-FROID-QC-${stamp}`, BATCH_STATUSES.PENDING_QC);
-  const intrusQc = await makeBatch(`E2E-INTRUS-QC-${stamp}`, BATCH_STATUSES.BLOCKED);
+  const coldStock = await makeBatch(`E2E-FROID-STOCK-${stamp}`, BATCH_STATUSES.IN_STOCK);
+  const coldQc = await makeBatch(`E2E-FROID-QC-${stamp}`, BATCH_STATUSES.PENDING_QC);
+  const intruderQc = await makeBatch(`E2E-INTRUS-QC-${stamp}`, BATCH_STATUSES.BLOCKED);
 
   // L'INTRUS : bloqué par un contrôle qualité, bien avant toute excursion. Il est dans le frigo,
   // mais il n'a rien à voir avec la chaîne du froid.
   await prisma.batch_Mouvement.create({
     data: {
-      id_lot: intrusQc.id,
+      id_lot: intruderQc.id,
       type_action: MOVEMENT_TYPES.QUALITY_CONTROL,
       quantite: 10,
-      unite: produit.unite_reference,
+      unite: product.unite_reference,
       metadata: {
         resultat: QUALITY_RESULTS.NON_CONFORM,
         type_test: 'CORPS_ETRANGER',
@@ -128,10 +128,10 @@ async function setup(): Promise<Fixtures> {
   return {
     equipmentId: equipment.id,
     sensorId,
-    batchIds: [froidStock.id, froidQc.id, intrusQc.id],
-    froidStock: froidStock.id,
-    froidQc: froidQc.id,
-    intrusQc: intrusQc.id,
+    batchIds: [coldStock.id, coldQc.id, intruderQc.id],
+    coldStock: coldStock.id,
+    coldQc: coldQc.id,
+    intruderQc: intruderQc.id,
   };
 }
 
@@ -191,12 +191,12 @@ async function main() {
     assert(alert !== null, "l'excursion a bien créé une alerte");
     if (!alert) throw new Error('pas d’alerte : la suite du scénario n’a plus de sens');
 
-    const statutOf = async (id: string) =>
+    const statusOf = async (id: string) =>
       (await prisma.batch.findUniqueOrThrow({ where: { id }, select: { statut: true } })).statut;
 
     assert(
-      (await statutOf(fixtures.froidStock)) === BATCH_STATUSES.BLOCKED &&
-        (await statutOf(fixtures.froidQc)) === BATCH_STATUSES.BLOCKED,
+      (await statusOf(fixtures.coldStock)) === BATCH_STATUSES.BLOCKED &&
+        (await statusOf(fixtures.coldQc)) === BATCH_STATUSES.BLOCKED,
       'le froid a isolé les deux lots qui étaient rangés dans le frigo'
     );
 
@@ -205,7 +205,7 @@ async function main() {
     // La MÉTHODE D'AVANT, rejouée telle quelle : tous les lots BLOQUE rangés dans cet équipement.
     // Sans cette mesure, le test ne prouverait pas qu'il y avait un bug — seulement qu'il n'y en a
     // plus. Elle doit ramasser les 3 lots, intrus compris : c'est exactement ce qu'on relâchait.
-    const ancienneListe = await prisma.batch.findMany({
+    const previousList = await prisma.batch.findMany({
       where: {
         organization_id: ORG_ID!,
         statut: BATCH_STATUSES.BLOCKED,
@@ -214,17 +214,17 @@ async function main() {
       select: { id: true },
     });
     assert(
-      ancienneListe.length === 3 && ancienneListe.some((b) => b.id === fixtures!.intrusQc),
-      `l'ancienne méthode ramassait ${ancienneListe.length} lots, dont l'intrus — le bug est réel`
+      previousList.length === 3 && previousList.some((b) => b.id === fixtures!.intruderQc),
+      `l'ancienne méthode ramassait ${previousList.length} lots, dont l'intrus — le bug est réel`
     );
 
     let batches = await alertBatchService.listBatchesIsolatedByAlert(alert);
     const ids = batches.map((b) => b.id);
 
-    assert(ids.includes(fixtures.froidStock), 'le lot EN_STOCK isolé par le froid est listé');
-    assert(ids.includes(fixtures.froidQc), 'le lot EN_ATTENTE_QC isolé par le froid est listé');
+    assert(ids.includes(fixtures.coldStock), 'le lot EN_STOCK isolé par le froid est listé');
+    assert(ids.includes(fixtures.coldQc), 'le lot EN_ATTENTE_QC isolé par le froid est listé');
     assert(
-      !ids.includes(fixtures.intrusQc),
+      !ids.includes(fixtures.intruderQc),
       "LE BUG : le lot bloqué par un contrôle qualité SANS RAPPORT n'est PAS listé"
     );
     assert(batches.length === 2, `exactement 2 lots (reçu ${batches.length})`);
@@ -236,7 +236,7 @@ async function main() {
     console.log('\n[3] Le labo déclare le lot EN_STOCK non conforme, APRÈS son isolement');
     await prisma.batch_Mouvement.create({
       data: {
-        id_lot: fixtures.froidStock,
+        id_lot: fixtures.coldStock,
         type_action: MOVEMENT_TYPES.QUALITY_CONTROL,
         quantite: 10,
         unite: batches[0]!.unite_code,
@@ -245,11 +245,11 @@ async function main() {
     });
 
     batches = await alertBatchService.listBatchesIsolatedByAlert(alert);
-    const condamne = batches.find((b) => b.id === fixtures!.froidStock);
-    const intact = batches.find((b) => b.id === fixtures!.froidQc);
+    const condemned = batches.find((b) => b.id === fixtures!.coldStock);
+    const intact = batches.find((b) => b.id === fixtures!.coldQc);
 
     assert(
-      condamne?.levable === false && condamne.motif_blocage === 'CONTROLE_NON_CONFORME',
+      condemned?.levable === false && condemned.motif_blocage === 'CONTROLE_NON_CONFORME',
       'il reste listé mais n’est plus levable : réparer le frigo ne le rend pas consommable'
     );
     assert(
@@ -263,7 +263,7 @@ async function main() {
     // l'alerte B retient — sinon rouvrir A relâche la marchandise que B protège.
     await prisma.batch_Mouvement.create({
       data: {
-        id_lot: fixtures.froidQc,
+        id_lot: fixtures.coldQc,
         type_action: MOVEMENT_TYPES.QUARANTINE_LIFTED,
         quantite: 10,
         unite: batches[0]!.unite_code,
@@ -271,7 +271,7 @@ async function main() {
       },
     });
     await prisma.batch.update({
-      where: { id: fixtures.froidQc },
+      where: { id: fixtures.coldQc },
       data: { statut: BATCH_STATUSES.IN_STOCK },
     });
 
@@ -286,26 +286,26 @@ async function main() {
     writtenPerSensor.delete(fixtures.sensorId);
     for (let i = 9; i >= 0; i--) await ingestPing(fixtures.sensorId, 9, i);
 
-    const alerteB = await prisma.alert.findFirst({
+    const alertB = await prisma.alert.findFirst({
       where: { id_materiel: fixtures.equipmentId, type: 'TEMP_EXCURSION', statut: 'ACTIVE' },
     });
-    assert(alerteB !== null && alerteB.id !== alert.id, 'une SECONDE alerte a bien été créée');
+    assert(alertB !== null && alertB.id !== alert.id, 'une SECONDE alerte a bien été créée');
 
-    const sousA = await alertBatchService.listBatchesIsolatedByAlert(alert);
+    const underA = await alertBatchService.listBatchesIsolatedByAlert(alert);
     assert(
-      !sousA.some((b) => b.id === fixtures!.froidQc),
+      !underA.some((b) => b.id === fixtures!.coldQc),
       "l'ancienne alerte ne revendique plus le lot que la NOUVELLE retient"
     );
-    if (alerteB) {
-      const sousB = await alertBatchService.listBatchesIsolatedByAlert(alerteB);
+    if (alertB) {
+      const underB = await alertBatchService.listBatchesIsolatedByAlert(alertB);
       assert(
-        sousB.some((b) => b.id === fixtures!.froidQc),
+        underB.some((b) => b.id === fixtures!.coldQc),
         "c'est la nouvelle alerte qui le porte désormais"
       );
     }
 
     console.log('\n[5] Un rappel produit ne doit pas répondre « aucun lot »');
-    const rappel = await prisma.alert.create({
+    const recall = await prisma.alert.create({
       data: {
         organization_id: ORG_ID!,
         type: 'PRODUCT_RECALL',
@@ -315,12 +315,12 @@ async function main() {
       },
     });
     try {
-      await alertBatchService.listBatchesIsolatedByAlert(rappel);
+      await alertBatchService.listBatchesIsolatedByAlert(recall);
       assert(false, 'un rappel produit est refusé (il ne renvoie pas une liste vide)');
     } catch {
       assert(true, 'un rappel produit est refusé (il ne renvoie pas une liste vide)');
     }
-    await prisma.alert.delete({ where: { id: rappel.id } });
+    await prisma.alert.delete({ where: { id: recall.id } });
   } finally {
     if (fixtures) {
       console.log('\n[Cleanup]');

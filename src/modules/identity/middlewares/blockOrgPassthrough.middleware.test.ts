@@ -3,7 +3,7 @@ import { Request, Response } from 'express';
 import { blockOrgPassthrough } from './blockOrgPassthrough.middleware';
 import { APIError } from '../../../shared/utils/errorHandler/APIError';
 
-const appeler = (path: string) => {
+const invoke = (path: string) => {
   const next = vi.fn();
   blockOrgPassthrough({ path } as Request, {} as Response, next);
   return next.mock.calls[0]?.[0] as APIError | undefined;
@@ -25,10 +25,10 @@ describe('blocage du passthrough Better-Auth sur les organisations', () => {
     '/auth/organization/list',
     '/auth/organization/n-importe-quoi-de-futur',
   ])('refuse %s en 403', (path) => {
-    const erreur = appeler(path);
+    const error = invoke(path);
 
-    expect(erreur).toBeInstanceOf(APIError);
-    expect(erreur?.status).toBe(403);
+    expect(error).toBeInstanceOf(APIError);
+    expect(error?.status).toBe(403);
   });
 
   // Le reste de Better-Auth (connexion, inscription, MFA, session) doit continuer de passer :
@@ -40,12 +40,12 @@ describe('blocage du passthrough Better-Auth sur les organisations', () => {
     '/auth/get-session',
     '/auth/two-factor/enable',
   ])('laisse passer %s', (path) => {
-    expect(appeler(path)).toBeUndefined();
+    expect(invoke(path)).toBeUndefined();
   });
 
   // Un préfixe qui RESSEMBLE ne doit pas être bloqué par accident, et surtout un chemin
   // détourné ne doit pas contourner le blocage.
   it('ne bloque pas une route qui commence pareil sans être une route organisation', () => {
-    expect(appeler('/auth/organizations-publiques')).toBeUndefined();
+    expect(invoke('/auth/organizations-publiques')).toBeUndefined();
   });
 });

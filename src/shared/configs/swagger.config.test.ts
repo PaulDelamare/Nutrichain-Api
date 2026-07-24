@@ -20,7 +20,7 @@ describe('spécification OpenAPI', () => {
    * premier : si l'une disparaît de la documentation, on veut le savoir avant lui.
    */
   it('documente le parcours de démonstration de bout en bout', () => {
-    const attendues = [
+    const expected = [
       ['post', '/api/connectors/imports/products'],
       ['post', '/api/logistics/receipts'],
       ['get', '/api/logistics/batches/{id}/label'],
@@ -34,15 +34,15 @@ describe('spécification OpenAPI', () => {
       ['get', '/api/audit/verify'],
     ] as const;
 
-    const manquantes = attendues.filter(([m, p]) => !paths[p]?.[m]);
+    const missing = expected.filter(([m, p]) => !paths[p]?.[m]);
 
-    expect(manquantes).toEqual([]);
+    expect(missing).toEqual([]);
   });
 
   it('déclare une section par domaine métier, pas un fourre-tout', () => {
     const sections = new Set<string>();
-    for (const methodes of Object.values(paths)) {
-      for (const def of Object.values(methodes)) {
+    for (const methods of Object.values(paths)) {
+      for (const def of Object.values(methods)) {
         const tag = (def as { tags?: string[] }).tags?.[0];
         if (tag) sections.add(tag);
       }

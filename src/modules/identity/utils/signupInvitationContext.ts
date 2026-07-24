@@ -16,8 +16,8 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 const storage = new AsyncLocalStorage<{ invitationId: string }>();
 
 /** Exécute la suite du traitement en mémorisant l'invitation validée pour cette requête. */
-export const runWithValidatedInvitation = <T>(invitationId: string, suite: () => T): T =>
-  storage.run({ invitationId }, suite);
+export const runWithValidatedInvitation = <T>(invitationId: string, continuation: () => T): T =>
+  storage.run({ invitationId }, continuation);
 
 /**
  * L'invitation validée pour la requête en cours, ou `undefined` hors inscription — c'est-à-dire
