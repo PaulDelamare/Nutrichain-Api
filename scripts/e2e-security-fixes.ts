@@ -249,12 +249,12 @@ async function scenario1_apiKeySpoofing(ctx: Fixtures) {
   // Cibler UNIQUEMENT le lot né de cette réception (par id_receipt), pas tous les lots du produit :
   // un filtre par id_produit ratisserait aussi les lots du seed, référencés par des liaisons et des
   // transformations, et la suppression violerait leurs clés étrangères.
-  const lotsNes = await prisma.batch.findMany({
+  const bornBatches = await prisma.batch.findMany({
     where: { id_receipt: created!.id },
     select: { id: true },
   });
-  const lotIds = lotsNes.map((l) => l.id);
-  await prisma.batch_Mouvement.deleteMany({ where: { id_lot: { in: lotIds } } });
+  const batchIds = bornBatches.map((l) => l.id);
+  await prisma.batch_Mouvement.deleteMany({ where: { id_lot: { in: batchIds } } });
   await prisma.batch.deleteMany({ where: { id_receipt: created!.id } });
   await prisma.receipt.delete({ where: { id: created!.id } });
 }
@@ -451,7 +451,7 @@ async function scenario6_genealogyCte(ctx: Fixtures) {
       },
     });
 
-    for (const [id, nom] of [
+    for (const [id, name] of [
       [productMilkId, 'Lait cru E2E'],
       [productPasteurizedId, 'Lait pasteurisé E2E'],
       [productYogurtId, 'Yaourt E2E'],
@@ -460,7 +460,7 @@ async function scenario6_genealogyCte(ctx: Fixtures) {
         data: {
           id,
           organization_id: ORG_ID!,
-          nom,
+          nom: name,
           categorie: 'Test',
           code_gtin: '3000000000093',
           duree_conservation_defaut: 30,

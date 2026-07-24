@@ -344,7 +344,7 @@ async function scenarioBreadthExhaustive() {
   });
 
   const childIds = Array.from({ length: N }, () => randomUUID());
-  const transfoIds = childIds.map(() => randomUUID());
+  const transformationIds = childIds.map(() => randomUUID());
 
   await prisma.batch.createMany({
     data: childIds.map((id) => ({
@@ -361,7 +361,7 @@ async function scenarioBreadthExhaustive() {
   });
   await prisma.transformation.createMany({
     data: childIds.map((cid, i) => ({
-      id: transfoIds[i],
+      id: transformationIds[i],
       id_lot_enfant: cid,
       id_produit_fini: product.id,
       id_user: member.userId,
@@ -370,7 +370,7 @@ async function scenarioBreadthExhaustive() {
     })),
   });
   await prisma.transformationComposition.createMany({
-    data: transfoIds.map((tid) => ({
+    data: transformationIds.map((tid) => ({
       id_transformation: tid,
       id_lot_parent: source.id,
       quantite_prelevee: 1,
@@ -398,9 +398,9 @@ async function scenarioBreadthExhaustive() {
     assert(alerted === N, `les ${N} descendants sont en ALERTE en DB (reçu ${alerted})`);
   } finally {
     await prisma.transformationComposition.deleteMany({
-      where: { id_transformation: { in: transfoIds } },
+      where: { id_transformation: { in: transformationIds } },
     });
-    await prisma.transformation.deleteMany({ where: { id: { in: transfoIds } } });
+    await prisma.transformation.deleteMany({ where: { id: { in: transformationIds } } });
     await prisma.alert.deleteMany({ where: { related_id: source.id } });
     // Les mouvements référencent le lot (FK) : les purger d'abord.
     await prisma.batch_Mouvement.deleteMany({ where: { id_lot: { in: [source.id, ...childIds] } } });
@@ -441,10 +441,10 @@ async function scenarioDepthCycleGuard() {
     { child: b2.id, parent: b1.id },
     { child: b1.id, parent: b2.id }, // ferme le cycle
   ];
-  const transfoIds: string[] = [];
+  const transformationIds: string[] = [];
   for (const e of edges) {
     const tid = randomUUID();
-    transfoIds.push(tid);
+    transformationIds.push(tid);
     await prisma.transformation.create({
       data: {
         id: tid,
@@ -483,9 +483,9 @@ async function scenarioDepthCycleGuard() {
     assert(satAlert === 1, `alerte saturation CRITIQUE créée (MAX_DEPTH=${MAX_GENEALOGY_DEPTH}, reçu ${satAlert})`);
   } finally {
     await prisma.transformationComposition.deleteMany({
-      where: { id_transformation: { in: transfoIds } },
+      where: { id_transformation: { in: transformationIds } },
     });
-    await prisma.transformation.deleteMany({ where: { id: { in: transfoIds } } });
+    await prisma.transformation.deleteMany({ where: { id: { in: transformationIds } } });
     await prisma.alert.deleteMany({ where: { related_id: source.id } });
     // Les mouvements référencent le lot (FK) : les purger d'abord.
     await prisma.batch_Mouvement.deleteMany({ where: { id_lot: { in: [source.id, b1.id, b2.id] } } });

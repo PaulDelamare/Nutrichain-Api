@@ -31,7 +31,7 @@ if (!API_KEY || !ORG_ID) {
 }
 
 const ok = (msg: string) => console.log(`  ✅ ${msg}`);
-const echec = (msg: string): never => {
+const fail = (msg: string): never => {
   throw new Error(msg);
 };
 
@@ -66,7 +66,7 @@ async function main() {
     Origin: ORIGIN,
   };
 
-  const orgsAvant = await prisma.organization.count();
+  const orgsBefore = await prisma.organization.count();
 
   for (const [action, body] of MUTATIONS) {
     const res = await fetch(`${API_URL}/api/auth/organization/${action}`, {
@@ -76,7 +76,7 @@ async function main() {
     });
 
     if (res.status !== 403) {
-      echec(
+      fail(
         `/auth/organization/${action} répond ${res.status} au lieu de 403 — le passthrough est ouvert.`
       );
     }
@@ -84,19 +84,19 @@ async function main() {
   }
 
   // Les lectures aussi : `list` révélait les organisations des AUTRES clients.
-  const liste = await fetch(`${API_URL}/api/auth/organization/list`, { headers });
-  if (liste.status !== 403) echec(`/auth/organization/list répond ${liste.status} au lieu de 403.`);
+  const list = await fetch(`${API_URL}/api/auth/organization/list`, { headers });
+  if (list.status !== 403) fail(`/auth/organization/list répond ${list.status} au lieu de 403.`);
   ok('/auth/organization/list → 403');
 
-  const orgsApres = await prisma.organization.count();
-  if (orgsApres !== orgsAvant) {
-    echec(`Le nombre d'organisations a changé (${orgsAvant} → ${orgsApres}) : une écriture a abouti.`);
+  const orgsAfter = await prisma.organization.count();
+  if (orgsAfter !== orgsBefore) {
+    fail(`Le nombre d'organisations a changé (${orgsBefore} → ${orgsAfter}) : une écriture a abouti.`);
   }
-  ok(`Aucune organisation créée ni supprimée (${orgsAvant} avant, ${orgsApres} après)`);
+  ok(`Aucune organisation créée ni supprimée (${orgsBefore} avant, ${orgsAfter} après)`);
 
   // Non-régression : l'authentification, elle, doit continuer de fonctionner.
   const session = await fetch(`${API_URL}/api/me`, { headers });
-  if (session.status !== 200) echec(`/api/me répond ${session.status} : l'authentification est cassée.`);
+  if (session.status !== 200) fail(`/api/me répond ${session.status} : l'authentification est cassée.`);
   ok("/api/me → 200 : l'authentification n'est pas affectée");
 
   console.log('\n✅ Le plugin organization est fermé, et la connexion fonctionne toujours.\n');

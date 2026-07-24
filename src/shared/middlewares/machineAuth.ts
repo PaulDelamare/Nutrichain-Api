@@ -3,7 +3,7 @@ import { APIError } from '../utils/errorHandler/APIError';
 import { resolveGatewayOrg } from '../utils/iotGateway/iotGateway';
 import { AuthenticatedRequest } from '../../modules/identity/types/auth.types';
 
-const cleRefusee = () =>
+const refusedKey = () =>
   new APIError(401, {
     error: [{ field: 'api_key', message: 'Passerelle IoT inconnue ou révoquée.' }],
   });
@@ -33,14 +33,14 @@ export const machineAuth = () => {
     const presentedKey = req.header('x-api-key');
 
     if (!presentedKey) {
-      return next(cleRefusee());
+      return next(refusedKey());
     }
 
     try {
       const organizationId = await resolveGatewayOrg(presentedKey);
 
       if (!organizationId) {
-        return next(cleRefusee());
+        return next(refusedKey());
       }
 
       // Seul `activeOrgId` est posé : une machine n'a ni utilisateur ni session. Fabriquer un
@@ -49,8 +49,8 @@ export const machineAuth = () => {
       (req as AuthenticatedRequest).activeOrgId = organizationId;
 
       next();
-    } catch (erreur) {
-      next(erreur);
+    } catch (error) {
+      next(error);
     }
   };
 };

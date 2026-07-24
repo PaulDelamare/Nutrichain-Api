@@ -20,7 +20,7 @@ import { productImportService } from './productImport.service';
 import { prisma } from '../../../shared/configs/prismaClient.config';
 
 const orgId = 'org-1';
-const ACTEUR = 'user-admin';
+const ACTOR = 'user-admin';
 const header =
   'nom,code_gtin,categorie,duree_conservation_defaut,seuil_alerte_stock,unite_reference';
 
@@ -36,7 +36,7 @@ describe('productImportService.importProducts', () => {
   it('crée les produits valides et cloisonne par organisation', async () => {
     const csv = `${header}\nLait,3001234567890,Frais,30,10,L\nBeurre,3009876543210,Frais,60,5,kg`;
 
-    const report = await productImportService.importProducts(orgId, csv, ACTEUR);
+    const report = await productImportService.importProducts(orgId, csv, ACTOR);
 
     expect(report).toMatchObject({ total: 2, created: 2, updated: 0, errors: 0 });
     expect(prisma.product.create).toHaveBeenCalledTimes(2);
@@ -53,7 +53,7 @@ describe('productImportService.importProducts', () => {
     vi.mocked(prisma.product.update).mockResolvedValue({ id: 'prod-existant' } as never);
     const csv = `${header}\nLait,3001234567890,Frais,30,10,L`;
 
-    const report = await productImportService.importProducts(orgId, csv, ACTEUR);
+    const report = await productImportService.importProducts(orgId, csv, ACTOR);
 
     expect(report).toMatchObject({ total: 1, created: 0, updated: 1, errors: 0 });
     expect(prisma.product.update).toHaveBeenCalledWith(
@@ -66,7 +66,7 @@ describe('productImportService.importProducts', () => {
     // 2e ligne : gtin trop court → invalide
     const csv = `${header}\nLait,3001234567890,Frais,30,10,L\nMauvais,123,Frais,30,10,L`;
 
-    const report = await productImportService.importProducts(orgId, csv, ACTEUR);
+    const report = await productImportService.importProducts(orgId, csv, ACTOR);
 
     expect(report.created).toBe(1);
     expect(report.errors).toBe(1);
@@ -77,7 +77,7 @@ describe('productImportService.importProducts', () => {
   it('rejette un GTIN-12 (UPC-A) : seul GTIN-13/14 garantit une URN EPC correcte', async () => {
     const csv = `${header}\nSoda,345678901230,Boisson,180,10,L`;
 
-    const report = await productImportService.importProducts(orgId, csv, ACTEUR);
+    const report = await productImportService.importProducts(orgId, csv, ACTOR);
 
     expect(report.errors).toBe(1);
     expect(prisma.product.create).not.toHaveBeenCalled();
@@ -86,7 +86,7 @@ describe('productImportService.importProducts', () => {
   it('rejette un GTIN non numérique de longueur plausible', async () => {
     const csv = `${header}\nLait,30012345678AB,Frais,30,10,L`;
 
-    const report = await productImportService.importProducts(orgId, csv, ACTEUR);
+    const report = await productImportService.importProducts(orgId, csv, ACTOR);
 
     expect(report.errors).toBe(1);
     expect(prisma.product.create).not.toHaveBeenCalled();
@@ -95,7 +95,7 @@ describe('productImportService.importProducts', () => {
   it('rejette une unité inconnue (FK Unit) en erreur de ligne', async () => {
     const csv = `${header}\nLait,3001234567890,Frais,30,10,TONNE`;
 
-    const report = await productImportService.importProducts(orgId, csv, ACTEUR);
+    const report = await productImportService.importProducts(orgId, csv, ACTOR);
 
     expect(report.errors).toBe(1);
     expect(report.results[0].message).toContain('Unité inconnue');
@@ -122,14 +122,14 @@ describe('productImportService.importProducts', () => {
 
     const csv = `${header}
 Lait,3001234567890,Frais,90,10,L`;
-    await productImportService.importProducts(orgId, csv, ACTEUR);
+    await productImportService.importProducts(orgId, csv, ACTOR);
 
     const [payload, tx] = vi.mocked(auditService.logAction).mock.calls[0];
     expect(payload).toMatchObject({
       action: 'IMPORT_UPDATE_PRODUCT',
       entity: 'Product',
       entityId: 'p1',
-      userId: ACTEUR,
+      userId: ACTOR,
       organizationId: orgId,
       oldValue: expect.objectContaining({ duree_conservation_defaut: 30 }),
       newValue: expect.objectContaining({ duree_conservation_defaut: 90 }),
@@ -144,7 +144,7 @@ Lait,3001234567890,Frais,90,10,L`;
 
     const csv = `${header}
 Lait,3001234567890,Frais,30,10,L`;
-    await productImportService.importProducts(orgId, csv, ACTEUR);
+    await productImportService.importProducts(orgId, csv, ACTOR);
 
     expect(auditService.logAction).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'IMPORT_CREATE_PRODUCT', entityId: 'p-neuf' }),

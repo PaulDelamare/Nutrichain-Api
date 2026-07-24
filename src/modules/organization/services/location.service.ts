@@ -8,7 +8,7 @@ export interface LocationInput {
   description?: string;
 }
 
-const introuvable = () =>
+const notFound = () =>
   new APIError(404, {
     error: [{ field: 'id', message: 'Emplacement introuvable ou accès refusé.' }],
   });
@@ -49,10 +49,10 @@ export const locationService = {
     // porté, et un échec de l'audit annule la modification. (Ce n'est pas un verrou : en Read
     // Committed, la ligne n'est pas figée entre le `findFirst` et l'`update`.)
     return retryableTransaction(async (tx) => {
-      const existant = await tx.location.findFirst({
+      const existing = await tx.location.findFirst({
         where: { id, organization_id: organizationId },
       });
-      if (!existant) throw introuvable();
+      if (!existing) throw notFound();
 
       const location = await tx.location.update({ where: { id }, data: input });
 
@@ -63,7 +63,7 @@ export const locationService = {
           action: 'UPDATE_LOCATION',
           entity: 'Location',
           entityId: id,
-          oldValue: existant as unknown as Record<string, unknown>,
+          oldValue: existing as unknown as Record<string, unknown>,
           newValue: location as unknown as Record<string, unknown>,
         },
         tx
@@ -80,13 +80,13 @@ export const locationService = {
    */
   async setActive(id: string, active: boolean, organizationId: string, actorUserId: string) {
     return retryableTransaction(async (tx) => {
-      const existant = await tx.location.findFirst({
+      const existing = await tx.location.findFirst({
         where: { id, organization_id: organizationId },
       });
-      if (!existant) throw introuvable();
+      if (!existing) throw notFound();
 
       // Idempotent : ne pas rejouer l'action dans l'audit si l'état ne change pas.
-      if (existant.is_active === active) return existant;
+      if (existing.is_active === active) return existing;
 
       const location = await tx.location.update({ where: { id }, data: { is_active: active } });
 

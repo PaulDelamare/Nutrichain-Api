@@ -35,13 +35,13 @@ describe('iotGatewayService', () => {
   it("ne persiste que l'empreinte de la clé, jamais la clé", async () => {
     const gateway = await iotGatewayService.create('Passerelle Nord', 'org-b', 'user-1');
 
-    const persiste = vi.mocked(prisma.iotGateway.create).mock.calls[0][0].data as {
+    const persisted = vi.mocked(prisma.iotGateway.create).mock.calls[0][0].data as {
       key_hash: string;
       organization_id: string;
     };
-    expect(persiste.key_hash).toBe(hashGatewayKey(gateway.cle));
-    expect(JSON.stringify(persiste)).not.toContain(gateway.cle);
-    expect(persiste.organization_id).toBe('org-b');
+    expect(persisted.key_hash).toBe(hashGatewayKey(gateway.cle));
+    expect(JSON.stringify(persisted)).not.toContain(gateway.cle);
+    expect(persisted.organization_id).toBe('org-b');
   });
 
   it('rend une clé imprévisible, et une différente à chaque passerelle', async () => {

@@ -25,12 +25,12 @@ if (!API_KEY || !ORG_ID) {
 }
 
 const ok = (msg: string) => console.log(`  ✅ ${msg}`);
-const echec = (msg: string): never => {
+const fail = (msg: string): never => {
   throw new Error(msg);
 };
 
 /** Routes du core que le passthrough exposait, et que plus aucun client n'utilise. */
-const ROUTES_FERMEES: [string, 'POST' | 'GET', unknown][] = [
+const CLOSED_ROUTES: [string, 'POST' | 'GET', unknown][] = [
   ['delete-user', 'POST', {}],
   ['update-user', 'POST', { name: 'Pirate' }],
   ['change-email', 'POST', { newEmail: 'pirate@x.z' }],
@@ -59,30 +59,30 @@ async function main() {
     Origin: ORIGIN,
   };
 
-  for (const [action, method, body] of ROUTES_FERMEES) {
+  for (const [action, method, body] of CLOSED_ROUTES) {
     const res = await fetch(`${API_URL}/api/auth/${action}`, {
       method,
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     if (res.status !== 403) {
-      echec(`/auth/${action} répond ${res.status} au lieu de 403 — le passthrough est encore ouvert.`);
+      fail(`/auth/${action} répond ${res.status} au lieu de 403 — le passthrough est encore ouvert.`);
     }
     ok(`${method} /auth/${action} → 403`);
   }
 
   // get-session : la session ne doit se lire que par /api/me (route à nous), jamais par le core.
   const getSession = await fetch(`${API_URL}/api/auth/get-session`, { headers });
-  if (getSession.status !== 403) echec(`/auth/get-session répond ${getSession.status} au lieu de 403.`);
+  if (getSession.status !== 403) fail(`/auth/get-session répond ${getSession.status} au lieu de 403.`);
   ok('GET /auth/get-session → 403');
 
   // Non-régression : /api/me (la vraie lecture de session) et la déconnexion fonctionnent.
   const me = await fetch(`${API_URL}/api/me`, { headers });
-  if (me.status !== 200) echec(`/api/me répond ${me.status} : l'authentification est cassée.`);
+  if (me.status !== 200) fail(`/api/me répond ${me.status} : l'authentification est cassée.`);
   ok('/api/me → 200 : lecture de session intacte');
 
   const signOut = await fetch(`${API_URL}/api/auth/sign-out`, { method: 'POST', headers });
-  if (signOut.status !== 200) echec(`/auth/sign-out répond ${signOut.status} au lieu de 200.`);
+  if (signOut.status !== 200) fail(`/auth/sign-out répond ${signOut.status} au lieu de 200.`);
   ok('POST /auth/sign-out → 200 : la déconnexion fonctionne toujours');
 
   console.log('\n✅ Seuls connexion / inscription / déconnexion passent ; le reste du core est fermé.\n');

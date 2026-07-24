@@ -31,23 +31,23 @@ function assert(condition: boolean, label: string) {
   }
 }
 
-async function receptionne(uniteCode: string, suffix: string) {
+async function receive(unitCode: string, suffix: string) {
   const supplier = await prisma.supplier.findFirstOrThrow({ where: { organization_id: ORG_ID! } });
   const product = await prisma.product.findFirstOrThrow({ where: { organization_id: ORG_ID! } });
   const member = await prisma.member.findFirstOrThrow({
     where: { organizationId: ORG_ID!, role: { in: ['owner', 'admin'] } },
   });
-  const recu = await receiptService.createReceipt({
+  const received = await receiptService.createReceipt({
     organization_id: ORG_ID!,
     id_fournisseur: supplier.id,
     shipment_id: `E2E-UNITS-${Date.now()}-${suffix}`,
     id_produit: product.id,
     quantite_actuelle: 10,
-    unite_code: uniteCode,
+    unite_code: unitCode,
     statut_controle: 'OK',
     received_by: member.userId,
   });
-  return prisma.batch.findUniqueOrThrow({ where: { id: recu.batchId } });
+  return prisma.batch.findUniqueOrThrow({ where: { id: received.batchId } });
 }
 
 async function main() {
@@ -55,10 +55,10 @@ async function main() {
 
   console.log('\n[E2E] 1 — la table Unit = référentiel canonique');
   const units = (await prisma.unit.findMany({ select: { code: true } })).map((u) => u.code).sort();
-  const attendu = [...VALID_UNITS].sort();
+  const expected = [...VALID_UNITS].sort();
   assert(
-    JSON.stringify(units) === JSON.stringify(attendu),
-    `Unit = [${units.join(', ')}] (attendu [${attendu.join(', ')}])`
+    JSON.stringify(units) === JSON.stringify(expected),
+    `Unit = [${units.join(', ')}] (attendu [${expected.join(', ')}])`
   );
 
   console.log('\n[E2E] 2 — aucun lot orphelin (FK intacte)');
@@ -68,23 +68,23 @@ async function main() {
   assert(orphans.length === 0, `lots orphelins : ${JSON.stringify(orphans)}`);
 
   console.log('\n[E2E] 3-5 — réceptions dans des unités qui cassaient avant');
-  const lotKG = await receptionne('KG', 'KG');
-  created.push(lotKG.id);
-  assert(lotKG.unite_code === 'KG', 'réception en KG → lot en KG');
+  const batchKG = await receive('KG', 'KG');
+  created.push(batchKG.id);
+  assert(batchKG.unite_code === 'KG', 'réception en KG → lot en KG');
 
-  const lotMin = await receptionne('kg', 'min');
-  created.push(lotMin.id);
-  assert(lotMin.unite_code === 'KG', 'réception en `kg` → normalisée en KG (tolérance casse)');
+  const batchMin = await receive('kg', 'min');
+  created.push(batchMin.id);
+  assert(batchMin.unite_code === 'KG', 'réception en `kg` → normalisée en KG (tolérance casse)');
 
-  const lotG = await receptionne('G', 'G');
-  created.push(lotG.id);
-  assert(lotG.unite_code === 'G', 'réception en G → lot en G');
+  const batchG = await receive('G', 'G');
+  created.push(batchG.id);
+  assert(batchG.unite_code === 'G', 'réception en G → lot en G');
 
   console.log('\n[E2E] 6 — une unité hors référentiel est refusée');
   let refuse = false;
   try {
-    const lot = await receptionne('XYZ', 'bad');
-    created.push(lot.id);
+    const batch = await receive('XYZ', 'bad');
+    created.push(batch.id);
   } catch (e) {
     refuse = (e as { status?: number }).status === 400;
   }

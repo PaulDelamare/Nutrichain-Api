@@ -45,10 +45,10 @@ async function status(action: Promise<unknown>): Promise<number | 'ok'> {
 
 const stamp = Date.now();
 const batchIds: string[] = [];
-const orgsJetables: string[] = [];
+const disposableOrgs: string[] = [];
 
 async function cleanup() {
-  await prisma.organization.deleteMany({ where: { id: { in: orgsJetables } } });
+  await prisma.organization.deleteMany({ where: { id: { in: disposableOrgs } } });
   const receipts = await prisma.receipt.findMany({
     where: { organization_id: ORG_ID!, shipment_id: { startsWith: `E2E-RES-${stamp}` } },
     select: { id: true },
@@ -77,7 +77,7 @@ async function main() {
     // Le numéro vient de l'ÉTIQUETTE DU FOURNISSEUR, pas du serveur. Relire le numéro généré pour
     // le redonner au resolver serait un test qui se rassure tout seul : il passerait au vert même
     // si la réception jetait le numéro imprimé — c'est-à-dire même si la feature ne servait à rien.
-    const lot = `FRN-${stamp}`;
+    const lotNumber = `FRN-${stamp}`;
 
     const { batchId } = await receiptService.createReceipt({
       organization_id: ORG_ID!,
@@ -88,28 +88,28 @@ async function main() {
       unite_code: product.unite_reference,
       statut_controle: 'OK',
       received_by: member.userId,
-      lot_number: lot,
+      lot_number: lotNumber,
     });
     batchIds.push(batchId);
-    console.log(`   (étiquette fournisseur scannée : ${lot})\n`);
+    console.log(`   (étiquette fournisseur scannée : ${lotNumber})\n`);
 
     console.log('1 — Le lot scanné est retrouvé par le numéro de son étiquette');
-    const resolu = await batchService.resolveBatchByLotNumber(lot, ORG_ID!);
-    assert(resolu.id === batchId, `résolu sur le bon lot (${resolu.id})`);
+    const resolved = await batchService.resolveBatchByLotNumber(lotNumber, ORG_ID!);
+    assert(resolved.id === batchId, `résolu sur le bon lot (${resolved.id})`);
 
     console.log('\n2 — Retrouvé quelle que soit la casse du code saisi');
-    const enMinuscules = await batchService.resolveBatchByLotNumber(lot.toLowerCase(), ORG_ID!);
-    assert(enMinuscules.id === batchId, `« ${lot.toLowerCase()} » résout le même lot`);
+    const lowercased = await batchService.resolveBatchByLotNumber(lotNumber.toLowerCase(), ORG_ID!);
+    assert(lowercased.id === batchId, `« ${lotNumber.toLowerCase()} » résout le même lot`);
 
     console.log('\n3 — Un numéro inconnu répond 404 (le client bascule sur une réception)');
-    const inconnu = await status(batchService.resolveBatchByLotNumber('LOT-INEXISTANT', ORG_ID!));
-    assert(inconnu === 404, `numéro inconnu → ${inconnu}`);
+    const unknown = await status(batchService.resolveBatchByLotNumber('LOT-INEXISTANT', ORG_ID!));
+    assert(unknown === 404, `numéro inconnu → ${unknown}`);
 
     console.log("\n4 — Le lot d'une AUTRE organisation n'est jamais résolu");
     // La base de démo n'a qu'une organisation : sans une seconde, le cloisonnement n'est pas
     // EXERCÉ, il est seulement supposé. On en crée donc une, jetable — un test qu'on saute est un
     // test qui ment.
-    const autreOrg = await prisma.organization.create({
+    const otherOrg = await prisma.organization.create({
       data: {
         id: `e2e-org-${stamp}`,
         name: `E2E Concurrent ${stamp}`,
@@ -117,18 +117,18 @@ async function main() {
         createdAt: new Date(),
       },
     });
-    orgsJetables.push(autreOrg.id);
+    disposableOrgs.push(otherOrg.id);
 
-    const fuite = await status(batchService.resolveBatchByLotNumber(lot, autreOrg.id));
+    const leak = await status(batchService.resolveBatchByLotNumber(lotNumber, otherOrg.id));
     assert(
-      fuite === 404,
-      `le concurrent scanne « ${lot} » et n'obtient rien → ${fuite} (404 attendu)`
+      leak === 404,
+      `le concurrent scanne « ${lotNumber} » et n'obtient rien → ${leak} (404 attendu)`
     );
 
     console.log('\n5 — La fiche résolue est celle qu’on ouvre par id (même écran client)');
-    const parId = await batchService.getBatchById(batchId, ORG_ID!);
+    const byId = await batchService.getBatchById(batchId, ORG_ID!);
     assert(
-      JSON.stringify(resolu) === JSON.stringify(parId),
+      JSON.stringify(resolved) === JSON.stringify(byId),
       'résolution par numéro et ouverture par id renvoient la même fiche'
     );
   } catch (err) {
@@ -149,10 +149,10 @@ async function main() {
     }
 
     // L'organisation jetable n'était comptée nulle part : elle pouvait survivre en silence.
-    const orgsFantomes = await prisma.organization.count({ where: { id: { in: orgsJetables } } });
-    console.log(`[E2E] Organisations jetables restantes : ${orgsFantomes} (doit être 0)`);
-    if (orgsFantomes > 0) {
-      failures.push(`fuite de données : ${orgsFantomes} organisation(s) jetable(s) en base`);
+    const ghostOrgs = await prisma.organization.count({ where: { id: { in: disposableOrgs } } });
+    console.log(`[E2E] Organisations jetables restantes : ${ghostOrgs} (doit être 0)`);
+    if (ghostOrgs > 0) {
+      failures.push(`fuite de données : ${ghostOrgs} organisation(s) jetable(s) en base`);
     }
     await prisma.$disconnect();
   }

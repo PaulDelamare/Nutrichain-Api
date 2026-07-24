@@ -41,7 +41,7 @@ interface Fixtures {
   productId: string;
   uniteCode: string;
   userId: string;
-  dureeConservation: number;
+  shelfLife: number;
 }
 
 async function setup(): Promise<Fixtures> {
@@ -57,7 +57,7 @@ async function setup(): Promise<Fixtures> {
     productId: product.id,
     uniteCode: product.unite_reference,
     userId: member.userId,
-    dureeConservation: product.duree_conservation_defaut,
+    shelfLife: product.duree_conservation_defaut,
   };
 }
 
@@ -106,11 +106,11 @@ async function main() {
     f = await setup();
 
     console.log('1 — Le numéro de lot du fournisseur est celui enregistré');
-    const lotFournisseur = `FRN-${stamp}`;
-    const id1 = await receive(f, { lot_number: lotFournisseur, date_peremption: '2026-12-20' }, 1);
+    const supplierLot = `FRN-${stamp}`;
+    const id1 = await receive(f, { lot_number: supplierLot, date_peremption: '2026-12-20' }, 1);
     const batch1 = await prisma.batch.findUniqueOrThrow({ where: { id: id1 } });
     assert(
-      batch1.lot_number === lotFournisseur,
+      batch1.lot_number === supplierLot,
       `le lot porte le numéro imprimé (${batch1.lot_number})`
     );
 
@@ -123,36 +123,36 @@ async function main() {
     console.log("\n3 — Sans DLC imprimée, la durée de conservation du produit prend le relais");
     const id2 = await receive(f, { lot_number: `FRN-${stamp}-B` }, 2);
     const batch2 = await prisma.batch.findUniqueOrThrow({ where: { id: id2 } });
-    const attendu = new Date();
-    attendu.setUTCDate(attendu.getUTCDate() + f.dureeConservation);
-    attendu.setUTCHours(23, 59, 59, 999);
+    const expected = new Date();
+    expected.setUTCDate(expected.getUTCDate() + f.shelfLife);
+    expected.setUTCHours(23, 59, 59, 999);
     assert(
       batch2.date_peremption !== null,
       'un lot reçu ne naît JAMAIS sans DLC (la garde « lot périmé » cesse d’être du code mort)'
     );
     assert(
-      batch2.date_peremption?.toISOString() === attendu.toISOString(),
-      `DLC de repli = ${batch2.date_peremption?.toISOString()} (J+${f.dureeConservation})`
+      batch2.date_peremption?.toISOString() === expected.toISOString(),
+      `DLC de repli = ${batch2.date_peremption?.toISOString()} (J+${f.shelfLife})`
     );
 
     console.log('\n4 — Recevoir deux fois le même numéro de lot est refusé, sans doublon');
-    const avantDoublon = await prisma.batch.count({ where: { organization_id: ORG_ID } });
-    let refus: unknown;
+    const beforeDuplicate = await prisma.batch.count({ where: { organization_id: ORG_ID } });
+    let rejection: unknown;
     try {
-      await receive(f, { lot_number: lotFournisseur }, 3);
+      await receive(f, { lot_number: supplierLot }, 3);
     } catch (err) {
-      refus = err;
+      rejection = err;
     }
     assert(
-      refus instanceof APIError && refus.status === 409,
+      rejection instanceof APIError && rejection.status === 409,
       `le second envoi est refusé en 409 (reçu : ${
-        refus instanceof APIError ? refus.status : String(refus)
+        rejection instanceof APIError ? rejection.status : String(rejection)
       })`
     );
-    const apresDoublon = await prisma.batch.count({ where: { organization_id: ORG_ID } });
+    const afterDuplicate = await prisma.batch.count({ where: { organization_id: ORG_ID } });
     assert(
-      apresDoublon === avantDoublon,
-      `aucun lot en double n'a été créé (${avantDoublon} → ${apresDoublon})`
+      afterDuplicate === beforeDuplicate,
+      `aucun lot en double n'a été créé (${beforeDuplicate} → ${afterDuplicate})`
     );
 
     console.log("\n5 — Sans numéro imprimé, le serveur génère comme avant");

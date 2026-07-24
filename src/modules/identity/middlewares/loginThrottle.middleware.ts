@@ -58,32 +58,32 @@ export const loginThrottle = catchAsync(
 
     // Incrément ATOMIQUE (`ON CONFLICT DO UPDATE ... failed_count + 1` côté PostgreSQL) : deux
     // tentatives concurrentes ne peuvent pas s'écraser l'une l'autre.
-    const tentative = await prisma.loginAttempt.upsert({
+    const attempt = await prisma.loginAttempt.upsert({
       where: { email_hash: emailHash },
       create: { email_hash: emailHash, failed_count: 1, first_failed_at: now },
       update: { failed_count: { increment: 1 } },
     });
 
-    if (tentative.locked_until && tentative.locked_until > now) {
-      throw verrouActif(tentative.locked_until, now);
+    if (attempt.locked_until && attempt.locked_until > now) {
+      throw activeLock(attempt.locked_until, now);
     }
 
-    const fenetreExpiree = now.getTime() - tentative.first_failed_at.getTime() > minutes(WINDOW_MINUTES);
+    const windowExpired = now.getTime() - attempt.first_failed_at.getTime() > minutes(WINDOW_MINUTES);
 
-    if (fenetreExpiree) {
+    if (windowExpired) {
       // Le verrou précédent est retombé : on repart d'une ardoise vierge plutôt que de laisser un
       // compteur ancien re-verrouiller au premier échec suivant.
       await prisma.loginAttempt.update({
         where: { email_hash: emailHash },
         data: { failed_count: 1, first_failed_at: now, locked_until: null },
       });
-    } else if (tentative.failed_count >= MAX_FAILED_ATTEMPTS) {
+    } else if (attempt.failed_count >= MAX_FAILED_ATTEMPTS) {
       const lockedUntil = new Date(now.getTime() + minutes(LOCK_MINUTES));
       await prisma.loginAttempt.update({
         where: { email_hash: emailHash },
         data: { locked_until: lockedUntil },
       });
-      throw verrouActif(lockedUntil, now);
+      throw activeLock(lockedUntil, now);
     }
 
     // Succès : l'ardoise est effacée. En cas d'échec, l'incrément déjà écrit fait foi.
@@ -99,14 +99,14 @@ export const loginThrottle = catchAsync(
   }
 );
 
-const verrouActif = (lockedUntil: Date, now: Date): APIError => {
-  const reste = Math.max(1, Math.ceil((lockedUntil.getTime() - now.getTime()) / 60000));
+const activeLock = (lockedUntil: Date, now: Date): APIError => {
+  const remaining = Math.max(1, Math.ceil((lockedUntil.getTime() - now.getTime()) / 60000));
 
   return new APIError(429, {
     error: [
       {
         field: 'auth',
-        message: `Trop de tentatives de connexion. Réessayez dans ${reste} minute${reste > 1 ? 's' : ''}.`,
+        message: `Trop de tentatives de connexion. Réessayez dans ${remaining} minute${remaining > 1 ? 's' : ''}.`,
       },
     ],
   });

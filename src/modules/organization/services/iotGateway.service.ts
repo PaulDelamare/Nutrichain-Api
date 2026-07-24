@@ -5,13 +5,13 @@ import { auditService } from '../../../shared/utils/audit/audit.service';
 import { retryableTransaction } from '../../../shared/utils/db/withWriteConflictRetry';
 import { hashGatewayKey } from '../../../shared/utils/iotGateway/iotGateway';
 
-const introuvable = () =>
+const notFound = () =>
   new APIError(404, {
     error: [{ field: 'id', message: 'Passerelle introuvable ou accès refusé.' }],
   });
 
 /** 48 octets : la clé n'est jamais devinable, et ne transite pas en base64 non-URL-safe. */
-const genererCle = () => randomBytes(48).toString('base64url');
+const generateKey = () => randomBytes(48).toString('base64url');
 
 /**
  * Passerelles IoT d'une organisation.
@@ -32,13 +32,13 @@ export const iotGatewayService = {
   },
 
   async create(nom: string, organizationId: string, actorUserId: string) {
-    const cle = genererCle();
+    const key = generateKey();
 
     // Création et audit dans la MÊME transaction : sinon un échec du chaînage WORM laisserait
     // exister une clé capable de mettre des lots en quarantaine, sans aucune trace de qui l'a créée.
     const gateway = await retryableTransaction(async (tx) => {
       const created = await tx.iotGateway.create({
-        data: { organization_id: organizationId, nom, key_hash: hashGatewayKey(cle) },
+        data: { organization_id: organizationId, nom, key_hash: hashGatewayKey(key) },
         select: { id: true, nom: true, created_at: true },
       });
 
@@ -59,20 +59,20 @@ export const iotGatewayService = {
       return created;
     });
 
-    return { ...gateway, cle };
+    return { ...gateway, cle: key };
   },
 
   async revoke(id: string, organizationId: string, actorUserId: string) {
     return retryableTransaction(async (tx) => {
-      const existante = await tx.iotGateway.findFirst({
+      const existing = await tx.iotGateway.findFirst({
         where: { id, organization_id: organizationId },
         select: { id: true, nom: true, revoked_at: true },
       });
-      if (!existante) throw introuvable();
+      if (!existing) throw notFound();
 
       // Idempotent : révoquer deux fois ne rejoue pas l'action dans l'audit. Le contrôle est DANS la
       // transaction — hors d'elle, deux révocations simultanées écrivaient deux lignes d'audit.
-      if (existante.revoked_at) return existante;
+      if (existing.revoked_at) return existing;
 
       const gateway = await tx.iotGateway.update({
         where: { id },

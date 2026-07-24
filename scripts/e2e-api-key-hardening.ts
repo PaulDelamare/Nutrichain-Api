@@ -52,16 +52,16 @@ async function post(path: string, headers: Record<string, string>, body: unknown
 }
 
 async function main() {
-  const cle = { 'x-api-key': API_KEY! };
+  const key = { 'x-api-key': API_KEY! };
 
   console.log('\n🔐 La clé API seule n’ouvre plus aucune route métier\n');
 
-  const ecriture = await post('/api/logistics/receipts', cle, {
+  const write = await post('/api/logistics/receipts', key, {
     ...RECEIPT,
     shipment_id: `E2E-CLE-${Date.now()}`,
   });
-  if (ecriture.status !== 401) {
-    fail(`Réception avec la seule clé : attendu 401, reçu ${ecriture.status}`);
+  if (write.status !== 401) {
+    fail(`Réception avec la seule clé : attendu 401, reçu ${write.status}`);
   }
   ok('Réception refusée (401) — écrire exige un utilisateur authentifié');
 
@@ -74,23 +74,23 @@ async function main() {
     fail('Compte propriétaire introuvable : lance `npm run seed` avant cette preuve.');
   }
 
-  const usurpation = await post('/api/logistics/receipts', cle, {
+  const impersonation = await post('/api/logistics/receipts', key, {
     ...RECEIPT,
     shipment_id: `E2E-USURP-${Date.now()}`,
     actorUserId: owner.id,
   });
-  if (usurpation.status !== 401) {
-    fail(`Réception « signée du patron » : attendu 401, reçu ${usurpation.status}`);
+  if (impersonation.status !== 401) {
+    fail(`Réception « signée du patron » : attendu 401, reçu ${impersonation.status}`);
   }
   ok('Réception au nom du propriétaire refusée (401) — même acteur légitime déclaré');
 
-  const annuaire = await fetch(`${API_URL}/api/organization/members`, { headers: cle });
-  if (annuaire.status !== 401) {
-    fail(`Annuaire des salariés : attendu 401, reçu ${annuaire.status}`);
+  const directory = await fetch(`${API_URL}/api/organization/members`, { headers: key });
+  if (directory.status !== 401) {
+    fail(`Annuaire des salariés : attendu 401, reçu ${directory.status}`);
   }
   ok('Annuaire nominatif des salariés refusé (401) — donnée personnelle, enjeu RGPD');
 
-  const catalogue = await fetch(`${API_URL}/api/connectors/exports/events`, { headers: cle });
+  const catalogue = await fetch(`${API_URL}/api/connectors/exports/events`, { headers: key });
   if (catalogue.status !== 401) {
     fail(`Export EPCIS : attendu 401, reçu ${catalogue.status}`);
   }
@@ -99,14 +99,14 @@ async function main() {
   // Le pire cas, longtemps ignoré : une trame de télémétrie ne décrit pas, elle DÉCIDE. Elle met
   // en quarantaine tous les lots du matériel visé et lève une alerte PANIC. Avec la clé du mobile,
   // un inconnu arrêtait la production. Les capteurs ont désormais leur propre secret (IOT_API_KEY).
-  const fausseTrame = await post('/api/telemetry/ping', cle, {
+  const fakeFrame = await post('/api/telemetry/ping', key, {
     sensor_id: 'E2E-SENSOR-1',
     temperature: 40,
     humidity: 60,
     battery_level: 88,
   });
-  if (fausseTrame.status !== 401) {
-    fail(`Trame capteur avec la clé de l'application : attendu 401, reçu ${fausseTrame.status}`);
+  if (fakeFrame.status !== 401) {
+    fail(`Trame capteur avec la clé de l'application : attendu 401, reçu ${fakeFrame.status}`);
   }
   ok("Trame capteur refusée (401) — la clé de l'app ne met plus la production en quarantaine");
 
@@ -119,25 +119,25 @@ async function main() {
   });
   ok('Connexion d’un opérateur — la clé sert bien à /api/auth/*');
 
-  const legitime = await post(
+  const legitimate = await post(
     '/api/logistics/receipts',
     { Authorization: `Bearer ${session.token}` },
     { ...RECEIPT, shipment_id: `E2E-OK-${Date.now()}` }
   );
-  if (legitime.status !== 201) {
-    fail(`Réception d'un opérateur connecté : attendu 201, reçu ${legitime.status}`);
+  if (legitimate.status !== 201) {
+    fail(`Réception d'un opérateur connecté : attendu 201, reçu ${legitimate.status}`);
   }
   ok('Réception d’un opérateur connecté acceptée (201)');
 
-  const capteur = await post(
+  const sensor = await post(
     '/api/telemetry/ping',
     { 'x-api-key': IOT_API_KEY! },
     { sensor_id: 'E2E-SENSOR-1', temperature: 4.2, humidity: 60, battery_level: 88 }
   );
-  if (capteur.status >= 400) {
-    fail(`Ingestion capteur : attendu un succès, reçu ${capteur.status}`);
+  if (sensor.status >= 400) {
+    fail(`Ingestion capteur : attendu un succès, reçu ${sensor.status}`);
   }
-  ok(`Ingestion d’un capteur acceptée (${capteur.status}) — une machine dépose des mesures`);
+  ok(`Ingestion d’un capteur acceptée (${sensor.status}) — une machine dépose des mesures`);
 
   console.log('\n🎉 La clé identifie une application. Seule une session autorise une action.\n');
 }

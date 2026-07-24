@@ -15,18 +15,18 @@ const KEY = process.env.API_KEY!;
 const ORIGIN = process.env.FRONTEND_URL ?? 'http://localhost:5173';
 
 const ok = (m: string) => console.log(`  ✅ ${m}`);
-const echec = (m: string): never => {
+const fail = (m: string): never => {
   throw new Error(m);
 };
 
-async function connexion(email: string): Promise<string> {
+async function signIn(email: string): Promise<string> {
   const res = await fetch(`${API}/auth/sign-in/email`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-api-key': KEY, Origin: ORIGIN },
     body: JSON.stringify({ email, password: 'NutriChain!2026' }),
   });
   const d = (await res.json()) as { token?: string };
-  if (!res.ok || !d.token) echec(`Connexion ${email} impossible (${res.status})`);
+  if (!res.ok || !d.token) fail(`Connexion ${email} impossible (${res.status})`);
   return d.token!;
 }
 
@@ -45,16 +45,16 @@ const call = (token: string, path: string, method = 'GET', body?: unknown) =>
 async function main() {
   console.log('\n🛒 CRUD Client + Produit\n');
 
-  const admin = await connexion('admin@nutrichain.local');
-  const operator = await connexion('operator@nutrichain.local');
+  const admin = await signIn('admin@nutrichain.local');
+  const operator = await signIn('operator@nutrichain.local');
   const stamp = Date.now();
 
   // 1. Opérateur refusé sur les écritures
-  const refus = await call(operator, '/organization/customers', 'POST', {
+  const rejection = await call(operator, '/organization/customers', 'POST', {
     nom_enseigne: 'Pirate',
     adresse_livraison: '1 rue',
   });
-  if (refus.status !== 403) echec(`operator a pu créer un client (${refus.status})`);
+  if (rejection.status !== 403) fail(`operator a pu créer un client (${rejection.status})`);
   ok('Création de client refusée à un opérateur (403)');
 
   // 2. Admin crée un client
@@ -63,7 +63,7 @@ async function main() {
     adresse_livraison: '12 avenue des Halles',
     email: 'contact@enseigne.fr',
   });
-  if (cC.status !== 201) echec(`Création client échouée (${cC.status})`);
+  if (cC.status !== 201) fail(`Création client échouée (${cC.status})`);
   const customerId = (await cC.json()).data.id as string;
   ok('Client créé par un admin');
 
@@ -76,7 +76,7 @@ async function main() {
     seuil_alerte_stock: 10,
     unite_reference: 'KG',
   });
-  if (cP.status !== 201) echec(`Création produit échouée (${cP.status})`);
+  if (cP.status !== 201) fail(`Création produit échouée (${cP.status})`);
   const productId = (await cP.json()).data.id as string;
   ok('Produit créé par un admin');
 
@@ -89,7 +89,7 @@ async function main() {
     seuil_alerte_stock: 5,
     unite_reference: 'KG',
   });
-  if (dup.status !== 409) echec(`GTIN dupliqué mal géré (${dup.status})`);
+  if (dup.status !== 409) fail(`GTIN dupliqué mal géré (${dup.status})`);
   ok('GTIN déjà utilisé → 409');
 
   // 5. Audit tracé
@@ -99,7 +99,7 @@ async function main() {
       action: { in: ['CREATE_CUSTOMER', 'CREATE_PRODUCT'] },
     },
   });
-  if (audits !== 2) echec(`Créations non journalisées (${audits}/2)`);
+  if (audits !== 2) fail(`Créations non journalisées (${audits}/2)`);
   ok('Créations journalisées dans l’audit');
 
   // 6. Archivage → disparaît des listes par défaut
@@ -108,7 +108,7 @@ async function main() {
 
   const clients = await (await call(admin, '/organization/customers')).json();
   if (clients.data.some((c: { id: string }) => c.id === customerId))
-    echec('Client archivé encore dans la liste par défaut');
+    fail('Client archivé encore dans la liste par défaut');
   ok('Client archivé : absent de la liste par défaut');
 
   // 7. LE POINT CLÉ : expédier vers un client archivé, recevoir un produit archivé → REFUS
@@ -120,7 +120,7 @@ async function main() {
     // Le client est vérifié AVANT les lots dans le service : un lot bidon suffit à atteindre la garde.
     lots: [{ id_lot: '00000000-0000-4000-8000-000000000000', quantite_expediee: 1 }],
   });
-  if (exp.status !== 409) echec(`Expédition vers client archivé mal refusée (${exp.status})`);
+  if (exp.status !== 409) fail(`Expédition vers client archivé mal refusée (${exp.status})`);
   ok('Expédition vers un client archivé refusée (409)');
 
   const rec = await call(admin, '/logistics/receipts', 'POST', {
@@ -131,7 +131,7 @@ async function main() {
     statut_controle: 'OK',
     shipment_id: `E2E-R-${stamp}`,
   });
-  if (rec.status !== 409) echec(`Réception d'un produit archivé mal refusée (${rec.status})`);
+  if (rec.status !== 409) fail(`Réception d'un produit archivé mal refusée (${rec.status})`);
   ok('Réception d’un produit archivé refusée (409)');
 
   // 8. Réactivation

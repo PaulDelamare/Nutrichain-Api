@@ -53,7 +53,7 @@ interface Fixtures {
   supplierId: string;
   customerId: string;
   productId: string;
-  uniteCode: string;
+  unitCode: string;
   equipmentId: string;
   userId: string;
   /** Décideur qualité, DISTINCT de `userId` : on ne libère pas le lot qu'on a soi-même enregistré. */
@@ -119,7 +119,7 @@ async function setup(): Promise<Fixtures> {
     supplierId: supplier.id,
     customerId: customer.id,
     productId: product.id,
-    uniteCode: product.unite_reference,
+    unitCode: product.unite_reference,
     equipmentId: equipment.id,
     userId: member.userId,
     qualityUserId: qualityMember.userId,
@@ -166,7 +166,7 @@ async function main() {
       statut_controle: 'NONCONFORME',
       received_by: fixtures.userId,
       quantite_actuelle: 100,
-      unite_code: fixtures.uniteCode,
+      unite_code: fixtures.unitCode,
     });
     fixtures.createdBatchIds.push(received.batchId);
 
@@ -175,20 +175,20 @@ async function main() {
 
     // === 2. Transformation refusée ===
     console.log('\nScénario 2 — transformation d un lot bloqué refusée');
-    const transfoRejected = await expectRejected(
+    const transformationRejected = await expectRejected(
       transformationService.createTransformation({
         organization_id: ORG_ID!,
         id_produit_fini: fixtures.productId,
         id_materiel: fixtures.equipmentId,
         quantite_produite: 10,
-        unite_code: fixtures.uniteCode,
+        unite_code: fixtures.unitCode,
         created_by: fixtures.userId,
         inputs: [
-          { id_lot_parent: received.batchId, quantite_prelevee: 10, unite: fixtures.uniteCode, lot_parent_epuise: false },
+          { id_lot_parent: received.batchId, quantite_prelevee: 10, unite: fixtures.unitCode, lot_parent_epuise: false },
         ],
       })
     );
-    assert(transfoRejected, 'transformation du lot BLOQUE refusée');
+    assert(transformationRejected, 'transformation du lot BLOQUE refusée');
 
     // === 3. Expédition refusée ===
     console.log('\nScénario 3 — expédition d un lot bloqué refusée');

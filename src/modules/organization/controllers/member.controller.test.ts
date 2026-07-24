@@ -77,8 +77,8 @@ describe('MemberController', () => {
     it('délègue à sendSuccess le code 200 et le membre renvoyé par le service', async () => {
       // sendSuccess est mocké : on vérifie le contrat passé (code, message, données), pas
       // l'écriture HTTP réelle, portée par ce util partagé et testée ailleurs.
-      const membre = { id: 'member-1', role: 'operator' };
-      vi.mocked(memberService.changeRole).mockResolvedValue(membre as never);
+      const member = { id: 'member-1', role: 'operator' };
+      vi.mocked(memberService.changeRole).mockResolvedValue(member as never);
       const res = {} as Response;
       const req = {
         params: { id: 'member-1' },
@@ -89,7 +89,7 @@ describe('MemberController', () => {
 
       await changeMemberRoleController(req, res);
 
-      expect(sendSuccess).toHaveBeenCalledWith(res, 200, 'Rôle du membre mis à jour', membre);
+      expect(sendSuccess).toHaveBeenCalledWith(res, 200, 'Rôle du membre mis à jour', member);
     });
   });
 

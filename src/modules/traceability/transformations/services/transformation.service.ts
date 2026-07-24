@@ -110,18 +110,18 @@ async function runTransformation(
 ): Promise<TransformationResult> {
       // 0. Le produit fini doit appartenir à l'organisation (anti-référence cross-tenant,
       // symétrique aux contrôles fournisseur/client) — son GTIN sert aussi à l'URN LGTIN.
-      const produitFini = await tx.product.findFirst({
+      const finishedProduct = await tx.product.findFirst({
         where: { id: data.id_produit_fini, organization_id: data.organization_id },
         select: { code_gtin: true, is_active: true },
       });
-      if (!produitFini) {
+      if (!finishedProduct) {
         throw new APIError(404, {
           error: [
             { field: 'id_produit_fini', message: 'Produit fini introuvable ou accès refusé.' },
           ],
         });
       }
-      if (!produitFini.is_active) {
+      if (!finishedProduct.is_active) {
         throw new APIError(409, {
           error: [
             {
@@ -137,11 +137,11 @@ async function runTransformation(
       // `organization_id` ET `id_materiel_actuel`. Un lot fini rattaché au matériel d'une AUTRE
       // organisation n'est donc bloqué par personne — ni par la sienne (le matériel n'y est pas),
       // ni par l'autre (le lot n'y est pas). Il échappe définitivement au rappel.
-      const materiel = await tx.equipment.findFirst({
+      const equipment = await tx.equipment.findFirst({
         where: { id: data.id_materiel, organization_id: data.organization_id },
         select: { id: true },
       });
-      if (!materiel) {
+      if (!equipment) {
         throw new APIError(404, {
           error: [{ field: 'id_materiel', message: 'Matériel introuvable ou accès refusé.' }],
         });
@@ -209,7 +209,7 @@ async function runTransformation(
       }
 
       // 2. Création du lot enfant (Produit Fini)
-      const lotEnfant = await tx.batch.create({
+      const childBatch = await tx.batch.create({
         data: {
           organization_id: data.organization_id,
           lot_number: gs1Utils.generateLotNumber(),
@@ -229,7 +229,7 @@ async function runTransformation(
       // 3. Création de l'entête de transformation
       const transformation = await tx.transformation.create({
         data: {
-          id_lot_enfant: lotEnfant.id,
+          id_lot_enfant: childBatch.id,
           id_produit_fini: data.id_produit_fini,
           id_user: data.created_by,
           id_materiel: data.id_materiel,
@@ -319,10 +319,10 @@ async function runTransformation(
           },
         });
 
-        const newQuantite = currentParent.quantite_actuelle
+        const newQuantity = currentParent.quantite_actuelle
           .minus(input.quantite_prelevee)
           .toNumber();
-        const newStatut = isExhausted ? 'EPUISE' : 'EN_STOCK';
+        const newStatus = isExhausted ? 'EPUISE' : 'EN_STOCK';
 
         await auditService.logAction(
           {
@@ -335,7 +335,7 @@ async function runTransformation(
               quantite: currentParent.quantite_actuelle.toNumber(),
               statut: currentParent.statut,
             },
-            newValue: { quantite: newQuantite, statut: newStatut },
+            newValue: { quantite: newQuantity, statut: newStatus },
           },
           tx
         );
@@ -344,7 +344,7 @@ async function runTransformation(
       // 5. Mouvement de stock pour le nouveau lot (Entrée par transformation)
       await tx.batch_Mouvement.create({
         data: {
-          id_lot: lotEnfant.id,
+          id_lot: childBatch.id,
           type_action: MOVEMENT_TYPES.TRANSFORMATION_IN,
           quantite: data.quantite_produite,
           unite: data.unite_code,
@@ -377,8 +377,8 @@ async function runTransformation(
               {
                 epcClass: gs1Utils.buildLgtinUrn(
                   gs1Prefix,
-                  produitFini.code_gtin,
-                  lotEnfant.lot_number
+                  finishedProduct.code_gtin,
+                  childBatch.lot_number
                 ),
                 quantity: data.quantite_produite,
                 uom: data.unite_code,
@@ -398,7 +398,7 @@ async function runTransformation(
           userId: data.created_by,
           action: 'TRANSFORM_CREATE',
           entity: 'Batch',
-          entityId: lotEnfant.id,
+          entityId: childBatch.id,
           newValue: { produit: data.id_produit_fini, quantite: data.quantite_produite },
         },
         tx
@@ -406,6 +406,6 @@ async function runTransformation(
 
       return {
         transformation_id: transformation.id,
-        lot_enfant_id: lotEnfant.id,
+        lot_enfant_id: childBatch.id,
       };
 }

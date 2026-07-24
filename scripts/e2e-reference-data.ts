@@ -15,18 +15,18 @@ const KEY = process.env.API_KEY!;
 const ORIGIN = process.env.FRONTEND_URL ?? 'http://localhost:5173';
 
 const ok = (m: string) => console.log(`  ✅ ${m}`);
-const echec = (m: string): never => {
+const fail = (m: string): never => {
   throw new Error(m);
 };
 
-async function connexion(email: string): Promise<string> {
+async function signIn(email: string): Promise<string> {
   const res = await fetch(`${API}/auth/sign-in/email`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-api-key': KEY, Origin: ORIGIN },
     body: JSON.stringify({ email, password: 'NutriChain!2026' }),
   });
   const d = (await res.json()) as { token?: string };
-  if (!res.ok || !d.token) echec(`Connexion ${email} impossible (${res.status})`);
+  if (!res.ok || !d.token) fail(`Connexion ${email} impossible (${res.status})`);
   return d.token!;
 }
 
@@ -45,17 +45,17 @@ const call = (token: string, path: string, method = 'GET', body?: unknown) =>
 async function main() {
   console.log('\n🏭 CRUD données de référence — fournisseur & emplacement\n');
 
-  const admin = await connexion('admin@nutrichain.local');
-  const operator = await connexion('operator@nutrichain.local');
+  const admin = await signIn('admin@nutrichain.local');
+  const operator = await signIn('operator@nutrichain.local');
 
-  const cree: string[] = [];
+  const created: string[] = [];
 
   // 1. Un opérateur ne configure pas : 403 sur les écritures
-  const refus = await call(operator, '/organization/suppliers', 'POST', {
+  const rejection = await call(operator, '/organization/suppliers', 'POST', {
     nom_ferme: 'Ferme Pirate',
     adresse_siege: '1 rue',
   });
-  if (refus.status !== 403) echec(`Un operator a pu créer un fournisseur (${refus.status})`);
+  if (rejection.status !== 403) fail(`Un operator a pu créer un fournisseur (${rejection.status})`);
   ok('Création de fournisseur refusée à un opérateur (403)');
 
   // 2. L'admin crée un fournisseur et un emplacement
@@ -64,16 +64,16 @@ async function main() {
     adresse_siege: '2 chemin des prés',
     type_produit: 'Lait cru',
   });
-  if (cS.status !== 201) echec(`Création fournisseur échouée (${cS.status})`);
+  if (cS.status !== 201) fail(`Création fournisseur échouée (${cS.status})`);
   const supplierId = (await cS.json()).data.id as string;
-  cree.push(supplierId);
+  created.push(supplierId);
   ok('Fournisseur créé par un admin');
 
   const cL = await call(admin, '/organization/locations', 'POST', {
     nom: `Quai e2e ${Date.now()}`,
     type: 'RECEPTION',
   });
-  if (cL.status !== 201) echec(`Création emplacement échouée (${cL.status})`);
+  if (cL.status !== 201) fail(`Création emplacement échouée (${cL.status})`);
   const locationId = (await cL.json()).data.id as string;
   ok('Emplacement créé par un admin');
 
@@ -81,32 +81,32 @@ async function main() {
   const auditCount = await prisma.audit_Log.count({
     where: { entity: 'Supplier', entity_id: supplierId, action: 'CREATE_SUPPLIER' },
   });
-  if (auditCount !== 1) echec(`Création fournisseur non journalisée (${auditCount})`);
+  if (auditCount !== 1) fail(`Création fournisseur non journalisée (${auditCount})`);
   ok("Création journalisée dans l'audit");
 
   // 4. Édition (multi-tenancy : par son org, via findFirst)
   const upd = await call(admin, `/organization/suppliers/${supplierId}`, 'PATCH', {
     contact_qualite: 'qualite@ferme.fr',
   });
-  if (upd.status !== 200) echec(`Édition échouée (${upd.status})`);
+  if (upd.status !== 200) fail(`Édition échouée (${upd.status})`);
   ok('Fournisseur édité');
 
   // 5. Archivage → disparaît de la liste par défaut, reste avec includeArchived
   const arch = await call(admin, `/organization/suppliers/${supplierId}/active`, 'PATCH', {
     active: false,
   });
-  if (arch.status !== 200) echec(`Archivage échoué (${arch.status})`);
+  if (arch.status !== 200) fail(`Archivage échoué (${arch.status})`);
 
-  const listeDefaut = await (await call(admin, '/organization/suppliers')).json();
-  if (listeDefaut.data.some((s: { id: string }) => s.id === supplierId))
-    echec('Le fournisseur archivé apparaît encore dans la liste par défaut');
+  const defaultList = await (await call(admin, '/organization/suppliers')).json();
+  if (defaultList.data.some((s: { id: string }) => s.id === supplierId))
+    fail('Le fournisseur archivé apparaît encore dans la liste par défaut');
   ok('Fournisseur archivé : absent de la liste par défaut');
 
-  const listeArchivees = await (
+  const archivedList = await (
     await call(admin, '/organization/suppliers?includeArchived=true')
   ).json();
-  if (!listeArchivees.data.some((s: { id: string }) => s.id === supplierId))
-    echec('Le fournisseur archivé est invisible même avec includeArchived');
+  if (!archivedList.data.some((s: { id: string }) => s.id === supplierId))
+    fail('Le fournisseur archivé est invisible même avec includeArchived');
   ok('Fournisseur archivé : visible avec includeArchived (pour réactivation)');
 
   // 6. LE POINT CLÉ : recevoir d'un fournisseur archivé est REFUSÉ (garde d'écriture)
@@ -119,14 +119,14 @@ async function main() {
     shipment_id: `E2E-${Date.now()}`,
   });
   if (recArch.status !== 409)
-    echec(`Réception sur fournisseur archivé acceptée ou mal refusée (${recArch.status})`);
+    fail(`Réception sur fournisseur archivé acceptée ou mal refusée (${recArch.status})`);
   ok('Réception refusée sur un fournisseur archivé (409) — la désactivation a un effet réel');
 
   // 7. Réactivation
   const react = await call(admin, `/organization/suppliers/${supplierId}/active`, 'PATCH', {
     active: true,
   });
-  if (react.status !== 200) echec(`Réactivation échouée (${react.status})`);
+  if (react.status !== 200) fail(`Réactivation échouée (${react.status})`);
   ok('Fournisseur réactivé');
 
   // Nettoyage

@@ -23,7 +23,7 @@ vi.mock('../../../shared/configs/prismaClient.config', () => {
   return { prisma: mock, bdd: mock };
 });
 
-const trame = { sensor_id: 'S', temperature: 4, humidity: 50, battery_level: 80 };
+const frame = { sensor_id: 'S', temperature: 4, humidity: 50, battery_level: 80 };
 
 describe('POST /api/telemetry/ping — garde multi-tenant réelle (machineAuth)', () => {
   beforeEach(() => {
@@ -36,13 +36,13 @@ describe('POST /api/telemetry/ping — garde multi-tenant réelle (machineAuth)'
   it("clé non enregistrée comme passerelle → 401, même si c'est celle du .env", async () => {
     vi.mocked(prisma.iotGateway.findFirst).mockResolvedValue(null as never);
 
-    const res = await request(app).post('/api/telemetry/ping').set('x-api-key', 'cle-env').send(trame);
+    const res = await request(app).post('/api/telemetry/ping').set('x-api-key', 'cle-env').send(frame);
 
     expect(res.status).toBe(401);
   });
 
   it('aucune clé → 401', async () => {
-    const res = await request(app).post('/api/telemetry/ping').send(trame);
+    const res = await request(app).post('/api/telemetry/ping').send(frame);
 
     expect(res.status).toBe(401);
     expect(prisma.iotGateway.findFirst).not.toHaveBeenCalled();
@@ -62,7 +62,7 @@ describe('POST /api/telemetry/ping — garde multi-tenant réelle (machineAuth)'
     const res = await request(app)
       .post('/api/telemetry/ping')
       .set('x-api-key', 'cle-env')
-      .send({ ...trame, temperature: 'n/a' });
+      .send({ ...frame, temperature: 'n/a' });
 
     expect(res.status).toBe(400);
     expect(res.body.error[0].field).toBe('temperature');
@@ -71,7 +71,7 @@ describe('POST /api/telemetry/ping — garde multi-tenant réelle (machineAuth)'
   it("l'authentification passe AVANT la validation : trame invalide sans clé → 401, pas 400", async () => {
     const res = await request(app)
       .post('/api/telemetry/ping')
-      .send({ ...trame, temperature: true });
+      .send({ ...frame, temperature: true });
 
     expect(res.status).toBe(401);
   });
