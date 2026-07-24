@@ -16,6 +16,10 @@ import type { BatchResolveQuery } from '../../logistics/receipts/middlewares/val
 import type { ShipmentPayload } from '../../logistics/shipments/middlewares/shipmentPayload.schema';
 import type { TransformationPayload } from '../../traceability/transformations/middlewares/transformationPayload.schema';
 import type { RecallPayload } from '../../traceability/transformations/middlewares/recallPayload.schema';
+import type {
+  CreateOrganizationPayload,
+  InviteOwnerPayload,
+} from '../../platform/middlewares/platform.schema';
 
 /**
  * Interface standard pour un utilisateur Better-Auth
@@ -97,4 +101,7 @@ export interface AuthenticatedRequest extends Request {
   validatedQualityControl?: CreateQualityControlPayload;
 
   validatedOrganizationQuery?: OrganizationQuery;
+  // Administration de plateforme (POST /platform/organizations et .../owner) — slug/nom normalisés
+  validatedCreateOrganization?: CreateOrganizationPayload;
+  validatedInviteOwner?: InviteOwnerPayload;
 }
