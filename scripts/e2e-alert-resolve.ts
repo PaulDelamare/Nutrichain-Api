@@ -24,6 +24,7 @@
 import { prisma } from '../src/shared/configs/prismaClient.config';
 import { connectMongoDB, disconnectMongoDB } from '../src/shared/configs/mongoClient.config';
 import { TelemetryModel } from '../src/modules/iot/models/telemetry.model';
+import { waitForDetectableWindow } from './helpers/telemetryVisibility';
 import {
   iotAlertService,
   _clearThresholdCacheForTests,
@@ -228,6 +229,9 @@ async function main(): Promise<void> {
         battery_level: 80,
       });
     }
+    // La détection lit une fenêtre, pas le dernier point : sans cette attente, elle peut la lire
+    // incomplète et conclure « aucune excursion » — un faux échec métier.
+    await waitForDetectableWindow(fixtures.sensorId, ORG_ID!, 10);
     _clearThresholdCacheForTests();
     await iotAlertService.checkAndAlert({
       sensorId: fixtures.sensorId,
