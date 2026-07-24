@@ -546,6 +546,11 @@ model Liaison_Shipment {
   quantite_expediee Decimal
   unite             String
   pallet_id         String?
+
+  // Le rappel produit interroge cette table par `id_lot IN (...)` (recall.service.ts) : sans
+  // index, chaque rappel fait un seq scan. `id_expedition` couvre la jointure vers Shipment.
+  @@index([id_lot])
+  @@index([id_expedition])
 }
 
 // --- MOUVEMENTS (APPEND ONLY) ---
