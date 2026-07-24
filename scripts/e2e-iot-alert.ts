@@ -23,6 +23,7 @@
 import { prisma } from '../src/shared/configs/prismaClient.config';
 import { connectMongoDB, disconnectMongoDB } from '../src/shared/configs/mongoClient.config';
 import { TelemetryModel } from '../src/modules/iot/models/telemetry.model';
+import { waitForDetectableWindow } from './helpers/telemetryVisibility';
 import {
   iotAlertService,
   _clearThresholdCacheForTests,
@@ -99,24 +100,8 @@ async function cleanup(f: Fixtures) {
   console.log('  → fixtures supprimées');
 }
 
-/**
- * Attend que le point qu'on vient d'écrire soit RÉELLEMENT lisible avant de déclencher la
- * détection. Sur une collection Mongo time-series, une lecture immédiate après l'écriture ne voit
- * pas toujours le dernier point (bucketing) : la détection concluait alors « aucune excursion » et
- * le scénario échouait par intermittence sur le runner CI, jamais en local.
- * Borné : on n'attend jamais indéfiniment — si le point reste invisible, l'assertion métier qui
- * suit échouera avec son propre message, plus parlant qu'un blocage muet.
- */
-async function waitUntilVisible(sensorId: string, timestamp: Date) {
-  for (let i = 0; i < 20; i++) {
-    const seen = await TelemetryModel.countDocuments({
-      'metadata.sensor_id': sensorId,
-      timestamp,
-    });
-    if (seen > 0) return;
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-}
+/** Compté par capteur : chaque scénario écrit dans sa propre fenêtre. */
+const writtenPerSensor = new Map<string, number>();
 
 async function ingestPing(sensorId: string, organizationId: string, temperature: number, minutesAgo = 0) {
   const ts = new Date(Date.now() - minutesAgo * 60_000);
@@ -127,7 +112,9 @@ async function ingestPing(sensorId: string, organizationId: string, temperature:
     humidity: 50,
     battery_level: 80,
   });
-  await waitUntilVisible(sensorId, ts);
+  const written = (writtenPerSensor.get(sensorId) ?? 0) + 1;
+  writtenPerSensor.set(sensorId, written);
+  await waitForDetectableWindow(sensorId, organizationId, written);
   await iotAlertService.checkAndAlert({
     sensorId,
     organizationId,
