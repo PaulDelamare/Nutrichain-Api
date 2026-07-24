@@ -74,7 +74,7 @@ async function main() {
     }
 
     console.log('1 — Un lot reçu est rattaché (FK) à sa réception');
-    const recu = await receiptService.createReceipt({
+    const received = await receiptService.createReceipt({
       organization_id: ORG_ID,
       id_fournisseur: supplier.id,
       shipment_id: `E2E-BR-${stamp}-1`,
@@ -84,22 +84,22 @@ async function main() {
       statut_controle: 'OK',
       received_by: member.userId,
     });
-    batchIds.push(recu.batchId);
-    const lotRecu = await prisma.batch.findUniqueOrThrow({ where: { id: recu.batchId } });
+    batchIds.push(received.batchId);
+    const receivedBatch = await prisma.batch.findUniqueOrThrow({ where: { id: received.batchId } });
     assert(
-      lotRecu.id_receipt === recu.receiptId,
-      `le lot porte id_receipt (${lotRecu.id_receipt})`
+      receivedBatch.id_receipt === received.receiptId,
+      `le lot porte id_receipt (${receivedBatch.id_receipt})`
     );
 
     console.log('\n2 — getOrigins d’un lot reçu directement nomme la ferme');
-    const originesRecu = await genealogyService.getOrigins(recu.batchId, ORG_ID);
+    const receivedOrigins = await genealogyService.getOrigins(received.batchId, ORG_ID);
     assert(
-      originesRecu.length === 1 && originesRecu[0].fournisseur.nom_ferme === supplier.nom_ferme,
-      `origine = ${originesRecu[0]?.fournisseur.nom_ferme ?? '(vide)'} (attendu ${supplier.nom_ferme})`
+      receivedOrigins.length === 1 && receivedOrigins[0].fournisseur.nom_ferme === supplier.nom_ferme,
+      `origine = ${receivedOrigins[0]?.fournisseur.nom_ferme ?? '(vide)'} (attendu ${supplier.nom_ferme})`
     );
 
     console.log('\n3 — Après transformation, l’enfant remonte encore à la ferme');
-    const transfo = await transformationService.createTransformation({
+    const transformation = await transformationService.createTransformation({
       organization_id: ORG_ID,
       id_produit_fini: product.id,
       id_materiel: equipment.id,
@@ -108,28 +108,28 @@ async function main() {
       created_by: member.userId,
       inputs: [
         {
-          id_lot_parent: recu.batchId,
+          id_lot_parent: received.batchId,
           quantite_prelevee: 20,
           unite: product.unite_reference,
           lot_parent_epuise: false,
         },
       ],
     });
-    transformationIds.push(transfo.transformation_id);
-    const lotEnfant = transfo.lot_enfant_id;
-    batchIds.push(lotEnfant);
+    transformationIds.push(transformation.transformation_id);
+    const childBatch = transformation.lot_enfant_id;
+    batchIds.push(childBatch);
 
-    const enfant = await prisma.batch.findUniqueOrThrow({ where: { id: lotEnfant } });
+    const child = await prisma.batch.findUniqueOrThrow({ where: { id: childBatch } });
     assert(
-      enfant.id_receipt === null,
+      child.id_receipt === null,
       "le produit fini n'a PAS d'id_receipt (matière première seule)"
     );
 
-    const originesEnfant = await genealogyService.getOrigins(lotEnfant, ORG_ID);
+    const childOrigins = await genealogyService.getOrigins(childBatch, ORG_ID);
     assert(
-      originesEnfant.some((o) => o.fournisseur.nom_ferme === supplier.nom_ferme),
+      childOrigins.some((o) => o.fournisseur.nom_ferme === supplier.nom_ferme),
       `l'enfant remonte à ${supplier.nom_ferme} (origines: ${
-        originesEnfant.map((o) => o.fournisseur.nom_ferme).join(', ') || '(vide)'
+        childOrigins.map((o) => o.fournisseur.nom_ferme).join(', ') || '(vide)'
       })`
     );
   } catch (err) {
