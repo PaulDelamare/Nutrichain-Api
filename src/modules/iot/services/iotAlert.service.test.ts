@@ -9,10 +9,11 @@ import { TelemetryModel } from '../models/telemetry.model';
 // vi.hoisted pour partager le mock du tx client entre la factory $transaction et les tests
 const { txClient } = vi.hoisted(() => ({
   txClient: {
-    alert: { create: vi.fn() },
+    alert: { create: vi.fn(), findFirst: vi.fn() },
     batch: { updateMany: vi.fn() },
     batch_Mouvement: { createMany: vi.fn() },
     $queryRaw: vi.fn(),
+    $queryRawUnsafe: vi.fn(),
   },
 }));
 
@@ -86,8 +87,10 @@ beforeEach(() => {
   vi.mocked(prisma.member.findMany).mockResolvedValue([
     { user: { email: 'admin@nutrichain.local', name: 'Admin' } },
   ] as never);
-  // advisory lock acquis par défaut (renvoie true)
+  // verrou consultatif acquis par défaut, dans la transaction (renvoie true)
   vi.mocked(prisma.$queryRawUnsafe).mockResolvedValue([{ locked: true }] as never);
+  vi.mocked(txClient.$queryRawUnsafe).mockResolvedValue([{ locked: true }] as never);
+  vi.mocked(txClient.alert.findFirst).mockResolvedValue(null as never);
   vi.mocked(txClient.alert.create).mockResolvedValue({ id: 'alert-1' } as never);
   vi.mocked(txClient.$queryRaw).mockResolvedValue([] as never);
   vi.mocked(txClient.batch_Mouvement.createMany).mockResolvedValue({ count: 0 } as never);
@@ -275,7 +278,7 @@ describe('iotAlertService.checkAndAlert', () => {
   });
 
   it('dédup : Alert ACTIVE existe → skip création (anti-spam)', async () => {
-    vi.mocked(prisma.alert.findFirst).mockResolvedValue({ id: 'existing-active' } as never);
+    vi.mocked(txClient.alert.findFirst).mockResolvedValue({ id: 'existing-active' } as never);
 
     await iotAlertService.checkAndAlert(baseParams);
 
@@ -297,26 +300,37 @@ describe('iotAlertService.checkAndAlert', () => {
     expect(prisma.equipment.findFirst).toHaveBeenCalledTimes(2);
   });
 
-  it('advisory lock pris (locked=false) → exit silencieux', async () => {
-    vi.mocked(prisma.$queryRawUnsafe).mockResolvedValueOnce([{ locked: false }] as never);
+  it('verrou déjà détenu (locked=false) → aucune alerte créée', async () => {
+    vi.mocked(txClient.$queryRawUnsafe).mockResolvedValueOnce([{ locked: false }] as never);
 
     await iotAlertService.checkAndAlert(baseParams);
 
     expect(txClient.alert.create).not.toHaveBeenCalled();
-    expect(TelemetryModel.find).not.toHaveBeenCalled();
+    expect(sendEmail).not.toHaveBeenCalled();
   });
 
-  it('advisory lock relâché en finally même en cas de throw', async () => {
-    vi.mocked(prisma.alert.findFirst).mockRejectedValueOnce(new Error('DB error'));
+  /**
+   * Un verrou consultatif de SESSION appartient à la connexion qui l'a pris. Pris et relâché par
+   * deux requêtes Prisma distinctes, le relâchement partait sur une autre connexion du pool : le
+   * verrou restait détenu et toute détection ultérieure sur ce matériel sortait sans rien voir.
+   */
+  it('le verrou est pris DANS la transaction, et jamais au niveau session', async () => {
+    await iotAlertService.checkAndAlert(baseParams);
 
-    // L'appel doit gracieusement gérer l'erreur (catch interne ou propage)
-    await expect(iotAlertService.checkAndAlert(baseParams)).rejects.toThrow();
+    const txCalls = vi.mocked(txClient.$queryRawUnsafe).mock.calls.map((c) => String(c[0]));
+    expect(txCalls[0]).toMatch(/pg_try_advisory_xact_lock/);
 
-    // Le unlock a été appelé : 1er appel lock, 2e appel unlock
-    const calls = vi.mocked(prisma.$queryRawUnsafe).mock.calls;
-    expect(calls.length).toBeGreaterThanOrEqual(2);
-    expect(String(calls[0][0])).toMatch(/pg_try_advisory_lock/);
-    expect(String(calls[1][0])).toMatch(/pg_advisory_unlock/);
+    const sessionCalls = vi.mocked(prisma.$queryRawUnsafe).mock.calls.map((c) => String(c[0]));
+    expect(sessionCalls.some((sql) => /pg_try_advisory_lock/.test(sql))).toBe(false);
+    expect(sessionCalls.some((sql) => /pg_advisory_unlock/.test(sql))).toBe(false);
+  });
+
+  it('la dédup est faite sous le verrou, dans la transaction', async () => {
+    await iotAlertService.checkAndAlert(baseParams);
+
+    expect(txClient.alert.findFirst).toHaveBeenCalled();
+    // Hors transaction, la lecture de dédup laisserait la fenêtre TOCTOU ouverte.
+    expect(prisma.alert.findFirst).not.toHaveBeenCalled();
   });
 
   it('email recipients filtrés par equipment.organization_id (defense-in-depth)', async () => {
@@ -344,18 +358,17 @@ describe('iotAlertService.checkAndAlert', () => {
   });
 
   // ===== Tests round 2 (ajout post-review) =====
-  it('lock release sur Mongo throw : unlock appelé même si TelemetryModel.find rejette', async () => {
+  it('Mongo indisponible : aucun verrou n a été pris, rien à relâcher', async () => {
     const lean = vi.fn().mockRejectedValue(new Error('Mongo down'));
     const limit = vi.fn().mockReturnValue({ lean });
     vi.mocked(TelemetryModel.find).mockReturnValue({ limit } as never);
 
     await expect(iotAlertService.checkAndAlert(baseParams)).rejects.toThrow('Mongo down');
 
-    // 1er $queryRawUnsafe = lock, 2e = unlock
-    const calls = vi.mocked(prisma.$queryRawUnsafe).mock.calls;
-    expect(calls.length).toBeGreaterThanOrEqual(2);
-    expect(String(calls[0][0])).toMatch(/pg_try_advisory_lock/);
-    expect(String(calls[calls.length - 1][0])).toMatch(/pg_advisory_unlock/);
+    // La lecture Mongo précède désormais le verrou : une panne Mongo ne peut plus laisser
+    // un verrou derrière elle, ni tenir une transaction ouverte pendant une I/O externe.
+    expect(txClient.$queryRawUnsafe).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   it('cache TTL expiry : après 60s+ on re-fetch Equipment depuis Postgres', async () => {
