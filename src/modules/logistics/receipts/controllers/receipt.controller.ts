@@ -8,7 +8,7 @@ import { RECEIPT_PAGE_DEFAULTS } from '../middlewares/receiptQuery.schema';
 import { AuthenticatedRequest } from '../../../identity/types/auth.types';
 import { APIError } from '../../../../shared/utils/errorHandler/APIError';
 import { resolveWritingActor } from '../../../../shared/utils/auth/resolveWritingActor';
-import { ADMIN_ROLES, Role, WRITE_ROLES } from '../../../identity/constants/roles.constants';
+import { ADMIN_ROLES, Role } from '../../../identity/constants/roles.constants';
 
 /**
  * Qui a créé ce lot ? C'est une donnée personnelle (nom, e-mail d'un salarié), pas une donnée

@@ -9,7 +9,6 @@ import {
   IDEMPOTENCY_TTL_MS,
 } from '../../../shared/utils/idempotency/idempotency.service';
 import { resolveWritingActor } from '../../../shared/utils/auth/resolveWritingActor';
-import { SYNC_WRITE_ROLES } from '../constants/sync.constants';
 import { SyncItem, SyncItemError, SyncItemResult, SyncScansResponse } from '../types/sync.types';
 
 export interface SyncScansParams {
