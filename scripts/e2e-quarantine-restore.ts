@@ -12,6 +12,7 @@
 import { prisma } from '../src/shared/configs/prismaClient.config';
 import { connectMongoDB, disconnectMongoDB } from '../src/shared/configs/mongoClient.config';
 import { TelemetryModel } from '../src/modules/iot/models/telemetry.model';
+import { waitForDetectableWindow } from './helpers/telemetryVisibility';
 import {
   iotAlertService,
   _clearThresholdCacheForTests,
@@ -45,6 +46,11 @@ async function ingestExcursion(sensorId: string, threshold: number) {
     battery_level: 90,
   }));
   await TelemetryModel.insertMany(docs);
+  // La détection lit une fenêtre, pas le dernier point : sur le runner CI, une lecture immédiate
+  // après l'écriture voit une fenêtre incomplète et conclut « aucune excursion » → le lot reste
+  // EN_ATTENTE_QC au lieu de BLOQUE, et la levée qui suit échoue en 409. On attend d'abord que les
+  // 10 points soient relisibles sur le prédicat même de la détection.
+  await waitForDetectableWindow(sensorId, ORG_ID!, docs.length);
   _clearThresholdCacheForTests();
   await iotAlertService.checkAndAlert({
     sensorId,
