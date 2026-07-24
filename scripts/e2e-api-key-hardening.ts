@@ -17,7 +17,7 @@ import { signInAsOperator } from './helpers/e2eSession';
  * Lancement : npm run e2e:api-key
  */
 
-const API_BASE = process.env.API_BASE || 'http://localhost:3000';
+const API_URL = process.env.API_URL || process.env.API_BASE || 'http://localhost:3000';
 /** La clé PUBLIQUE, celle de l'application mobile : elle ne doit rien ouvrir d'autre que la connexion. */
 const API_KEY = process.env.API_KEY;
 /** La clé des CAPTEURS : un vrai secret, qui ne quitte pas le serveur. */
@@ -43,7 +43,7 @@ const RECEIPT = {
 };
 
 async function post(path: string, headers: Record<string, string>, body: unknown) {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(`${API_URL}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...headers },
     body: JSON.stringify(body),
@@ -84,13 +84,13 @@ async function main() {
   }
   ok('Réception au nom du propriétaire refusée (401) — même acteur légitime déclaré');
 
-  const directory = await fetch(`${API_BASE}/api/organization/members`, { headers: key });
+  const directory = await fetch(`${API_URL}/api/organization/members`, { headers: key });
   if (directory.status !== 401) {
     fail(`Annuaire des salariés : attendu 401, reçu ${directory.status}`);
   }
   ok('Annuaire nominatif des salariés refusé (401) — donnée personnelle, enjeu RGPD');
 
-  const catalogue = await fetch(`${API_BASE}/api/connectors/exports/events`, { headers: key });
+  const catalogue = await fetch(`${API_URL}/api/connectors/exports/events`, { headers: key });
   if (catalogue.status !== 401) {
     fail(`Export EPCIS : attendu 401, reçu ${catalogue.status}`);
   }
@@ -113,7 +113,7 @@ async function main() {
   console.log('\n✅ Ce qui doit continuer de marcher\n');
 
   const session = await signInAsOperator(prisma, {
-    apiBase: API_BASE,
+    apiBase: API_URL,
     apiKey: API_KEY!,
     organizationId: ORG_ID!,
   });

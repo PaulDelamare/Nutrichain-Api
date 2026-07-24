@@ -19,7 +19,7 @@ import { prisma } from '../src/shared/configs/prismaClient.config';
  * Lancement : npm run e2e:invitation
  */
 
-const API_BASE = process.env.API_BASE || 'http://localhost:3000';
+const API_URL = process.env.API_URL || process.env.API_BASE || 'http://localhost:3000';
 const API_KEY = process.env.API_KEY;
 const ORG_LEGITIMATE = process.env.API_KEY_ORG_ID;
 const FRONTEND_URL = process.env.FRONTEND_URL ?? 'http://localhost:5173';
@@ -73,7 +73,7 @@ async function main() {
   const legitimate = await createInvitation(ORG_LEGITIMATE!, 'operator', inviter.id);
 
   try {
-    const res = await fetch(`${API_BASE}/api/auth/sign-up/email`, {
+    const res = await fetch(`${API_URL}/api/auth/sign-up/email`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

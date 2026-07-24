@@ -18,7 +18,7 @@ import crypto from 'crypto';
 import http from 'http';
 import { prisma } from '../src/shared/configs/prismaClient.config';
 
-const API_BASE = process.env.API_BASE || 'http://localhost:3000';
+const API_URL = process.env.API_URL || process.env.API_BASE || 'http://localhost:3000';
 const API_KEY = process.env.API_KEY;
 const EMAIL = process.env.E2E_EMAIL || 'first.admin@nutrichain.local';
 const PASSWORD = process.env.E2E_PASSWORD || 'NutriChain!2026';
@@ -64,7 +64,7 @@ function callApi(
     headers['Content-Length'] = String(Buffer.byteLength(init.body));
   }
 
-  const url = new URL(`${API_BASE}${path}`);
+  const url = new URL(`${API_URL}${path}`);
 
   return new Promise((resolve, reject) => {
     const request = http.request(

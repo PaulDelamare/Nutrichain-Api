@@ -22,7 +22,7 @@ import { signInAsOperator } from './helpers/e2eSession';
  *   6. Généalogie CTE récursive (upstream + downstream + isolation tenant)
  */
 
-const API_BASE = process.env.API_BASE || 'http://localhost:3000';
+const API_URL = process.env.API_URL || process.env.API_BASE || 'http://localhost:3000';
 const API_KEY = process.env.API_KEY;
 const ORG_ID = process.env.API_KEY_ORG_ID;
 
@@ -189,7 +189,7 @@ async function setup(): Promise<Fixtures> {
   // La session est ouverte ICI : les appels métier passent désormais par le même chemin que le
   // mobile — un jeton porté par un opérateur, membre de l'organisation, avec le droit d'écrire.
   const session = await signInAsOperator(prisma, {
-    apiBase: API_BASE,
+    apiBase: API_URL,
     apiKey: API_KEY!,
     organizationId: ORG_ID!,
   });
@@ -214,7 +214,7 @@ async function scenario1_apiKeySpoofing(ctx: Fixtures) {
   log('\n1️⃣  Spoofing x-org-id rejeté (Sec A)');
 
   const shipmentId = `E2E-SPOOF-${Date.now()}`;
-  const res = await fetch(`${API_BASE}/api/logistics/receipts`, {
+  const res = await fetch(`${API_URL}/api/logistics/receipts`, {
     method: 'POST',
     headers: { ...headers, 'x-org-id': ctx.foreignOrgId },
     body: JSON.stringify({
@@ -262,7 +262,7 @@ async function scenario1_apiKeySpoofing(ctx: Fixtures) {
 async function scenario2_tenantBypass(ctx: Fixtures) {
   log('\n2️⃣  Bypass tenant supprimé sur les middlewares logistiques (Sec B)');
 
-  const res = await fetch(`${API_BASE}/api/logistics/batches/${ctx.foreignBatchId}`, {
+  const res = await fetch(`${API_URL}/api/logistics/batches/${ctx.foreignBatchId}`, {
     headers,
   });
 
@@ -291,13 +291,13 @@ async function scenario3_publicScanFilter(ctx: Fixtures) {
     },
   });
 
-  const resStock = await fetch(`${API_BASE}/api/public/scan/${batchId}`);
+  const resStock = await fetch(`${API_URL}/api/public/scan/${batchId}`);
   if (resStock.status !== 404) fail(`Lot EN_STOCK attendu 404, reçu ${resStock.status}`);
   ok('Lot EN_STOCK → 404 (non commercialisé, masqué au consommateur)');
 
   await prisma.batch.update({ where: { id: batchId }, data: { statut: 'EXPEDIE' } });
 
-  const resShipped = await fetch(`${API_BASE}/api/public/scan/${batchId}`);
+  const resShipped = await fetch(`${API_URL}/api/public/scan/${batchId}`);
   if (resShipped.status !== 200) fail(`Lot EXPEDIE attendu 200, reçu ${resShipped.status}`);
   const body = (await resShipped.json()) as { data: { lot: Record<string, unknown> } };
   if (body.data.lot.organization_id) fail('Public scan expose organization_id (fuite)');

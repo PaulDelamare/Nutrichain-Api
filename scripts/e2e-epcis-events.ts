@@ -9,7 +9,7 @@ import { signInAsOperator } from './helpers/e2eSession';
 let sessionToken = '';
 
 // Configuration
-const API_BASE = process.env.API_BASE || 'http://localhost:3000';
+const API_URL = process.env.API_URL || process.env.API_BASE || 'http://localhost:3000';
 const API_KEY = process.env.API_KEY || '';
 const API_KEY_ORG_ID = process.env.API_KEY_ORG_ID || '';
 
@@ -103,7 +103,7 @@ async function postReceipt() {
     statut_controle: 'OK',
   };
 
-  const res = await fetch(`${API_BASE}/api/logistics/receipts`, {
+  const res = await fetch(`${API_URL}/api/logistics/receipts`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -127,7 +127,7 @@ async function postShipment(batchId: string) {
     lots: [{ id_lot: batchId, quantite_expediee: 10 }],
   };
 
-  const res = await fetch(`${API_BASE}/api/logistics/shipments`, {
+  const res = await fetch(`${API_URL}/api/logistics/shipments`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -154,7 +154,7 @@ async function main() {
   let foreignEventId: string | undefined;
 
   const session = await signInAsOperator(prisma, {
-    apiBase: API_BASE,
+    apiBase: API_URL,
     apiKey: API_KEY,
     organizationId: API_KEY_ORG_ID,
   });
@@ -249,7 +249,7 @@ async function main() {
     }
 
     console.log('Scénario : restitution via GET /api/traceability/events (filtre + cloisonnement)');
-    const evRes = await fetch(`${API_BASE}/api/traceability/events?related_entity=Shipment&limit=50`, {
+    const evRes = await fetch(`${API_URL}/api/traceability/events?related_entity=Shipment&limit=50`, {
       headers: { Authorization: `Bearer ${sessionToken}` },
     });
     const evBody = await evRes.json().catch(() => null);
@@ -283,7 +283,7 @@ async function main() {
     });
     foreignEventId = foreignEvent.id;
 
-    const leakRes = await fetch(`${API_BASE}/api/traceability/events?limit=500`, {
+    const leakRes = await fetch(`${API_URL}/api/traceability/events?limit=500`, {
       headers: { Authorization: `Bearer ${sessionToken}` },
     });
     const leakBody = await leakRes.json().catch(() => null);
