@@ -212,9 +212,14 @@ jobs:
         run: npm run e2e:iot-alert
       - name: 🔒 Le verrou de détection ne fuite pas (détections concurrentes)
         run: npm run e2e:iot-advisory-lock
-      # `e2e:alerte-lots` et `e2e:alert-resolve` restent hors du job : même famille de fragilité,
-      # mais leur scénario enchaîne en plus résolution d'alerte et ré-ingestion dans la même fenêtre.
-      # À traiter séparément, avec la même attente de visibilité.
+      # Ces deux scénarios avaient été sortis du job pour la même intermittence : ils enchaînent
+      # détection, résolution puis ré-ingestion, donc ils rejouaient le verrou plusieurs fois et
+      # tombaient d'autant plus souvent sur celui qui avait fuité. La cause étant traitée, ils
+      # reviennent dans le job — c'est lui qui dira s'il restait autre chose.
+      - name: 🧊 Excursion → lots bloqués, levée ciblée
+        run: npm run e2e:alerte-lots
+      - name: 🧊 Résolution d'alerte tracée
+        run: npm run e2e:alert-resolve
 
       # Les scénarios ci-dessous frappent l'API par HTTP (sécurité, RBAC, sync mobile, EPCIS) : ils
       # exigent un serveur en marche. On le démarre en arrière-plan et on attend qu'il réponde.
