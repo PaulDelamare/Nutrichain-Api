@@ -25,7 +25,8 @@ import {
  *
  * Performance :
  * - Cache des thresholds en mémoire (TTL 60s) par (orgId, sensorId).
- * - Postgres advisory lock per-equipment pour empêcher la TOCTOU race sur la dédup.
+ * - Verrou consultatif Postgres per-equipment, pris DANS la transaction, contre la race TOCTOU
+ *   sur la dédup (un verrou de session fuirait entre deux connexions du pool).
  * - Fast path : si currentTemp <= threshold → exit sans query Mongo.
  * - Notification owner/admin via notifyOrgAdmins en fire-and-forget — hors path critique.
  */
@@ -98,149 +99,154 @@ export const iotAlertService = {
       return 'MONITORED';
     }
 
-    // 5. Advisory lock per-equipment (sérialise les checks concurrents pour ce capteur)
-    // L'org utilisée pour le lock est celle DU EQUIPMENT (defense-in-depth), pas params.organizationId.
+    const threshold = cached.threshold; // narrow définitif (évite cached!)
     const lockKey = advisoryLockKey(cached.equipmentOrgId, cached.equipmentId);
-    const lockResult = await prisma.$queryRawUnsafe<{ locked: boolean }[]>(
-      `SELECT pg_try_advisory_lock(${lockKey}) AS locked`
-    );
-    if (!lockResult[0]?.locked) {
-      // Une autre détection est déjà en cours pour ce capteur, on laisse faire
+
+    // 5. Query Mongo : derniers points sur la fenêtre 15min, filtrés multi-tenant.
+    //    Lecture seule : elle n'a pas besoin d'être sérialisée, et la garder hors transaction
+    //    évite de tenir une transaction Postgres ouverte pendant une I/O Mongo.
+    const points = await fetchRecentPoints(sensorId, organizationId);
+
+    // 6. Détection (logique pure)
+    const result = detectExcursion(points, threshold);
+    if (!result.isExcursion) {
       return 'MONITORED';
     }
 
-    // try { ... } finally enferme TOUTE la suite, dès la ligne d'après le lock — pas de fenêtre fuite.
-    try {
-      const threshold = cached.threshold; // narrow définitif (évite cached!)
-
-      // 6. Query Mongo : derniers points sur la fenêtre 15min, filtrés multi-tenant
-      const points = await fetchRecentPoints(sensorId, organizationId);
-
-      // 7. Détection (logique pure)
-      const result = detectExcursion(points, threshold);
-      if (!result.isExcursion) {
-        return 'MONITORED';
-      }
-
-      // 8. Dédup : Alert ACTIVE existante pour ce equipment ?
-      const existing = await prisma.alert.findFirst({
-        where: {
-          organization_id: cached.equipmentOrgId,
-          id_materiel: cached.equipmentId,
-          type: 'TEMP_EXCURSION',
-          statut: 'ACTIVE',
-        },
-        select: { id: true },
-      });
-      if (existing) {
-        return 'MONITORED'; // anti-spam : on attend la résolution de l'alerte courante
-      }
-
-      // 9. Atomique : mise en quarantaine des lots stockés + Alert.create + Audit
-      //    dans une seule tx Serializable.
-      const alert = await retryableTransaction(
-        async (tx) => {
-          // Sûreté sanitaire : les lots EN_STOCK rangés dans l'équipement en excursion
-          // sont placés en quarantaine (BLOQUE) — un incident matériel ne doit pas laisser
-          // un produit potentiellement altéré partir en transformation ou en expédition.
-          //
-          // UPDATE ... RETURNING (et non SELECT puis UPDATE) : on obtient en UNE requête les
-          // lots réellement bloqués, sans fenêtre TOCTOU, et avec leur quantité — nécessaire
-          // pour tracer le mouvement (quantite/unite sont NOT NULL).
-          const quarantined = await tx.$queryRaw<
-            { id: string; quantite_actuelle: Prisma.Decimal; unite_code: string }[]
-          >`
-            UPDATE "Batch"
-               SET statut = ${BATCH_STATUSES.BLOCKED},
-                   statut_avant_blocage = statut,
-                   version = version + 1
-             WHERE organization_id = ${cached.equipmentOrgId}
-               AND id_materiel_actuel = ${cached.equipmentId}
-               AND statut = ANY(${COLD_QUARANTINABLE_STATUSES as string[]})
-         RETURNING id, quantite_actuelle, unite_code
-          `;
-
-          const created = await tx.alert.create({
-            data: {
-              organization_id: cached.equipmentOrgId,
-              type: 'TEMP_EXCURSION',
-              niveau_gravite: 'PANIC',
-              message: `Excursion thermique détectée sur ${sensorId} : pic ${result.peakTemp}°C (seuil ${threshold}°C, ratio ${(result.ratioOverThreshold * 100).toFixed(0)}% sur ${WINDOW_MINUTES}min). ${quarantined.length} lot(s) mis en quarantaine.`,
-              id_materiel: cached.equipmentId,
-              related_entity: 'Equipment',
-              related_id: cached.equipmentId,
-              statut: 'ACTIVE',
-              // ⚠️ La donnée sanitaire N°1 (de combien la chaîne du froid a rompu) en champs
-              // STRUCTURÉS, plus seulement dans le message. Le mobile la lisait sur
-              // `equipment.temp_actuelle` — jamais renseigné par l'ingestion IoT → « — » à l'écran.
-              peak_temp: result.peakTemp,
-              temp_seuil: threshold,
-            },
-          });
-
-          // Chaque lot bloqué garde la trace de la CAUSE : sans ça, un lot passe en
-          // quarantaine sans que personne ne puisse dire pourquoi ni quand.
-          // Volume borné : les lots d'un seul équipement, pas une descendance de rappel.
-          if (quarantined.length > 0) {
-            await tx.batch_Mouvement.createMany({
-              data: quarantined.map((b) => ({
-                id_lot: b.id,
-                type_action: MOVEMENT_TYPES.COLD_QUARANTINE,
-                quantite: b.quantite_actuelle,
-                unite: b.unite_code,
-                metadata: {
-                  id_alerte: created.id,
-                  sensorId,
-                  peakTemp: result.peakTemp,
-                  threshold,
-                },
-              })),
-            });
-          }
-
-          await auditService.logAction(
-            {
-              organizationId: cached.equipmentOrgId,
-              action: 'TEMP_EXCURSION_DETECTED',
-              entity: 'Alert',
-              entityId: created.id,
-              newValue: {
-                sensorId,
-                equipmentId: cached.equipmentId,
-                threshold,
-                peakTemp: result.peakTemp,
-                ratioOverThreshold: result.ratioOverThreshold,
-                windowMinutes: WINDOW_MINUTES,
-                quarantinedBatchesCount: quarantined.length,
-              },
-            },
-            tx
-          );
-
-          return created;
-        },
-        {
-          timeout: 10_000,
-          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    // 7. Atomique : verrou + dédup + quarantaine des lots + Alert.create + Audit, dans une seule
+    //    tx Serializable.
+    //
+    //    Le verrou est pris DANS la transaction (`pg_try_advisory_xact_lock`), et non par une
+    //    requête isolée : un verrou consultatif de session appartient à la connexion qui l'a pris,
+    //    or `prisma.$queryRawUnsafe` ne garantit aucune affinité de connexion — le relâchement
+    //    partait sur une autre connexion du pool, le verrou restait détenu, et TOUTE détection
+    //    ultérieure sur ce matériel sortait sans rien détecter. Un verrou de transaction est
+    //    relâché par Postgres au COMMIT comme au ROLLBACK : il ne peut plus fuiter.
+    //    La dédup passe du même coup sous le verrou, ce qui ferme réellement la fenêtre TOCTOU.
+    const alert = await retryableTransaction(
+      async (tx) => {
+        const lockResult = await tx.$queryRawUnsafe<{ locked: boolean }[]>(
+          `SELECT pg_try_advisory_xact_lock(${lockKey}) AS locked`
+        );
+        if (!lockResult[0]?.locked) {
+          return null; // une autre détection est déjà en cours pour ce matériel
         }
-      );
 
-      // 10. Notification email — vraiment fire-and-forget (pas d'await ici).
-      // L'org utilisée pour résoudre les recipients est equipmentOrgId (defense-in-depth).
-      void notifyAdmins(
-        cached.equipmentOrgId,
-        cached.equipmentId,
-        alert.id,
-        sensorId,
-        result.peakTemp,
-        threshold
-      );
+        const existing = await tx.alert.findFirst({
+          where: {
+            organization_id: cached.equipmentOrgId,
+            id_materiel: cached.equipmentId,
+            type: 'TEMP_EXCURSION',
+            statut: 'ACTIVE',
+          },
+          select: { id: true },
+        });
+        if (existing) {
+          return null; // anti-spam : on attend la résolution de l'alerte courante
+        }
 
+        // Sûreté sanitaire : les lots EN_STOCK rangés dans l'équipement en excursion
+        // sont placés en quarantaine (BLOQUE) — un incident matériel ne doit pas laisser
+        // un produit potentiellement altéré partir en transformation ou en expédition.
+        //
+        // UPDATE ... RETURNING (et non SELECT puis UPDATE) : on obtient en UNE requête les
+        // lots réellement bloqués, sans fenêtre TOCTOU, et avec leur quantité — nécessaire
+        // pour tracer le mouvement (quantite/unite sont NOT NULL).
+        const quarantined = await tx.$queryRaw<
+          { id: string; quantite_actuelle: Prisma.Decimal; unite_code: string }[]
+        >`
+          UPDATE "Batch"
+             SET statut = ${BATCH_STATUSES.BLOCKED},
+                 statut_avant_blocage = statut,
+                 version = version + 1
+           WHERE organization_id = ${cached.equipmentOrgId}
+             AND id_materiel_actuel = ${cached.equipmentId}
+             AND statut = ANY(${COLD_QUARANTINABLE_STATUSES as string[]})
+         RETURNING id, quantite_actuelle, unite_code
+        `;
+
+        const created = await tx.alert.create({
+          data: {
+            organization_id: cached.equipmentOrgId,
+            type: 'TEMP_EXCURSION',
+            niveau_gravite: 'PANIC',
+            message: `Excursion thermique détectée sur ${sensorId} : pic ${result.peakTemp}°C (seuil ${threshold}°C, ratio ${(result.ratioOverThreshold * 100).toFixed(0)}% sur ${WINDOW_MINUTES}min). ${quarantined.length} lot(s) mis en quarantaine.`,
+            id_materiel: cached.equipmentId,
+            related_entity: 'Equipment',
+            related_id: cached.equipmentId,
+            statut: 'ACTIVE',
+            // ⚠️ La donnée sanitaire N°1 (de combien la chaîne du froid a rompu) en champs
+            // STRUCTURÉS, plus seulement dans le message. Le mobile la lisait sur
+            // `equipment.temp_actuelle` — jamais renseigné par l'ingestion IoT → « — » à l'écran.
+            peak_temp: result.peakTemp,
+            temp_seuil: threshold,
+          },
+        });
+
+        // Chaque lot bloqué garde la trace de la CAUSE : sans ça, un lot passe en
+        // quarantaine sans que personne ne puisse dire pourquoi ni quand.
+        // Volume borné : les lots d'un seul équipement, pas une descendance de rappel.
+        if (quarantined.length > 0) {
+          await tx.batch_Mouvement.createMany({
+            data: quarantined.map((b) => ({
+              id_lot: b.id,
+              type_action: MOVEMENT_TYPES.COLD_QUARANTINE,
+              quantite: b.quantite_actuelle,
+              unite: b.unite_code,
+              metadata: {
+                id_alerte: created.id,
+                sensorId,
+                peakTemp: result.peakTemp,
+                threshold,
+              },
+            })),
+          });
+        }
+
+        await auditService.logAction(
+          {
+            organizationId: cached.equipmentOrgId,
+            action: 'TEMP_EXCURSION_DETECTED',
+            entity: 'Alert',
+            entityId: created.id,
+            newValue: {
+              sensorId,
+              equipmentId: cached.equipmentId,
+              threshold,
+              peakTemp: result.peakTemp,
+              ratioOverThreshold: result.ratioOverThreshold,
+              windowMinutes: WINDOW_MINUTES,
+              quarantinedBatchesCount: quarantined.length,
+            },
+          },
+          tx
+        );
+
+        return created;
+      },
+      {
+        timeout: 10_000,
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      }
+    );
+
+    // Verrou non obtenu ou alerte déjà active : rien n'a été créé, donc rien à notifier.
+    if (!alert) {
       return 'MONITORED';
-    } finally {
-      // 11. Toujours relâcher le lock — y compris si étape 6-10 throw.
-      await prisma.$queryRawUnsafe<unknown>(`SELECT pg_advisory_unlock(${lockKey})`);
     }
+
+    // 8. Notification email — vraiment fire-and-forget (pas d'await ici).
+    // L'org utilisée pour résoudre les recipients est equipmentOrgId (defense-in-depth).
+    void notifyAdmins(
+      cached.equipmentOrgId,
+      cached.equipmentId,
+      alert.id,
+      sensorId,
+      result.peakTemp,
+      threshold
+    );
+
+    return 'MONITORED';
   },
 };
 
