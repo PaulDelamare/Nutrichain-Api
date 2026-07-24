@@ -3,7 +3,6 @@ import { Response } from 'express';
 import { createReceiptController } from './receipt.controller';
 import { receiptService } from '../services/receipt.service';
 import { AuthenticatedRequest } from '../../../identity/types/auth.types';
-import { prisma } from '../../../../shared/configs/prismaClient.config';
 
 vi.mock('../../../../shared/configs/prismaClient.config', () => ({
   prisma: { member: { findFirst: vi.fn() } },
