@@ -40,3 +40,34 @@ describe('Logger', () => {
     expect(logContent).toContain('Test error message');
   });
 });
+
+/**
+ * Les journaux sont la seule source exploitable par une détection : s'ils disparaissent ou ne se
+ * lisent pas dans l'ordre, aucune règle ne peut être écrite au-dessus.
+ */
+describe('Rétention et collecte des journaux', () => {
+  const fileTransportOptions = (): Record<string, unknown>[] =>
+    logger.transports
+      .filter((transport) => (transport as unknown as { filename?: string }).filename)
+      .map((transport) => (transport as unknown as { options: Record<string, unknown> }).options);
+
+  it('borne la rétention de chaque fichier de journal', () => {
+    // Sans `maxFiles`, la rotation empile indéfiniment. Le disque finit plein, et l'API cesse
+    // d'écrire — la source de détection meurt sans que rien ne le signale.
+    const options = fileTransportOptions();
+    expect(options.length).toBeGreaterThan(0);
+
+    for (const option of options) {
+      expect(option.maxFiles).toBeDefined();
+    }
+  });
+
+  it('date les fichiers dans un format triable', () => {
+    // `MM-DD-YYYY` ne se trie pas chronologiquement : un collecteur qui parcourt le répertoire
+    // dans l'ordre lexicographique reconstitue une chronologie fausse. Les deux transports
+    // divergeaient, ce qui rendait le répertoire illisible d'un seul balayage.
+    for (const option of fileTransportOptions()) {
+      expect(option.datePattern).toBe('YYYY-MM-DD');
+    }
+  });
+});
