@@ -1,6 +1,7 @@
 import { RequestHandler } from 'express';
 import fs from 'fs/promises';
 import path from 'path';
+import mongoose from 'mongoose';
 import { sendSuccess } from '../../shared/utils/returnSuccess/returnSuccess';
 import { bdd } from '../../shared/configs/prismaClient.config';
 
@@ -92,6 +93,33 @@ const checkMigrations = async (): Promise<HealthCheckResult> => {
   }
 };
 
+const checkMongo = async (): Promise<HealthCheckResult> => {
+  const started = Date.now();
+
+  try {
+    // La télémétrie IoT (chaîne du froid) vit exclusivement dans Mongo : sans ce check, la
+    // sonde répondait "prête" alors que POST /api/telemetry/ping échouerait — la vitrine IoT
+    // pouvait tomber sans qu'aucun indicateur ne l'annonce (#158).
+    if (!mongoose.connection.db) {
+      throw new Error('MongoDB connection not established');
+    }
+    await withTimeout(mongoose.connection.db.admin().ping(), DB_TIMEOUT_MS, 'MongoDB connectivity');
+
+    return {
+      name: 'mongodb',
+      ok: true,
+      durationMs: Date.now() - started,
+    };
+  } catch (err) {
+    return {
+      name: 'mongodb',
+      ok: false,
+      durationMs: Date.now() - started,
+      error: toMessage(err),
+    };
+  }
+};
+
 const checkLogs = async (): Promise<HealthCheckResult> => {
   const started = Date.now();
   const logsDir = resolveLogDir();
@@ -146,12 +174,12 @@ const health: RequestHandler = async (_req, res) => {
 };
 
 /**
- * Readiness check: concurrently probes DB, migrations metadata and log dir writability.
+ * Readiness check: concurrently probes DB, MongoDB, migrations metadata and log dir writability.
  */
 const readiness: RequestHandler = async (_req, res) => {
   const started = Date.now();
 
-  const checks = await Promise.all([checkDatabase(), checkLogs(), checkMigrations()]);
+  const checks = await Promise.all([checkDatabase(), checkMongo(), checkLogs(), checkMigrations()]);
 
   const hasBlockingFailure = checks.some((check) => !check.ok && !check.optional);
 
