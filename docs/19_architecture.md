@@ -1,6 +1,6 @@
 # 19 — Architecture de NutriChain API
 
-> Document de référence pour la soutenance. Tous les schémas reflètent le code réel
+> Document de référence sur l'architecture. Tous les schémas reflètent le code réel
 > (`src/app.ts`, `src/modules/`, `src/shared/`, `prisma/schema.prisma`), revérifiés le 22/07/2026.
 
 ## 1. Vue de contexte — qui parle à l'API ?
@@ -240,7 +240,7 @@ par schéma** (une base, filtrage par organisation) :
    leurs routes portent `sessionAuth(ADMIN_ROLES)` en écriture et `sessionAuth(ALL_ROLES)` en
    lecture. Ils ne s'appuient sur aucune clé API.
 
-## 7. Décisions structurantes (résumé pour la soutenance)
+## 7. Décisions structurantes (résumé)
 
 | Décision | Motivation |
 |---|---|

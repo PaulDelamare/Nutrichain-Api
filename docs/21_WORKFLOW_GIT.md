@@ -2,7 +2,6 @@
 
 > Objectif : un dépôt **professionnel, protégé et reproductible**. Ce document décrit la
 > stratégie de branches, les conventions, et les **règles de protection** à appliquer sur GitHub.
-> Il vaut aussi comme support pour la partie « méthode de travail » de la soutenance.
 
 ## 1. Stratégie de branches — GitHub Flow adapté
 

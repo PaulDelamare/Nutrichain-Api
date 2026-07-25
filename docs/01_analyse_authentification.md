@@ -132,7 +132,7 @@ L'application mobile sert principalement au scan rapide en usine. Il est impensa
 - Côté UI Mobile (React Native) : On n'obligera l'utilisateur à taper qu'un **Code PIN à 4 ou 6 chiffres**, ou à utiliser FaceID/TouchID pour valider qu'il est bien lui, avant de lancer le requêtage API grâce aux tokens conservés. C'est le design pattern classique de l'industrie logistique ou bancaire.
 
 ### Envoi d'E-mails
-Le projet étant un MVP d'école (Fil Rouge), nous ne nous attacherons pas à un vrai fournisseur SMTP (comme SendGrid) pour ne pas payer. Nous allons implémenter un service **Simulé (Logs Terminal)**, ou utiliser **Nodemailer avec Ethereal / Mailtrap** (service de test gratuit qui intercepte les emails pour les afficher sur un faux dashboard web).
+Le projet étant un MVP, nous ne nous attacherons pas à un vrai fournisseur SMTP (comme SendGrid) pour ne pas payer. Nous allons implémenter un service **Simulé (Logs Terminal)**, ou utiliser **Nodemailer avec Ethereal / Mailtrap** (service de test gratuit qui intercepte les emails pour les afficher sur un faux dashboard web).
 
 ### Impact sur le Schéma Prisma de départ
 Better Auth génère et requiert des tables natives spécifiques. Nous ne les modifions pas (sauf pour ajouter nos champs `matricule`, `isActive`).

@@ -97,10 +97,13 @@ inventaire fermé.
 
 ## Interdits
 
-- **Ne parle jamais de jury, d'oral, de soutenance, de correcteur ou de qui évaluera le projet** —
-  ni dans le code, ni dans un commentaire, ni dans un commit, ni dans une PR. Justifie par la
-  conséquence technique ou métier. Seule exception : `docs/20_DOSSIER_SOUTENANCE.md`, dont c'est
-  l'objet.
+- **Ce dépôt se présente comme un projet professionnel, sans exception.** Jamais un mot lié au
+  contexte scolaire — jury, oral, soutenance, correcteur, barème, note, projet d'école, fil rouge,
+  4e année — nulle part : ni dans le code, ni un commentaire, ni un commit, ni une PR, ni un
+  document, ni ce fichier de règles. Toute justification se formule en termes techniques ou
+  métier (sécurité, conformité, expérience utilisateur), jamais en référence à qui évalue quoi.
+  Aucune exception de fichier : un document qui a besoin d'expliquer une démonstration l'appelle
+  « présentation du projet », pas « soutenance ».
 - **N'ouvre pas d'issue** sans nécessité : on ferme le backlog, une trouvaille mineure se note dans
   la PR.
 - **Ne supprime jamais un fichier non suivi par git** sans demander.
