@@ -68,13 +68,71 @@ router.get('/traceability/products', requireOrgRole(CATALOG_READ_ROLES), getProd
  * @swagger
  * /api/traceability/batches:
  *   get:
- *     summary: Récupérer la liste de tous les lots (batches) en cours
+ *     summary: Récupérer la liste paginée des lots (batches) en cours
  *     tags: [Traçabilité]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: q
+ *         schema:
+ *           type: string
+ *           maxLength: 100
+ *         description: >
+ *           Recherche insensible à la casse sur le numéro de lot GS1, l'identifiant technique,
+ *           le nom du produit, son GTIN et le statut.
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 500
+ *           default: 100
  *     responses:
  *       200:
- *         description: Liste des lots récupérée avec succès
+ *         description: Page de lots récupérée avec succès
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: integer
+ *                   example: 200
+ *                 message:
+ *                   type: string
+ *                   example: "Lots récupérés avec succès"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     data:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                     pagination:
+ *                       type: object
+ *                       properties:
+ *                         page:
+ *                           type: integer
+ *                           example: 1
+ *                         limit:
+ *                           type: integer
+ *                           example: 100
+ *                         total:
+ *                           type: integer
+ *                           description: Nombre total de lots correspondants, toutes pages confondues
+ *                           example: 342
+ *                         totalPages:
+ *                           type: integer
+ *                           example: 4
+ *       400:
+ *         description: Paramètre de recherche ou de pagination invalide
  *       401:
  *         description: Non authentifié ou clé API manquante
  *       403:

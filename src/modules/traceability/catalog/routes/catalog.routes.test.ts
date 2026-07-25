@@ -79,17 +79,53 @@ describe('Catalog Routes Integration', () => {
   });
 
   describe('GET /api/traceability/batches', () => {
-    it('doit retourner une liste de lots avec un statut 200', async () => {
-      const mockBatches = [{ id: '1', id_produit: 'p1', quantite_actuelle: 100 }];
+    it('doit retourner une page de lots avec son total et un statut 200', async () => {
+      const mockPage = {
+        data: [{ id: '1', id_produit: 'p1', quantite_actuelle: 100 }],
+        pagination: { page: 1, limit: 100, total: 342, totalPages: 4 },
+      };
 
-      vi.mocked(catalogService.getAllBatches).mockResolvedValue(mockBatches as never[]);
+      vi.mocked(catalogService.getAllBatches).mockResolvedValue(mockPage as never);
 
       const res = await request(app).get('/api/traceability/batches');
 
       expect(res.status).toBe(200);
       expect(res.body.message).toBe('Lots récupérés avec succès');
-      expect(res.body.data).toEqual(mockBatches);
+      expect(res.body.data).toEqual(mockPage);
       expect(catalogService.getAllBatches).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  /**
+   * ⚠️ Verrouille le CÂBLAGE de la pagination, pas seulement son schéma : sans `page`/`limit` sur
+   * la route, un lot au-delà des 100 plus récents restait inatteignable (issue #32).
+   */
+  describe('GET /api/traceability/batches — pagination', () => {
+    it('transmet la page demandée au service, coercée en nombre', async () => {
+      vi.mocked(catalogService.getAllBatches).mockResolvedValue({
+        data: [],
+        pagination: { page: 3, limit: 50, total: 342, totalPages: 7 },
+      } as never);
+
+      const res = await request(app).get('/api/traceability/batches?page=3&limit=50');
+
+      expect(res.status).toBe(200);
+      expect(catalogService.getAllBatches).toHaveBeenCalledWith(
+        'org-123',
+        expect.objectContaining({ page: 3, limit: 50 })
+      );
+    });
+
+    it.each([
+      ['une page nulle', 'page=0'],
+      ['une page non numérique', 'page=abc'],
+      ['une taille de page au-delà du plafond', 'limit=501'],
+      ['une taille de page décimale', 'limit=5.7'],
+    ])('refuse %s en 400 sans atteindre le service', async (_cas, query) => {
+      const res = await request(app).get(`/api/traceability/batches?${query}`);
+
+      expect(res.status).toBe(400);
+      expect(catalogService.getAllBatches).not.toHaveBeenCalled();
     });
   });
 
@@ -113,12 +149,18 @@ describe('Catalog Routes Integration', () => {
     });
 
     it('laisse passer une recherche normale', async () => {
-      vi.mocked(catalogService.getAllBatches).mockResolvedValue([] as never);
+      vi.mocked(catalogService.getAllBatches).mockResolvedValue({
+        data: [],
+        pagination: { page: 1, limit: 100, total: 0, totalPages: 0 },
+      } as never);
 
       const res = await request(app).get('/api/traceability/batches?q=lait');
 
       expect(res.status).toBe(200);
-      expect(catalogService.getAllBatches).toHaveBeenCalledWith('org-123', 'lait', expect.anything());
+      expect(catalogService.getAllBatches).toHaveBeenCalledWith(
+        'org-123',
+        expect.objectContaining({ search: 'lait' })
+      );
     });
   });
 });
