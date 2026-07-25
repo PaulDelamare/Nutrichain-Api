@@ -16,6 +16,10 @@ import React from 'react';
 import crypto from 'crypto';
 
 export const auth = betterAuth({
+  // Nom affiché comme émetteur dans l'app d'authentification lors de l'enrôlement TOTP (2FA).
+  // Sans lui, Better-Auth affiche « Better Auth » — l'utilisateur ne reconnaît pas son compte
+  // dans une appli qui en liste plusieurs.
+  appName: 'NutriChain',
   baseURL: process.env.API_URL || 'http://localhost:3000',
   // Le front SvelteKit vit sur une autre origine que l'API : sans elle dans
   // trustedOrigins, Better-Auth rejette sign-in/sign-up (« Invalid origin »).

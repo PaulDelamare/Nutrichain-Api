@@ -12,14 +12,19 @@ const invoke = (path: string, method = 'POST') => {
 describe('allowlist du passthrough Better-Auth', () => {
   // Les seuls flux réellement utilisés par le front et le mobile (audit des deux dépôts) : rien
   // d'autre ne doit passer, sinon on rouvre le passthrough hors RBAC et hors audit.
-  it.each(['/auth/sign-in/email', '/auth/sign-up/email', '/auth/sign-out'])(
-    'laisse passer %s en POST',
-    (path) => {
-      expect(invoke(path)).toBeUndefined();
-    }
-  );
+  it.each([
+    '/auth/sign-in/email',
+    '/auth/sign-up/email',
+    '/auth/sign-out',
+    '/auth/two-factor/enable',
+    '/auth/two-factor/get-totp-uri',
+    '/auth/two-factor/verify-totp',
+    '/auth/two-factor/disable',
+  ])('laisse passer %s en POST', (path) => {
+    expect(invoke(path)).toBeUndefined();
+  });
 
-  // Tout le reste du core Better-Auth : gestion utilisateur, sessions, reset MDP, 2FA.
+  // Tout le reste du core Better-Auth : gestion utilisateur, sessions, reset MDP, 2FA de repli.
   it.each([
     '/auth/delete-user',
     '/auth/update-user',
@@ -32,8 +37,10 @@ describe('allowlist du passthrough Better-Auth', () => {
     '/auth/forget-password',
     '/auth/reset-password',
     '/auth/verify-email',
-    '/auth/two-factor/enable',
-    '/auth/two-factor/verify-totp',
+    '/auth/two-factor/generate-backup-codes',
+    '/auth/two-factor/verify-backup-code',
+    '/auth/two-factor/send-otp',
+    '/auth/two-factor/verify-otp',
     '/auth/n-importe-quoi-de-futur',
   ])('refuse %s en 403', (path) => {
     const error = invoke(path);
