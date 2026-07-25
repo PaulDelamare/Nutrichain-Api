@@ -1,4 +1,5 @@
 import { createHash } from 'crypto';
+import type { ClientSession } from 'mongoose';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../../shared/configs/prismaClient.config';
 import { auditService } from '../../../shared/utils/audit/audit.service';
@@ -55,6 +56,8 @@ export interface CheckAndAlertParams {
   organizationId: string;
   currentTemp: number;
   timestamp: Date;
+  /** Session Mongo à cohérence causale du point qui vient d'être écrit (cf. #226). */
+  mongoSession?: ClientSession;
 }
 
 /**
@@ -72,7 +75,7 @@ export const iotAlertService = {
    * le sensor_id est résolu dans cette org uniquement.
    */
   async checkAndAlert(params: CheckAndAlertParams): Promise<DetectionOutcome> {
-    const { sensorId, organizationId, currentTemp } = params;
+    const { sensorId, organizationId, currentTemp, mongoSession } = params;
 
     // 1-2. Cache lookup + Postgres findFirst si miss
     const cached = await resolveThreshold(sensorId, organizationId);
@@ -105,7 +108,7 @@ export const iotAlertService = {
     // 5. Query Mongo : derniers points sur la fenêtre 15min, filtrés multi-tenant.
     //    Lecture seule : elle n'a pas besoin d'être sérialisée, et la garder hors transaction
     //    évite de tenir une transaction Postgres ouverte pendant une I/O Mongo.
-    const points = await fetchRecentPoints(sensorId, organizationId);
+    const points = await fetchRecentPoints(sensorId, organizationId, mongoSession);
 
     // 6. Détection (logique pure)
     const result = detectExcursion(points, threshold);
@@ -306,7 +309,8 @@ function advisoryLockKey(orgId: string, equipmentId: string): bigint {
 
 async function fetchRecentPoints(
   sensorId: string,
-  organizationId: string
+  organizationId: string,
+  mongoSession?: ClientSession
 ): Promise<TelemetryPoint[]> {
   const since = new Date(Date.now() - WINDOW_MINUTES * 60_000);
   const docs = await TelemetryModel.find({
@@ -314,6 +318,7 @@ async function fetchRecentPoints(
     'metadata.organization_id': organizationId,
     timestamp: { $gte: since },
   })
+    .session(mongoSession ?? null)
     .limit(MONGO_SAFETY_LIMIT)
     .lean();
 

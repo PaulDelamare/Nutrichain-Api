@@ -9,10 +9,10 @@
  * Pré-requis : Postgres + migrations + seed, Mongo up, .env (API_KEY_ORG_ID).
  * Lancement : npm run e2e:quarantine-restore
  */
+import mongoose from 'mongoose';
 import { prisma } from '../src/shared/configs/prismaClient.config';
 import { connectMongoDB, disconnectMongoDB } from '../src/shared/configs/mongoClient.config';
 import { TelemetryModel } from '../src/modules/iot/models/telemetry.model';
-import { waitForDetectableWindow } from './helpers/telemetryVisibility';
 import {
   iotAlertService,
   _clearThresholdCacheForTests,
@@ -45,19 +45,24 @@ async function ingestExcursion(sensorId: string, threshold: number) {
     humidity: 60,
     battery_level: 90,
   }));
-  await TelemetryModel.insertMany(docs);
-  // La détection lit une fenêtre, pas le dernier point : sur le runner CI, une lecture immédiate
-  // après l'écriture voit une fenêtre incomplète et conclut « aucune excursion » → le lot reste
-  // EN_ATTENTE_QC au lieu de BLOQUE, et la levée qui suit échoue en 409. On attend d'abord que les
-  // 10 points soient relisibles sur le prédicat même de la détection.
-  await waitForDetectableWindow(sensorId, ORG_ID!, docs.length);
-  _clearThresholdCacheForTests();
-  await iotAlertService.checkAndAlert({
-    sensorId,
-    organizationId: ORG_ID!,
-    currentTemp: threshold + 4,
-    timestamp: new Date(now),
-  });
+  // Écriture et relecture (dans checkAndAlert) dans la MÊME session Mongo à cohérence causale,
+  // comme en production (telemetry.controller.ts) : élimine le pari sur un délai de visibilité
+  // arbitraire — sans elle, une lecture immédiate après l'écriture pouvait voir une fenêtre
+  // incomplète et conclure « aucune excursion » (#226).
+  const session = await mongoose.startSession();
+  try {
+    await TelemetryModel.insertMany(docs, { session });
+    _clearThresholdCacheForTests();
+    await iotAlertService.checkAndAlert({
+      sensorId,
+      organizationId: ORG_ID!,
+      currentTemp: threshold + 4,
+      timestamp: new Date(now),
+      mongoSession: session,
+    });
+  } finally {
+    await session.endSession();
+  }
 }
 
 async function main() {

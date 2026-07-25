@@ -11,6 +11,11 @@ vi.mock('../models/telemetry.model', () => ({
 vi.mock('../services/iotAlert.service', () => ({
   iotAlertService: { checkAndAlert: vi.fn() },
 }));
+vi.mock('mongoose', () => ({
+  default: {
+    startSession: vi.fn().mockResolvedValue({ endSession: vi.fn().mockResolvedValue(undefined) }),
+  },
+}));
 
 // Le contrôleur lit la trame VALIDÉE, pas `req.body` : reproduire ici l'état que produit
 // réellement `validateTelemetryPing`, sinon le test valide un monde qui n'existe pas.

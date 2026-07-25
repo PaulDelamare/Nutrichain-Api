@@ -20,10 +20,10 @@
  *
  * Lancement : npm run e2e:alerte-lots
  */
+import mongoose from 'mongoose';
 import { prisma } from '../src/shared/configs/prismaClient.config';
 import { connectMongoDB, disconnectMongoDB } from '../src/shared/configs/mongoClient.config';
 import { TelemetryModel } from '../src/modules/iot/models/telemetry.model';
-import { waitForDetectableWindow } from './helpers/telemetryVisibility';
 import {
   iotAlertService,
   _clearThresholdCacheForTests,
@@ -146,27 +146,27 @@ async function cleanup(f: Fixtures) {
   console.log('  → fixtures supprimées');
 }
 
-/** Compté par capteur : la détection exige une fenêtre complète, pas seulement le dernier point. */
-const writtenPerSensor = new Map<string, number>();
-
 async function ingestPing(sensorId: string, temperature: number, minutesAgo: number) {
   const ts = new Date(Date.now() - minutesAgo * 60_000);
-  await TelemetryModel.create({
-    metadata: { sensor_id: sensorId, organization_id: ORG_ID! },
-    timestamp: ts,
-    temperature,
-    humidity: 50,
-    battery_level: 80,
-  });
-  const written = (writtenPerSensor.get(sensorId) ?? 0) + 1;
-  writtenPerSensor.set(sensorId, written);
-  await waitForDetectableWindow(sensorId, ORG_ID!, written);
-  await iotAlertService.checkAndAlert({
-    sensorId,
-    organizationId: ORG_ID!,
-    currentTemp: temperature,
-    timestamp: ts,
-  });
+  // Écriture et relecture (dans checkAndAlert) dans la MÊME session Mongo à cohérence causale,
+  // comme en production (telemetry.controller.ts) : élimine le pari sur un délai de visibilité
+  // arbitraire (#226).
+  const session = await mongoose.startSession();
+  try {
+    await TelemetryModel.create(
+      [{ metadata: { sensor_id: sensorId, organization_id: ORG_ID! }, timestamp: ts, temperature, humidity: 50, battery_level: 80 }],
+      { session }
+    );
+    await iotAlertService.checkAndAlert({
+      sensorId,
+      organizationId: ORG_ID!,
+      currentTemp: temperature,
+      timestamp: ts,
+      mongoSession: session,
+    });
+  } finally {
+    await session.endSession();
+  }
 }
 
 async function main() {
@@ -179,8 +179,6 @@ async function main() {
     fixtures = await setup();
     _clearThresholdCacheForTests();
     await TelemetryModel.deleteMany({ 'metadata.sensor_id': fixtures.sensorId });
-    // La fenêtre repart de zéro : le compteur d'attente doit repartir avec elle.
-    writtenPerSensor.delete(fixtures.sensorId);
 
     console.log('\n[1] Excursion thermique : 10 pings à 8 °C (seuil 4 °C)');
     for (let i = 9; i >= 0; i--) await ingestPing(fixtures.sensorId, 8, i);
@@ -282,8 +280,6 @@ async function main() {
     });
     _clearThresholdCacheForTests();
     await TelemetryModel.deleteMany({ 'metadata.sensor_id': fixtures.sensorId });
-    // La fenêtre repart de zéro : le compteur d'attente doit repartir avec elle.
-    writtenPerSensor.delete(fixtures.sensorId);
     for (let i = 9; i >= 0; i--) await ingestPing(fixtures.sensorId, 9, i);
 
     const alertB = await prisma.alert.findFirst({
