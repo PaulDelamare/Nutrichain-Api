@@ -8,9 +8,10 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
     test: {
         globals: true,
-        // `vitest` ne charge pas `.env` automatiquement (contrairement aux scripts e2e, lancés
-        // via `tsx --env-file=.env`) : sans ce hook, DATABASE_URL/MONGO_URI restent vides.
-        setupFiles: ['./vitest.integration.setup.mjs'],
+        // `.env` est chargé par `node --env-file=.env` dans le script npm `test:integration`
+        // (pas ici) : `vitest` ne le lit pas lui-même, contrairement aux scripts e2e lancés via
+        // `tsx --env-file=.env`. Un `setupFiles` avec `dotenv/config` semble insuffisant en CI
+        // (timing/cwd du pool de workers) — `--env-file` au niveau du process est plus robuste.
         include: ['src/**/*.integration.test.ts'],
         // Les invariants testés ici (verrou consultatif, séquence, unicité) supposent un état de
         // base partagé et non concurrent entre fichiers : les isoler évite qu'un test lise l'état
