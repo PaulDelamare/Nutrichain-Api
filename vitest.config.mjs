@@ -1,8 +1,13 @@
-import { defineConfig } from 'vitest/config'
+import { defineConfig, configDefaults } from 'vitest/config'
 
 export default defineConfig({
     test: {
         globals: true,
+        // Les tests d'intégration (`*.integration.test.ts`, cf. #150) parlent à un vrai
+        // PostgreSQL : `npm test` tourne sans base disponible (poste de dev, job `quality-gates`
+        // de la CI), les faire échouer là serait un faux négatif. Suite séparée : `npm run
+        // test:integration` (vitest.integration.config.mjs), lancée uniquement dans le job E2E.
+        exclude: [...configDefaults.exclude, 'src/**/*.integration.test.ts'],
         coverage: {
             provider: 'v8',
             // `json-summary` alimente le récapitulatif publié par la CI : le seuil ne sert à rien
