@@ -22,14 +22,19 @@ vi.mock('../../../../shared/utils/returnSuccess/returnSuccess', () => ({
 // pose `req.auth.role`, `req.auth.activeOrgId` ET `req.activeOrgId`. C'est ce que le contrôleur lit.
 const buildRequest = (
   role: string | undefined,
-  query: Record<string, string> = {},
+  query: Record<string, string | number> = {},
   orgId: string | undefined = 'org-1'
 ): AuthenticatedRequest =>
   ({
     activeOrgId: orgId,
     auth: role === undefined ? undefined : { role, activeOrgId: orgId },
     query,
-    validatedCatalogQuery: { q: query.q },
+    // `validateCatalogQuery` a déjà coercé `page`/`limit` en nombres quand ils sont fournis.
+    validatedCatalogQuery: {
+      q: query.q,
+      ...(query.page === undefined ? {} : { page: Number(query.page) }),
+      ...(query.limit === undefined ? {} : { limit: Number(query.limit) }),
+    },
   }) as unknown as AuthenticatedRequest;
 
 describe('catalog.controller', () => {
@@ -41,7 +46,7 @@ describe('catalog.controller', () => {
   });
 
   describe('getProducts — includeArchived réservé à l administration', () => {
-    it("transmet includeArchived=false pour un viewer, MÊME avec ?includeArchived=true", async () => {
+    it('transmet includeArchived=false pour un viewer, MÊME avec ?includeArchived=true', async () => {
       // Rôle le plus faible qui atteint la route (CATALOG_READ_ROLES = tous les rôles) : lister les
       // archivés est un usage d'administration (réactiver), un viewer ne doit pas les énumérer.
       const req = buildRequest(ROLES.VIEWER, { includeArchived: 'true' });
@@ -89,7 +94,10 @@ describe('catalog.controller', () => {
 
       await getBatches(req, {} as Response);
 
-      expect(catalogService.getAllBatches).toHaveBeenCalledWith('org-1', 'lait', false);
+      expect(catalogService.getAllBatches).toHaveBeenCalledWith(
+        'org-1',
+        expect.objectContaining({ search: 'lait', revealAuthor: false })
+      );
     });
 
     it('transmet revealAuthor=true pour un admin', async () => {
@@ -97,7 +105,10 @@ describe('catalog.controller', () => {
 
       await getBatches(req, {} as Response);
 
-      expect(catalogService.getAllBatches).toHaveBeenCalledWith('org-1', 'lait', true);
+      expect(catalogService.getAllBatches).toHaveBeenCalledWith(
+        'org-1',
+        expect.objectContaining({ search: 'lait', revealAuthor: true })
+      );
     });
 
     // Même borne que pour getProducts : `quality` et `operator` ne doivent pas voir l'auteur d'un lot.
@@ -108,12 +119,44 @@ describe('catalog.controller', () => {
 
         await getBatches(req, {} as Response);
 
-        expect(catalogService.getAllBatches).toHaveBeenCalledWith('org-1', 'lait', false);
+        expect(catalogService.getAllBatches).toHaveBeenCalledWith(
+          'org-1',
+          expect.objectContaining({ revealAuthor: false })
+        );
       }
     );
   });
 
-  describe("garde défensive : organisation active absente", () => {
+  describe('getBatches — pagination', () => {
+    it('transmet la page et la taille de page demandées', async () => {
+      const req = buildRequest(ROLES.VIEWER, { page: 3, limit: 50 });
+
+      await getBatches(req, {} as Response);
+
+      expect(catalogService.getAllBatches).toHaveBeenCalledWith(
+        'org-1',
+        expect.objectContaining({ page: 3, limit: 50 })
+      );
+    });
+
+    /**
+     * Le défaut reproduit l'ancien `take: 100` : un appelant qui ne pagine pas encore (sélecteurs de
+     * lot, tableau de bord) doit recevoir le même volume qu'avant, pas les 20 par défaut des autres
+     * lectures paginées.
+     */
+    it('retombe sur la première page de 100 lots quand rien n est demandé', async () => {
+      const req = buildRequest(ROLES.VIEWER, {});
+
+      await getBatches(req, {} as Response);
+
+      expect(catalogService.getAllBatches).toHaveBeenCalledWith(
+        'org-1',
+        expect.objectContaining({ page: 1, limit: 100 })
+      );
+    });
+  });
+
+  describe('garde défensive : organisation active absente', () => {
     // En production `requireOrgRole` garantit l'organisation avant le contrôleur ; cette garde est
     // le filet si ce câblage disparaissait. `where: { organization_id: undefined }` ne filtrant RIEN
     // côté Prisma (il servirait tous les tenants), le contrôleur DOIT rejeter plutôt qu'appeler le

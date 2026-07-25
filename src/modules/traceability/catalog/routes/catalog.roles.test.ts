@@ -19,7 +19,10 @@ vi.mock('../../../identity/auth.config', () => ({
 vi.mock('../services/catalog.service', () => ({
   catalogService: {
     getAllProducts: vi.fn(async () => []),
-    getAllBatches: vi.fn(async () => []),
+    getAllBatches: vi.fn(async () => ({
+      data: [],
+      pagination: { page: 1, limit: 100, total: 0, totalPages: 0 },
+    })),
   },
 }));
 

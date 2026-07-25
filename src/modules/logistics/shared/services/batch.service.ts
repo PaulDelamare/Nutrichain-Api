@@ -118,9 +118,9 @@ export const batchService = {
    * Résout le lot qu'on vient de scanner, à partir du numéro porté par son étiquette (GS1 AI 10).
    *
    * Sans ça, un client ne peut identifier un lot qu'en listant le catalogue et en cherchant
-   * lui-même — or `GET /traceability/batches` est plafonné à 100 lots : passé ce seuil, un lot bien
-   * réel est déclaré « inconnu », et l'opérateur réceptionne une seconde fois une palette déjà en
-   * stock. La résolution appartient donc au serveur, qui seul voit tous les lots.
+   * lui-même — une page à la fois, sur une recherche approximative, alors que le scanner tient le
+   * numéro exact. La résolution appartient donc au serveur, qui l'obtient d'un accès à l'index
+   * `@@unique([organization_id, lot_number])` plutôt que d'un balayage paginé.
    */
   async resolveBatchByLotNumber(lotNumber: string, activeOrgId: string, revealAuthor = false) {
     return findBatchOr404(
