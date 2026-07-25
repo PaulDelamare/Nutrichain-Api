@@ -21,4 +21,5 @@ export const frenchErrorMessages = {
     'Le mot de passe doit contenir au moins 12 caractères, une majuscule, un chiffre et un caractère spécial.',
   email: "L'adresse e-mail n'est pas valide.",
   regex: 'Le format de ce champ est invalide.',
+  distinct: 'Ce champ contient des valeurs en double.',
 };

@@ -380,6 +380,9 @@ describe('TransformationService', () => {
           id: 'lot-p1',
           organization_id: activeOrgId,
           version: 1,
+          // Garde de stock posée ICI, indépendante de la contrainte d'unicité voisine (#118) :
+          // même si un doublon passait le validateur, la base refuserait de dépasser le stock.
+          quantite_actuelle: { gte: 30 },
         },
       })
     );
