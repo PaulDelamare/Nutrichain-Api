@@ -12,7 +12,12 @@ export const transformationSchema = vine.object({
   id_materiel: vine.string().uuid(),
   quantite_produite: vine.number().positive().decimal([0, 2]),
   unite_code: vine.enum(VALID_UNITS),
-  date_peremption: vine.string().optional(),
+  // DLC du produit fini. Un JOUR, pas un instant — le service l'ancre en fin de journée UTC et
+  // refuse un jour inexistant (cf. #120, même garde que la réception : `receiptPayload.schema.ts`).
+  date_peremption: vine
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
   note_technique: vine.record(vine.any()).optional(),
   // Clé d'idempotence optionnelle : si le mobile la fournit, un rejeu (coupure réseau) renvoie le
   // résultat du premier appel au lieu de re-prélever les lots parents. Absente = comportement direct.
