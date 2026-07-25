@@ -8,6 +8,9 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
     test: {
         globals: true,
+        // `vitest` ne charge pas `.env` automatiquement (contrairement aux scripts e2e, lancés
+        // via `tsx --env-file=.env`) : sans ce hook, DATABASE_URL/MONGO_URI restent vides.
+        setupFiles: ['./vitest.integration.setup.mjs'],
         include: ['src/**/*.integration.test.ts'],
         // Les invariants testés ici (verrou consultatif, séquence, unicité) supposent un état de
         // base partagé et non concurrent entre fichiers : les isoler évite qu'un test lise l'état
