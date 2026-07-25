@@ -306,6 +306,10 @@ async function runTransformation(
             id: input.id_lot_parent,
             organization_id: data.organization_id,
             version: currentParent.version, // Utilisation de la version fraîche lue dans la tx
+            // Garde de stock posée ICI, pas seulement déduite de la contrainte d'unicité voisine
+            // (TransformationComposition) : cette dernière protège contre un doublon EXACT du
+            // même lot, pas contre un total qui dépasserait le stock par une autre voie (#118).
+            quantite_actuelle: { gte: input.quantite_prelevee },
           },
           data: {
             quantite_actuelle: { decrement: input.quantite_prelevee },

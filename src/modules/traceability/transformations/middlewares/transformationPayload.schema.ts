@@ -30,7 +30,11 @@ export const transformationSchema = vine.object({
       })
     )
     .minLength(1)
-    .maxLength(50),
+    .maxLength(50)
+    // Le même lot parent deux fois faisait échouer la contrainte d'unicité de
+    // TransformationComposition en 500 générique (P2002 non capturée) : l'opérateur n'avait aucun
+    // moyen de comprendre qu'il avait saisi deux fois le même lot (cf. #118).
+    .distinct('id_lot_parent'),
 });
 
 export type TransformationPayload = Infer<typeof transformationSchema>;
