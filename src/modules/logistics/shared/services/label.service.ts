@@ -15,9 +15,15 @@ export const labelService = {
    * Sous `/api`, comme TOUTES les routes de ce serveur (`app.ts`) : un lien qui pointait ailleurs
    * ne correspondait à AUCUNE route montée — chaque étiquette imprimée encodait un lien mort,
    * 404 au premier scan réel (cf. #139).
+   *
+   * `API_URL`, pas `API_BASE_URL` : cette dernière n'était déclarée nulle part
+   * (`.env.example`, `docker-compose.yml`, `env.validator.ts`) — le repli s'appliquait donc
+   * TOUJOURS, vers un domaine qui ne résout même pas (NXDOMAIN, cf. #146). `API_URL` est la
+   * variable déjà utilisée pour ce même concept ailleurs (`auth.config.ts`, `swagger.config.ts`,
+   * `server.ts`) — une seule source de vérité pour l'URL publique de ce serveur.
    */
   generateDigitalLink(gtin: string, lotNumber: string): string {
-    const baseUrl = process.env.API_BASE_URL || 'https://api.nutrichain.fr';
+    const baseUrl = process.env.API_URL || 'https://api.nutrichain.fr';
     // Le standard GS1 Digital Link utilise des clés identifiées par des AI (Application Identifiers)
     return `${baseUrl}/api/gs1/01/${gtin}/10/${lotNumber}`;
   },

@@ -6,18 +6,18 @@ import { APIError } from '../../../../shared/utils/errorHandler/APIError';
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 describe('labelService', () => {
-  const ORIGINAL_BASE_URL = process.env.API_BASE_URL;
+  const ORIGINAL_BASE_URL = process.env.API_URL;
 
   beforeEach(() => {
     // Chaque test part d'un environnement propre : le defaut ne doit pas fuir d'un test a l'autre.
-    delete process.env.API_BASE_URL;
+    delete process.env.API_URL;
   });
 
   afterAll(() => {
     if (ORIGINAL_BASE_URL === undefined) {
-      delete process.env.API_BASE_URL;
+      delete process.env.API_URL;
     } else {
-      process.env.API_BASE_URL = ORIGINAL_BASE_URL;
+      process.env.API_URL = ORIGINAL_BASE_URL;
     }
   });
 
@@ -28,15 +28,15 @@ describe('labelService', () => {
       expect(uri).toBe('https://api.nutrichain.fr/api/gs1/01/03400000000000/10/LOT-XYZ');
     });
 
-    it('utilise API_BASE_URL comme base quand la variable est definie', () => {
-      process.env.API_BASE_URL = 'https://example.test';
+    it('utilise API_URL comme base quand la variable est definie', () => {
+      process.env.API_URL = 'https://example.test';
 
       const uri = labelService.generateDigitalLink('12345678', 'B42');
 
       expect(uri).toBe('https://example.test/api/gs1/01/12345678/10/B42');
     });
 
-    it('retombe sur le domaine par defaut quand API_BASE_URL est absente', () => {
+    it('retombe sur le domaine par defaut quand API_URL est absente', () => {
       const uri = labelService.generateDigitalLink('99', 'L1');
 
       expect(uri.startsWith('https://api.nutrichain.fr/api/gs1/01/')).toBe(true);
