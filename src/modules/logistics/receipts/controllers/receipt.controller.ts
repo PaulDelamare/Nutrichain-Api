@@ -159,6 +159,32 @@ export const moveBatchController = catchAsync(
 );
 
 /**
+ * Met un lot au rebut (destruction tracée) : BLOQUE ou ALERTE -> REBUT.
+ */
+export const scrapBatchController = catchAsync(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const id = req.params.id as string;
+    const activeOrgId = req.activeOrgId as string;
+    const userId = req.auth?.user?.id ?? req.user?.id;
+    const motif = req.validatedScrap?.motif;
+
+    if (!userId) {
+      throw new APIError(401, {
+        error: [{ field: 'user', message: 'Utilisateur requis pour mettre un lot au rebut.' }],
+      });
+    }
+    if (!motif) {
+      throw new APIError(400, {
+        error: [{ field: 'motif', message: 'Motif de mise au rebut manquant.' }],
+      });
+    }
+
+    const batch = await batchService.scrapBatch(id, activeOrgId, userId, motif);
+    sendSuccess(res, 200, 'Lot mis au rebut', batch);
+  }
+);
+
+/**
  * Génère une étiquette QR Code pour un lot (GS1 Digital Link)
  */
 export const getBatchLabelController = catchAsync(

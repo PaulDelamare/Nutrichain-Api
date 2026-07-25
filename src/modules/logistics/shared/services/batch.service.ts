@@ -11,6 +11,7 @@ import {
   MOVABLE_BATCH_STATUSES,
   MOVEMENT_TYPES,
   QUALITY_RESULTS,
+  SCRAPPABLE_BATCH_STATUSES,
 } from '../../constants/logistics.constants';
 import { STORAGE_EQUIPMENT_TYPES } from '../../../organization/middlewares/equipment.schema';
 
@@ -350,6 +351,102 @@ export const batchService = {
             entityId: id,
             oldValue: { id_materiel_actuel: batch.id_materiel_actuel },
             newValue: { id_materiel_actuel: equipmentId },
+          },
+          tx
+        );
+
+        return tx.batch.findFirst({ where: { id, organization_id: activeOrgId } });
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+    );
+  },
+
+  /**
+   * Met un lot au rebut : destruction tracée, seule issue d'un lot sans autre canal de sortie
+   * (rappel ALERTE, ou quarantaine BLOQUE qu'un contrôle qualité a condamnée). Terminal — remet
+   * la quantité à zéro et scelle le motif dans l'audit WORM, preuve opposable de destruction.
+   *
+   * Contrairement à `liftQuarantine`, aucune séparation des tâches n'est exigée ici : celle-ci
+   * protège contre le risque de remettre en circulation SA PROPRE production douteuse — l'incitation
+   * inverse n'existe pas pour une destruction (elle ne profite jamais à son auteur), et le motif
+   * comme l'auteur restent de toute façon scellés dans l'audit WORM.
+   */
+  async scrapBatch(id: string, activeOrgId: string, userId: string, motif: string) {
+    return retryableTransaction(
+      async (tx) => {
+        const batch = await tx.batch.findFirst({
+          where: { id, organization_id: activeOrgId },
+        });
+
+        if (!batch) {
+          throw new APIError(404, {
+            error: [{ field: 'batch', message: 'Lot introuvable dans cette organisation' }],
+          });
+        }
+
+        if (!(SCRAPPABLE_BATCH_STATUSES as readonly string[]).includes(batch.statut)) {
+          throw new APIError(409, {
+            error: [
+              {
+                field: 'statut',
+                message: `Seul un lot en quarantaine (BLOQUE) ou sous rappel (ALERTE) peut être mis au rebut. Statut actuel : ${batch.statut}.`,
+              },
+            ],
+          });
+        }
+
+        const updated = await tx.batch.updateMany({
+          where: { id, organization_id: activeOrgId, version: batch.version },
+          data: {
+            statut: BATCH_STATUSES.SCRAPPED,
+            quantite_actuelle: 0,
+            statut_avant_blocage: null,
+            version: { increment: 1 },
+          },
+        });
+
+        if (updated.count === 0) {
+          throw new APIError(409, {
+            error: [
+              {
+                field: 'statut',
+                message: "L'état du lot a changé avant la mise au rebut. Rechargez sa fiche avant de réessayer.",
+              },
+            ],
+          });
+        }
+
+        await tx.scrapRecord.create({
+          data: {
+            organization_id: activeOrgId,
+            id_lot: id,
+            quantite: batch.quantite_actuelle,
+            unite: batch.unite_code,
+            motif,
+            id_user: userId,
+          },
+        });
+
+        await tx.batch_Mouvement.create({
+          data: {
+            id_lot: id,
+            type_action: MOVEMENT_TYPES.SCRAP,
+            quantite: batch.quantite_actuelle,
+            unite: batch.unite_code,
+            id_user: userId,
+            metadata: { motif, statut_precedent: batch.statut },
+          },
+        });
+
+        await auditService.logAction(
+          {
+            organizationId: activeOrgId,
+            userId,
+            action: 'SCRAP_BATCH',
+            entity: 'Batch',
+            entityId: id,
+            oldValue: { statut: batch.statut, quantite: batch.quantite_actuelle },
+            newValue: { statut: BATCH_STATUSES.SCRAPPED, quantite: 0, motif },
           },
           tx
         );

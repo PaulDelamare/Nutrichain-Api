@@ -29,6 +29,7 @@ model User {
   mouvements       Batch_Mouvement[]
   idempotencyKeys  IdempotencyKey[]
   platformAdmin    PlatformAdmin?
+  rebuts           ScrapRecord[]
 
   @@map("user")
 }
@@ -142,6 +143,7 @@ model Organization {
   IdempotencyKey     IdempotencyKey[]
   EPCIS_Event        EPCIS_Event[]
   IotGateway         IotGateway[]
+  ScrapRecord        ScrapRecord[]
 
   @@unique([slug])
   @@map("organization")
@@ -337,8 +339,28 @@ model Batch {
   tests_qualite           QualityControl[]
   liaisons                Liaison_Shipment[]
   mouvements              Batch_Mouvement[]
+  rebut                   ScrapRecord?
 
   @@unique([organization_id, lot_number])
+  @@index([organization_id])
+}
+
+/// Destruction tracée d'un lot sans autre issue (rappel ALERTE ou quarantaine BLOQUE non levable).
+/// Sans ce modèle, la quantité d'un lot rappelé reste indéfiniment aux livres, sans aucune preuve
+/// de destruction opposable en cas de contrôle sanitaire.
+model ScrapRecord {
+  id              String       @id @default(uuid())
+  organization_id String
+  organization    Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  id_lot          String       @unique
+  lot             Batch        @relation(fields: [id_lot], references: [id], onDelete: Restrict)
+  quantite        Decimal
+  unite           String
+  motif           String
+  id_user         String
+  user            User         @relation(fields: [id_user], references: [id])
+  created_at      DateTime     @default(now())
+
   @@index([organization_id])
 }
 

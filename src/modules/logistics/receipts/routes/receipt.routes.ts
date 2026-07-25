@@ -8,6 +8,7 @@ import {
   listReceiptsController,
   liftBatchQuarantineController,
   moveBatchController,
+  scrapBatchController,
   resolveBatchByLotNumberController,
 } from '../controllers/receipt.controller';
 import { validateReceiptParams } from '../middlewares/validateReceipt.middleware';
@@ -15,6 +16,7 @@ import { validateBatchResolve } from '../middlewares/validateBatchResolve.middle
 import { validateReceiptQuery } from '../middlewares/validateReceiptQuery.middleware';
 import { validateQuarantineLift } from '../middlewares/validateQuarantineLift.middleware';
 import { validateMoveBatch } from '../middlewares/validateMoveBatch.middleware';
+import { validateScrap } from '../middlewares/validateScrap.middleware';
 import { sessionAuth } from '../../../../shared/middlewares/sessionAuth';
 import { verifyReceiptAccess } from '../../middlewares/verifyReceiptAccess.middleware';
 import { verifyBatchAccess } from '../../middlewares/verifyBatchAccess.middleware';
@@ -325,6 +327,62 @@ router.patch(
   verifyBatchAccess,
   validateMoveBatch,
   moveBatchController
+);
+
+// Mise au rebut : décision qualité réservée à Qualité / Admin / Owner, au même titre que la
+// levée de quarantaine — c'est l'issue d'un lot qu'aucune des deux autres ne peut plus libérer.
+/**
+ * @swagger
+ * /api/logistics/batches/{id}/scrap:
+ *   post:
+ *     summary: Met un lot au rebut (destruction tracée)
+ *     description: |
+ *       Seule issue d'un lot sous rappel (`ALERTE`) ou en quarantaine (`BLOQUE`) qu'aucune décision
+ *       qualité ne peut plus libérer. Remet la quantité à zéro et scelle le motif dans l'audit WORM :
+ *       preuve de destruction opposable en cas de contrôle sanitaire.
+ *     tags: [Logistique]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [motif]
+ *             properties:
+ *               motif:
+ *                 type: string
+ *                 minLength: 3
+ *                 maxLength: 500
+ *                 description: Justification tracée dans l'audit WORM
+ *     responses:
+ *       200:
+ *         description: Lot mis au rebut
+ *       400:
+ *         description: Motif manquant, trop court ou trop long
+ *       401:
+ *         description: Aucune session
+ *       403:
+ *         description: Rôle insuffisant
+ *       404:
+ *         description: Lot introuvable dans l'organisation active
+ *       409:
+ *         description: Le lot n'est ni en quarantaine ni sous rappel
+ */
+router.post(
+  '/logistics/batches/:id/scrap',
+  sessionAuth(QUALITY_ROLES),
+  verifyBatchAccess,
+  validateScrap,
+  scrapBatchController
 );
 
 export default router;

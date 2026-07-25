@@ -83,6 +83,7 @@ vi.mock('../services/receipt.service', () => ({
 vi.mock('../../shared/services/batch.service', () => ({
   batchService: {
     liftQuarantine: vi.fn(),
+    scrapBatch: vi.fn(),
   },
 }));
 
@@ -306,6 +307,61 @@ describe('Logistics - Receipts Routes', () => {
 
       expect(res.status).toBe(404);
       expect(batchService.liftQuarantine).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('POST /api/logistics/batches/:id/scrap (mise au rebut)', () => {
+    const mockBatchInOrg = async (statut = 'BLOQUE') => {
+      const { prisma } = await import('../../../../shared/configs/prismaClient.config');
+      vi.mocked(prisma.batch.findFirst).mockResolvedValue({
+        id: 'batch-1',
+        organization_id: 'org_test_123',
+        statut,
+      } as unknown as never);
+    };
+
+    it('doit mettre le lot au rebut et retourner 200 avec un motif valide', async () => {
+      await mockBatchInOrg();
+      vi.mocked(batchService.scrapBatch).mockResolvedValue({
+        id: 'batch-1',
+        statut: 'REBUT',
+      } as never);
+
+      const res = await request(app)
+        .post('/api/logistics/batches/batch-1/scrap')
+        .send({ motif: 'Lot rappelé, destruction confirmée' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.statut).toBe('REBUT');
+      expect(batchService.scrapBatch).toHaveBeenCalledWith(
+        'batch-1',
+        'org_test_123',
+        'u-123',
+        'Lot rappelé, destruction confirmée'
+      );
+    });
+
+    it('doit refuser (400) si le motif est absent ou trop court', async () => {
+      await mockBatchInOrg();
+
+      const res = await request(app)
+        .post('/api/logistics/batches/batch-1/scrap')
+        .send({ motif: 'x' });
+
+      expect(res.status).toBe(400);
+      expect(batchService.scrapBatch).not.toHaveBeenCalled();
+    });
+
+    it('doit refuser (404) un lot hors de l organisation (verifyBatchAccess)', async () => {
+      const { prisma } = await import('../../../../shared/configs/prismaClient.config');
+      vi.mocked(prisma.batch.findFirst).mockResolvedValue(null);
+
+      const res = await request(app)
+        .post('/api/logistics/batches/autre-org/scrap')
+        .send({ motif: 'Tentative cross-tenant' });
+
+      expect(res.status).toBe(404);
+      expect(batchService.scrapBatch).not.toHaveBeenCalled();
     });
   });
 

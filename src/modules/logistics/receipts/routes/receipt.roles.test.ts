@@ -32,6 +32,7 @@ vi.mock('../controllers/receipt.controller', () => ({
   liftBatchQuarantineController: (_req: express.Request, res: express.Response) =>
     res.status(200).end(),
   moveBatchController: (_req: express.Request, res: express.Response) => res.status(200).end(),
+  scrapBatchController: (_req: express.Request, res: express.Response) => res.status(200).end(),
   resolveBatchByLotNumberController: (_req: express.Request, res: express.Response) =>
     res.status(200).json({ route: 'resolve' }),
 }));
@@ -55,6 +56,10 @@ vi.mock('../middlewares/validateQuarantineLift.middleware', () => ({
     _res: express.Response,
     next: express.NextFunction
   ) => next(),
+}));
+vi.mock('../middlewares/validateScrap.middleware', () => ({
+  validateScrap: (_req: express.Request, _res: express.Response, next: express.NextFunction) =>
+    next(),
 }));
 vi.mock('../../middlewares/verifyReceiptAccess.middleware', () => ({
   verifyReceiptAccess: (
@@ -117,6 +122,26 @@ describe('RBAC des routes logistiques (session réelle)', () => {
     it('refuse viewer', async () => {
       signedInAs('viewer');
       const res = await request(app).post('/api/logistics/batches/lot-1/release').send({});
+      expect(res.status).toBe(403);
+    });
+  });
+
+  describe('POST /logistics/batches/:id/scrap (mise au rebut — décision qualité)', () => {
+    it.each(['owner', 'admin', 'quality'])('autorise %s', async (role) => {
+      signedInAs(role);
+      const res = await request(app).post('/api/logistics/batches/lot-1/scrap').send({});
+      expect(res.status).toBe(200);
+    });
+
+    it('refuse operator (celui qui produit ne décide pas de la destruction)', async () => {
+      signedInAs('operator');
+      const res = await request(app).post('/api/logistics/batches/lot-1/scrap').send({});
+      expect(res.status).toBe(403);
+    });
+
+    it('refuse viewer', async () => {
+      signedInAs('viewer');
+      const res = await request(app).post('/api/logistics/batches/lot-1/scrap').send({});
       expect(res.status).toBe(403);
     });
   });
