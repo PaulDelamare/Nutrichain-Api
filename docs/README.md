@@ -43,6 +43,7 @@ Cet index tranche. Trois statuts, un seul sens de lecture.
 | [`06_standards_techniques.md`](06_standards_techniques.md) | ✅ | Swagger, observabilité, variables d'environnement, pagination, CI. |
 | [`21_WORKFLOW_GIT.md`](21_WORKFLOW_GIT.md) | ✅ | Branches, commits, protections de branche réellement actives. |
 | [`../GUIDE_IA.md`](../GUIDE_IA.md) | ✅ | Méthode de travail. Chaque règle est adossée à un incident réel du projet. |
+| [`25_LIVRET_SCRUM.md`](25_LIVRET_SCRUM.md) | ✅ | La trace de gestion de projet : méthode, volumes vérifiés, repères par thème sur les 3 dépôts. |
 
 ## Sécurité
 
