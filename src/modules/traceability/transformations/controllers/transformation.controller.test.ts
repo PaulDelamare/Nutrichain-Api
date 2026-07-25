@@ -117,23 +117,22 @@ describe('TransformationController', () => {
       expect(transformationService.createTransformation).not.toHaveBeenCalled();
     });
 
-    it('convertit date_peremption (string) en Date pour le service, et laisse undefined si absente', async () => {
-      // Le schéma valide une string ; le service attend une Date. La conversion est ici, au
-      // contrôleur. (L'ancrage en fin de journée UTC, lui, relève du service — cf. #120.)
+    it('convertit date_peremption (string) en Date ancrée fin de journée UTC, et laisse undefined si absente', async () => {
+      // Le schéma valide une string ; le service attend une Date. `parseExpiryDay` (partagé avec
+      // la réception, cf. #120) ancre en fin de journée UTC : un lot dont la DLC est aujourd'hui
+      // reste consommable jusqu'au soir, pas mort-né à 00h01.
+      const farFutureDay = new Date(Date.now() + 365 * 24 * 60 * 60_000).toISOString().slice(0, 10);
       const withDate = {
         activeOrgId: 'org-1',
         auth: { user: { id: 'user-session' } },
-        validatedTransformation: { ...basePayload, date_peremption: '2026-07-20' },
+        validatedTransformation: { ...basePayload, date_peremption: farFutureDay },
       } as unknown as AuthenticatedRequest;
 
       await createTransformation(withDate, {} as Response);
 
       const passed = vi.mocked(transformationService.createTransformation).mock.calls[0][0];
       expect(passed.date_peremption).toBeInstanceOf(Date);
-      // Valeur littérale, et non `new Date('2026-07-20').toISOString()` : reconstruire l'attendu
-      // avec l'expression de production rend l'assertion increvable, un décalage de fuseau se
-      // refléterait des deux côtés.
-      expect((passed.date_peremption as Date).toISOString()).toBe('2026-07-20T00:00:00.000Z');
+      expect((passed.date_peremption as Date).toISOString()).toBe(`${farFutureDay}T23:59:59.999Z`);
 
       vi.mocked(transformationService.createTransformation).mockClear();
 
