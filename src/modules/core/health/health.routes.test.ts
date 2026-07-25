@@ -88,7 +88,17 @@ describe('Health route', () => {
     expect(Math.abs(Date.now() - parsed)).toBeLessThan(10_000);
   });
 
-  it('readiness returns ready when DB and logs are OK', async () => {
+  const mockMongoConnected = () => {
+    vi.doMock('mongoose', () => ({
+      default: {
+        connection: {
+          db: { admin: () => ({ ping: vi.fn().mockResolvedValue({ ok: 1 }) }) },
+        },
+      },
+    }));
+  };
+
+  it('readiness returns ready when DB, Mongo and logs are OK', async () => {
     const tmpDir = path.join(tmpDirBase, `ok-${Date.now()}`);
     process.env.LOG_DIR = tmpDir;
 
@@ -102,6 +112,7 @@ describe('Health route', () => {
           .mockResolvedValue([{ id: '1', finished_at: new Date().toISOString() }]),
       },
     }));
+    mockMongoConnected();
 
     const { default: healthRoutes } = await import('./health.routes');
     const app = express();
@@ -117,12 +128,57 @@ describe('Health route', () => {
     type HealthCheck = { name: string; ok: boolean; optional?: boolean; error?: unknown };
     const checks: HealthCheck[] = res.body.data.checks;
     const dbCheck = checks.find((check) => check.name === 'database')!;
+    const mongoCheck = checks.find((check) => check.name === 'mongodb')!;
     const logsCheck = checks.find((check) => check.name === 'logs')!;
     const migrationsCheck = checks.find((check) => check.name === 'migrations')!;
 
     expect(dbCheck.ok).toBe(true);
+    expect(mongoCheck.ok).toBe(true);
     expect(logsCheck.ok).toBe(true);
     expect(migrationsCheck.optional).toBe(true);
+  });
+
+  /**
+   * La télémétrie IoT (chaîne du froid) vit exclusivement dans Mongo : sans ce check, la sonde
+   * répondait "prête" alors que POST /api/telemetry/ping échouerait — la vitrine IoT pouvait
+   * tomber sans qu'aucun indicateur ne l'annonce (#158).
+   */
+  it('readiness returns not ready when Mongo is unreachable', async () => {
+    const tmpDir = path.join(tmpDirBase, `mongo-nok-${Date.now()}`);
+    process.env.LOG_DIR = tmpDir;
+
+    vi.resetModules();
+    vi.doMock('../../../shared/configs/prismaClient.config', () => ({
+      bdd: {
+        $queryRaw: vi.fn().mockResolvedValue(1),
+        $queryRawUnsafe: vi
+          .fn()
+          .mockResolvedValue([{ id: '1', finished_at: new Date().toISOString() }]),
+      },
+    }));
+    vi.doMock('mongoose', () => ({
+      default: {
+        connection: {
+          db: { admin: () => ({ ping: vi.fn().mockRejectedValue(new Error('Mongo down')) }) },
+        },
+      },
+    }));
+
+    const { default: healthRoutes } = await import('./health.routes');
+    const app = express();
+    app.use(healthRoutes);
+
+    const res = await request(app).get('/health/ready');
+
+    expect(res.status).toBe(503);
+    expect(res.body.data.summary.ready).toBe(false);
+
+    type HealthCheck = { name: string; ok: boolean; optional?: boolean; error?: unknown };
+    const checks: HealthCheck[] = res.body.data.checks;
+    const mongoCheck = checks.find((check) => check.name === 'mongodb')!;
+    expect(mongoCheck.ok).toBe(false);
+    expect(mongoCheck.optional).toBeUndefined();
+    expect(mongoCheck.error).toBeDefined();
   });
 
   it('readiness returns not ready when DB check fails', async () => {
@@ -137,6 +193,7 @@ describe('Health route', () => {
         $queryRawUnsafe: vi.fn().mockRejectedValue(new Error('DB down')),
       },
     }));
+    mockMongoConnected();
 
     const { default: healthRoutes } = await import('./health.routes');
     const app = express();
@@ -170,6 +227,7 @@ describe('Health route', () => {
         $queryRawUnsafe: vi.fn().mockImplementation(() => Promise.reject(migrationError)),
       },
     }));
+    mockMongoConnected();
 
     const { default: healthRoutes } = await import('./health.routes');
     const app = express();
