@@ -5,6 +5,7 @@ import { catalogService } from '../services/catalog.service';
 import { AuthenticatedRequest } from '../../../identity/middlewares/requireAuth.middleware';
 import { APIError } from '../../../../shared/utils/errorHandler/APIError';
 import { ADMIN_ROLES, type Role } from '../../../identity/constants/roles.constants';
+import { CATALOG_PAGE_DEFAULTS } from '../middlewares/catalogQuery.schema';
 
 export const getProducts = catchAsync(async (req: AuthenticatedRequest, res: Response) => {
   const activeOrgId = req.activeOrgId || req.auth?.activeOrgId;
@@ -27,7 +28,11 @@ export const getProducts = catchAsync(async (req: AuthenticatedRequest, res: Res
 export const getBatches = catchAsync(async (req: AuthenticatedRequest, res: Response) => {
   const activeOrgId = req.activeOrgId || req.auth?.activeOrgId;
   // Validé en amont : `?q=a&q=b` donnait un TABLEAU transmis au `contains` de Prisma (500).
-  const q = req.validatedCatalogQuery?.q;
+  const {
+    q,
+    page = CATALOG_PAGE_DEFAULTS.page,
+    limit = CATALOG_PAGE_DEFAULTS.limit,
+  } = req.validatedCatalogQuery ?? {};
 
   if (!activeOrgId) {
     throw new APIError(400, {
@@ -36,6 +41,11 @@ export const getBatches = catchAsync(async (req: AuthenticatedRequest, res: Resp
   }
 
   const revealAuthor = ADMIN_ROLES.includes(req.auth?.role as Role);
-  const batches = await catalogService.getAllBatches(activeOrgId, q as string, revealAuthor);
+  const batches = await catalogService.getAllBatches(activeOrgId, {
+    search: q,
+    page,
+    limit,
+    revealAuthor,
+  });
   sendSuccess(res, 200, 'Lots récupérés avec succès', batches);
 });

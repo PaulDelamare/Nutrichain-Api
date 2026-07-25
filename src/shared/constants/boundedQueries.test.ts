@@ -25,7 +25,7 @@ describe('bornes des lectures paginées', () => {
       expect((await validate(receiptQuerySchema, { limit: 100000000 })).ok).toBe(false);
     });
 
-    it("refuse une limite non numérique, qui produisait un `take: NaN` (500)", async () => {
+    it('refuse une limite non numérique, qui produisait un `take: NaN` (500)', async () => {
       expect((await validate(receiptQuerySchema, { limit: 'abc' })).ok).toBe(false);
     });
 
@@ -57,7 +57,7 @@ describe('bornes des lectures paginées', () => {
     });
 
     /** `req.query` livre des CHAÎNES : la coercition doit marcher pour un appel légitime. */
-    it("coerce les chaînes de la query string, comme Express les livre", async () => {
+    it('coerce les chaînes de la query string, comme Express les livre', async () => {
       const r = await validate(receiptQuerySchema, { page: '2', limit: '50' });
 
       expect(r.ok).toBe(true);
@@ -84,10 +84,28 @@ describe('bornes des lectures paginées', () => {
     });
 
     it('borne la longueur du terme de recherche', async () => {
-      expect((await validate(catalogQuerySchema, { q: 'x'.repeat(MAX_SEARCH_LENGTH) })).ok).toBe(true);
-      expect((await validate(catalogQuerySchema, { q: 'x'.repeat(MAX_SEARCH_LENGTH + 1) })).ok).toBe(
+      expect((await validate(catalogQuerySchema, { q: 'x'.repeat(MAX_SEARCH_LENGTH) })).ok).toBe(
+        true
+      );
+      expect(
+        (await validate(catalogQuerySchema, { q: 'x'.repeat(MAX_SEARCH_LENGTH + 1) })).ok
+      ).toBe(false);
+    });
+
+    /**
+     * La route est devenue paginée pour qu'un lot au-delà des 100 plus récents reste atteignable
+     * (issue #32) : elle hérite des mêmes bornes que les autres lectures paginées, sinon elle
+     * réintroduit les `take: NaN` et `skip` hors limites que celles-ci ont fermés.
+     */
+    it('borne la pagination comme les autres lectures paginées', async () => {
+      expect((await validate(catalogQuerySchema, { page: '3', limit: '50' })).ok).toBe(true);
+      expect((await validate(catalogQuerySchema, { page: 0 })).ok).toBe(false);
+      expect((await validate(catalogQuerySchema, { page: String(MAX_PAGE_NUMBER + 1) })).ok).toBe(
         false
       );
+      expect((await validate(catalogQuerySchema, { limit: MAX_PAGE_SIZE + 1 })).ok).toBe(false);
+      expect((await validate(catalogQuerySchema, { limit: 'abc' })).ok).toBe(false);
+      expect((await validate(catalogQuerySchema, { limit: '5.7' })).ok).toBe(false);
     });
   });
 
@@ -103,7 +121,7 @@ describe('bornes des lectures paginées', () => {
       })),
     });
 
-    it("refuse une expédition à des dizaines de milliers de lignes (transaction géante)", async () => {
+    it('refuse une expédition à des dizaines de milliers de lignes (transaction géante)', async () => {
       expect((await validate(shipmentSchema, shipment(500))).ok).toBe(true);
       expect((await validate(shipmentSchema, shipment(501))).ok).toBe(false);
     });
