@@ -56,7 +56,7 @@ Le détail (5 diagrammes) est dans [`19_architecture.md`](19_architecture.md). L
    mouvement, l'événement EPCIS et l'entrée d'audit dans **une seule transaction ACID**.
    En microservices : des sagas, pour aucun bénéfice à cette échelle (YAGNI).
 2. **Couches strictes par module** — routes → middlewares (auth, validation) → controllers →
-   services. Aucun service ne dépend d'Express : 724 tests rapides, utilitaires GS1
+   services. Aucun service ne dépend d'Express : 870 tests rapides, utilitaires GS1
    en fonctions pures.
 3. **PostgreSQL comme unique source de vérité** — transactions Serializable, optimistic
    locking (`Batch.version`), migrations Prisma versionnées.
@@ -145,8 +145,8 @@ Dire au jury ce qui n'est **pas** fait vaut mieux que de le laisser le découvri
 
 ## 8. Qualité logicielle (comment c'est construit)
 
-- **TDD à trois niveaux** : 724 tests unitaires/intégration (Vitest + Supertest,
-  104 fichiers, 86 % de couverture de lignes) + suites e2e contre PostgreSQL réel + benchmark de généalogie.
+- **TDD à trois niveaux** : 870 tests unitaires/intégration (Vitest + Supertest,
+  116 fichiers, 88,86 % de couverture de lignes) + suites e2e contre PostgreSQL réel + benchmark de généalogie.
 - **TypeScript strict, zéro `any` en production** ; validation typée aux frontières
   (`Infer<typeof schema>`).
 - **Migrations versionnées** (`prisma/migrations/`), commits conventionnels, hooks
@@ -160,8 +160,8 @@ Dire au jury ce qui n'est **pas** fait vaut mieux que de le laisser le découvri
 |---|---|
 | Rappel produit (généalogie + blocage) | **~21 ms** pour 4 645 lots (budget : 15 min) |
 | Alerte chaîne du froid | seuil visé **< 30 s** ; enchaînement excursion → alerte prouvé (`e2e:iot-alert`), délai non chronométré |
-| Tests automatisés | **724** verts (86 % de couverture de lignes) + suites e2e |
-| Modules métier | 11 (+ noyau partagé), 30 modèles de données |
+| Tests automatisés | **870** verts (88,86 % de couverture de lignes) + suites e2e |
+| Modules métier | 10 (+ noyau partagé `core`), 31 modèles de données |
 | Standards | GS1 : GTIN, AI(10), SSCC, URN LGTIN/SSCC, Digital Link · EPCIS : Object/Transformation/AggregationEvent |
 | Conformité visée | HACCP, ISO 22000, RPO 15 min / RTO 60-120 min (PCA/PRA, cf. `18_PCA_PRA.md`) |
 
@@ -176,7 +176,7 @@ Sélection des 7 KPI les plus représentatifs parmi les ~25 suivis (liste compl�
 | Temps p95 ingest → alerte (chaîne du froid) | non chronométré (`e2e:iot-alert` prouve l'enchaînement, pas la latence) | < 20 s, mesuré | < 15 s, mesuré |
 | Temps médian rappel produit (généalogie + blocage) | ~21 ms pour 4 645 lots (`bench:genealogy`) | < 5 min en prod | < 15 min en prod (seuil contractuel) |
 | Taux d'évènements EPCIS conformes GS1 | 100 % (`e2e:epcis`, 24/24) | > 99 % en prod | > 99,5 % en prod |
-| Couverture de tests (lignes) | 86 % (724 tests) | 88 % | 90 % (plancher CI) |
+| Couverture de tests (lignes) | 88,86 % (870 tests) | 90 % | 92 % |
 | Comptes sensibles avec MFA actif | 0 % (fonctionnalité livrée, adoption non mesurée) | 50 % | 100 % |
 | Disponibilité du service | non mesurée (pas d'environnement déployé) | 99 % | 99,9 % (NFR) |
 | Taux de perte de messages IoT | non mesuré (pas de flux réel en continu) | < 0,5 % | < 0,1 % |
