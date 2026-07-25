@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import { createTransformation } from '../controllers/transformation.controller';
 import { getBatchGenealogy, triggerRecall } from '../controllers/recall.controller';
-import { publicScanBatch } from '../controllers/publicScan.controller';
+import { publicScanBatch, publicScanDigitalLink } from '../controllers/publicScan.controller';
+import { validatePublicScanDigitalLink } from '../middlewares/validatePublicScanDigitalLink.middleware';
 import { validateTransformationParams } from '../middlewares/validateTransformation.middleware';
 import { validateRecall } from '../middlewares/validateRecall.middleware';
 import { requireAuth } from '../../../identity/middlewares/requireAuth.middleware';
@@ -37,6 +38,49 @@ const publicScanLimiter = rateLimit({
  *         description: Informations de traçabilité
  */
 router.get('/public/scan/:id', publicScanLimiter, publicScanBatch);
+
+// Lien réellement imprimé sur l'étiquette (labelService.generateDigitalLink) : AI 01 = GTIN,
+// AI 10 = lot. Élimine l'ambiguïté inter-organisation à la source (#139) — avant cette route,
+// CE LIEN NE CORRESPONDAIT À AUCUNE ROUTE MONTÉE : chaque étiquette imprimée encodait un lien
+// mort, 404 au premier scan réel.
+/**
+ * @swagger
+ * /api/gs1/01/{gtin}/10/{lot}:
+ *   get:
+ *     summary: "[B2C] Résoudre un lot par son GS1 Digital Link (GTIN + lot)"
+ *     description: |
+ *       Lien réellement imprimé sur l'étiquette du produit. Résout par la PAIRE (GTIN, lot) —
+ *       contrairement à `/public/scan/{id}` (lot seul, ambigu inter-organisation).
+ *     tags: [Public]
+ *     parameters:
+ *       - in: path
+ *         name: gtin
+ *         required: true
+ *         schema:
+ *           type: string
+ *           pattern: '^\d{8,14}$'
+ *       - in: path
+ *         name: lot
+ *         required: true
+ *         schema:
+ *           type: string
+ *           pattern: '^[A-Za-z0-9._-]{1,20}$'
+ *     responses:
+ *       200:
+ *         description: Informations de traçabilité
+ *       400:
+ *         description: GTIN ou lot hors format
+ *       404:
+ *         description: Aucun lot commercialisé ou rappelé ne correspond
+ *       409:
+ *         description: Toujours ambigu (coïncidence GTIN+lot entre deux organisations)
+ */
+router.get(
+  '/gs1/01/:gtin/10/:lot',
+  publicScanLimiter,
+  validatePublicScanDigitalLink,
+  publicScanDigitalLink
+);
 
 // --- ROUTES PROTEGEES ---
 
