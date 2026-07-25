@@ -12,6 +12,7 @@ import type { CreateQualityControlPayload } from '../../organization/middlewares
 import type { ReceiptPayload } from '../../logistics/receipts/middlewares/receiptPayload.schema';
 import type { QuarantineLiftPayload } from '../../logistics/receipts/middlewares/quarantineLift.schema';
 import type { MoveBatchPayload } from '../../logistics/receipts/middlewares/moveBatch.schema';
+import type { ScrapPayload } from '../../logistics/receipts/middlewares/scrap.schema';
 import type { BatchResolveQuery } from '../../logistics/receipts/middlewares/validateBatchResolve.middleware';
 import type { ShipmentPayload } from '../../logistics/shipments/middlewares/shipmentPayload.schema';
 import type { TransformationPayload } from '../../traceability/transformations/middlewares/transformationPayload.schema';
@@ -80,6 +81,8 @@ export interface AuthenticatedRequest extends Request {
   validatedQuarantineLift?: QuarantineLiftPayload;
   // Déplacement d'un lot vers un autre emplacement (PATCH /logistics/batches/:id/location)
   validatedMoveBatch?: MoveBatchPayload;
+  // Mise au rebut d'un lot (POST /logistics/batches/:id/scrap)
+  validatedScrap?: ScrapPayload;
   validatedShipment?: ShipmentPayload;
   validatedTransformation?: TransformationPayload;
   // Déclenchement d'un rappel produit (POST /traceability/batches/:id/recall)

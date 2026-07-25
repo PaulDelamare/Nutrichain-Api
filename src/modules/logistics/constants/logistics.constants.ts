@@ -43,6 +43,8 @@ export const BATCH_STATUSES = {
   SHIPPED: 'EXPEDIE',
   /** Stock épuisé par consommation/transformation. */
   DEPLETED: 'EPUISE',
+  /** Détruit (mise au rebut) : plus aucune quantité aux livres, décision tracée. Terminal. */
+  SCRAPPED: 'REBUT',
 } as const;
 
 export type BatchStatus = (typeof BATCH_STATUSES)[keyof typeof BATCH_STATUSES];
@@ -112,6 +114,7 @@ export const MOVEMENT_TYPES = {
   QUARANTINE_LIFTED: 'LEVEE_QUARANTAINE',
   RECALL: 'RAPPEL',
   MOVE: 'DEPLACEMENT',
+  SCRAP: 'MISE_AU_REBUT',
 } as const;
 
 /**
@@ -124,6 +127,17 @@ export const MOVEMENT_TYPES = {
 export const MOVABLE_BATCH_STATUSES: readonly BatchStatus[] = [
   BATCH_STATUSES.IN_STOCK,
   BATCH_STATUSES.PENDING_QC,
+];
+
+/**
+ * Statuts sans autre issue que la destruction : un lot sous rappel (`ALERTE`, décision
+ * irréversible) ou en quarantaine (`BLOQUE`) qu'un contrôle qualité a condamné n'a aucun canal
+ * de sortie normal (transformation, expédition, levée). Sans ce canal, sa quantité reste aux
+ * livres indéfiniment, sans preuve de destruction opposable.
+ */
+export const SCRAPPABLE_BATCH_STATUSES: readonly BatchStatus[] = [
+  BATCH_STATUSES.BLOCKED,
+  BATCH_STATUSES.ALERT,
 ];
 
 export type MovementType = (typeof MOVEMENT_TYPES)[keyof typeof MOVEMENT_TYPES];

@@ -15,6 +15,7 @@ vi.mock('../../../../shared/configs/prismaClient.config', () => ({
     batch_Mouvement: { create: vi.fn() },
     equipment: { findFirst: vi.fn() },
     qualityControl: { findFirst: vi.fn() },
+    scrapRecord: { create: vi.fn() },
     member: { findFirst: vi.fn() },
     // Simule une transaction en passant le mock prisma au callback
     $transaction: vi.fn(async (cb) => cb(prisma)),
@@ -469,6 +470,133 @@ describe('BatchSharedService', () => {
 
       const action = batchService.moveBatch('batch-1', 'org-1', 'user-1', 'frigo-B');
       await expect(action).rejects.toMatchObject({ status: 409 });
+    });
+  });
+
+  describe('scrapBatch — mettre un lot au rebut', () => {
+    const bloqueOrgA = {
+      id: 'batch-1',
+      organization_id: 'org-1',
+      statut: 'BLOQUE',
+      quantite_actuelle: 40,
+      unite_code: 'KG',
+      version: 2,
+    };
+
+    it('met au rebut un lot en quarantaine (BLOQUE -> REBUT), quantité à zéro, avec mouvement et audit', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(prisma.batch.findFirst).mockResolvedValueOnce(bloqueOrgA as any);
+      vi.mocked(prisma.batch.updateMany).mockResolvedValue({ count: 1 } as never);
+      vi.mocked(prisma.batch.findFirst).mockResolvedValueOnce({
+        ...bloqueOrgA,
+        statut: 'REBUT',
+        quantite_actuelle: 0,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+
+      const result = await batchService.scrapBatch('batch-1', 'org-1', 'user-1', 'Lot rappelé détruit');
+
+      expect(prisma.batch.updateMany).toHaveBeenCalledWith({
+        where: { id: 'batch-1', organization_id: 'org-1', version: 2 },
+        data: expect.objectContaining({
+          statut: 'REBUT',
+          quantite_actuelle: 0,
+          statut_avant_blocage: null,
+        }),
+      });
+      expect(prisma.scrapRecord.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          organization_id: 'org-1',
+          id_lot: 'batch-1',
+          quantite: 40,
+          unite: 'KG',
+          motif: 'Lot rappelé détruit',
+          id_user: 'user-1',
+        }),
+      });
+      expect(prisma.batch_Mouvement.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          id_lot: 'batch-1',
+          type_action: 'MISE_AU_REBUT',
+          quantite: 40,
+          unite: 'KG',
+          id_user: 'user-1',
+          metadata: expect.objectContaining({ motif: 'Lot rappelé détruit' }),
+        }),
+      });
+      expect(auditService.logAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'SCRAP_BATCH',
+          entity: 'Batch',
+          entityId: 'batch-1',
+          oldValue: expect.objectContaining({ statut: 'BLOQUE' }),
+          newValue: expect.objectContaining({ statut: 'REBUT', quantite: 0 }),
+        }),
+        expect.anything()
+      );
+      expect(result.statut).toBe('REBUT');
+    });
+
+    it('met au rebut un lot sous rappel (ALERTE -> REBUT)', async () => {
+      vi.mocked(prisma.batch.findFirst).mockResolvedValueOnce({
+        ...bloqueOrgA,
+        statut: 'ALERTE',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+      vi.mocked(prisma.batch.updateMany).mockResolvedValue({ count: 1 } as never);
+      vi.mocked(prisma.batch.findFirst).mockResolvedValueOnce({
+        ...bloqueOrgA,
+        statut: 'REBUT',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+
+      const result = await batchService.scrapBatch('batch-1', 'org-1', 'user-1', 'Rappel — destruction');
+
+      expect(result.statut).toBe('REBUT');
+    });
+
+    it('doit refuser (404) un lot d’une autre organisation', async () => {
+      vi.mocked(prisma.batch.findFirst).mockResolvedValue(null);
+
+      const action = batchService.scrapBatch('batch-x', 'org-1', 'user-1', 'motif');
+      await expect(action).rejects.toMatchObject({ status: 404 });
+      expect(prisma.batch.updateMany).not.toHaveBeenCalled();
+      expect(prisma.scrapRecord.create).not.toHaveBeenCalled();
+    });
+
+    it('refuse (409) la mise au rebut d’un lot disponible (EN_STOCK)', async () => {
+      vi.mocked(prisma.batch.findFirst).mockResolvedValue({
+        ...bloqueOrgA,
+        statut: 'EN_STOCK',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+
+      const action = batchService.scrapBatch('batch-1', 'org-1', 'user-1', 'motif');
+      await expect(action).rejects.toMatchObject({ status: 409 });
+      expect(prisma.batch.updateMany).not.toHaveBeenCalled();
+      expect(auditService.logAction).not.toHaveBeenCalled();
+    });
+
+    it('refuse (409) un lot déjà mis au rebut', async () => {
+      vi.mocked(prisma.batch.findFirst).mockResolvedValue({
+        ...bloqueOrgA,
+        statut: 'REBUT',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+
+      const action = batchService.scrapBatch('batch-1', 'org-1', 'user-1', 'motif');
+      await expect(action).rejects.toMatchObject({ status: 409 });
+      expect(prisma.batch.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('refuse (409) si le lot a changé d’état entre la lecture et l’écriture (verrou optimiste)', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(prisma.batch.findFirst).mockResolvedValue(bloqueOrgA as any);
+      vi.mocked(prisma.batch.updateMany).mockResolvedValue({ count: 0 } as never);
+
+      const action = batchService.scrapBatch('batch-1', 'org-1', 'user-1', 'motif');
+      await expect(action).rejects.toMatchObject({ status: 409 });
+      expect(prisma.scrapRecord.create).not.toHaveBeenCalled();
     });
   });
 
