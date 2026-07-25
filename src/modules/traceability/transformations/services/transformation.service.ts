@@ -170,6 +170,21 @@ async function runTransformation(
           });
         }
 
+        // L'unité déclarée doit être celle du lot : quantite_prelevee est soustraite telle
+        // quelle de quantite_actuelle, qui est exprimée dans unite_code. Aucune conversion
+        // n'existe — accepter une unité différente reviendrait à corrompre le stock en
+        // silence (ex. déclarer 2 KG prélevés sur un lot en G décompterait 2, pas 2000) (#119).
+        if (input.unite !== batch.unite_code) {
+          throw new APIError(400, {
+            error: [
+              {
+                field: 'inputs',
+                message: `Unité incompatible pour le lot parent ${batch.id} : attendu ${batch.unite_code}, reçu ${input.unite}.`,
+              },
+            ],
+          });
+        }
+
         if (batch.quantite_actuelle.toNumber() < input.quantite_prelevee) {
           throw new APIError(400, {
             error: [
