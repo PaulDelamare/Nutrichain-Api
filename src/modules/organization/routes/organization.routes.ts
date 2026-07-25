@@ -3,6 +3,7 @@ import { sessionAuth } from '../../../shared/middlewares/sessionAuth';
 import {
   ALL_ROLES,
   ADMIN_ROLES,
+  OWNER_ONLY_ROLES,
   QUALITY_ROLES,
   PERSONAL_DATA_ROLES,
 } from '../../identity/constants/roles.constants';
@@ -54,6 +55,7 @@ import {
 } from '../middlewares/customerProduct.schema';
 import {
   changeMemberRoleController,
+  transferOwnershipController,
   revokeMemberController,
 } from '../controllers/member.controller';
 import { validateChangeMemberRole } from '../middlewares/member.schema';
@@ -1272,6 +1274,47 @@ router.patch(
  *         description: Membre introuvable dans l'organisation active
  */
 router.post('/organization/members/:id/revoke', sessionAuth(CONFIG_ROLES), revokeMemberController);
+
+// Cession de propriété — réservée au propriétaire ACTUEL (OWNER_ONLY_ROLES, pas CONFIG_ROLES : un
+// admin ne doit pas pouvoir se déclarer lui-même propriétaire). Transactionnelle et journalisée
+// (cf. member.service.transferOwnership) : jamais zéro ni deux propriétaires.
+/**
+ * @swagger
+ * /api/organization/members/{id}/transfer-ownership:
+ *   post:
+ *     summary: Céder la propriété de l'organisation à un autre membre
+ *     description: |
+ *       Le membre ciblé devient `owner`, l'appelant (l'actuel propriétaire) redevient `admin` —
+ *       atomiquement, dans une seule transaction journalisée. Réservé au propriétaire actuel : ni
+ *       un `admin` ni personne d'autre ne peut déclencher cette cession. On ne cible jamais un
+ *       membre déjà `owner` ni soi-même (403).
+ *     tags: [Organisation]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Identifiant du membre qui devient propriétaire (Member.id, Better-Auth)
+ *     responses:
+ *       200:
+ *         description: Propriété transférée
+ *       401:
+ *         description: Aucune session
+ *       403:
+ *         description: Rôle insuffisant (réservé au propriétaire), cible déjà propriétaire, ou soi-même
+ *       404:
+ *         description: Membre introuvable dans l'organisation active
+ *       409:
+ *         description: L'appelant n'est plus propriétaire (cession concurrente) — rechargez la page
+ */
+router.post(
+  '/organization/members/:id/transfer-ownership',
+  sessionAuth(OWNER_ONLY_ROLES),
+  transferOwnershipController
+);
 
 // Passerelles IoT — la clé qui rattache un flux de capteurs à CETTE organisation. Sans ces routes,
 // seule l'organisation seedée pouvait surveiller sa chaîne du froid (#93). Réservé à

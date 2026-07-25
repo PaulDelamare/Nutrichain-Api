@@ -50,6 +50,12 @@ export const QUALITY_ROLES: Role[] = [ROLES.OWNER, ROLES.ADMIN, ROLES.QUALITY];
 export const ADMIN_ROLES: Role[] = [ROLES.OWNER, ROLES.ADMIN];
 
 /**
+ * Réservé au propriétaire SEUL — `admin` en est exclu, contrairement à `ADMIN_ROLES`.
+ * Cède la fonction de propriétaire : un admin ne doit pas pouvoir se la déclarer lui-même.
+ */
+export const OWNER_ONLY_ROLES: Role[] = [ROLES.OWNER];
+
+/**
  * Lecture de DONNÉES PERSONNELLES : annuaire nominatif du personnel, journal d'audit « qui a fait
  * quoi », coordonnées des clients et fournisseurs. Réservé à l'administration.
  *

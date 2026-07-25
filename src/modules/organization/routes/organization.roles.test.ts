@@ -43,6 +43,11 @@ vi.mock('../middlewares/validateOrganizationQuery.middleware', () => ({
     next: express.NextFunction
   ) => next(),
 }));
+vi.mock('../controllers/member.controller', () => ({
+  changeMemberRoleController: ok,
+  transferOwnershipController: ok,
+  revokeMemberController: ok,
+}));
 vi.mock('../controllers/iotGateway.controller', () => ({
   listIotGatewaysController: ok,
   createIotGatewayController: ok,
@@ -159,6 +164,25 @@ describe('RBAC des lectures organisation (session réelle)', () => {
       it(`POST /api/organization/iot-gateways/:id/revoke : REFUSE ${role} (403)`, async () => {
         signedInAs(role);
         const res = await request(app).post('/api/organization/iot-gateways/gw-1/revoke');
+        expect(res.status).toBe(403);
+      });
+    }
+  });
+
+  // Seul le propriétaire ACTUEL cède sa fonction — contrairement à CONFIG_ROLES (owner+admin) qui
+  // gouverne le reste de la gestion des membres, `admin` est ici REFUSÉ : sinon un admin pourrait
+  // se déclarer lui-même propriétaire.
+  describe('cession de propriété → propriétaire seul', () => {
+    it('POST /api/organization/members/:id/transfer-ownership : autorise owner', async () => {
+      signedInAs('owner');
+      const res = await request(app).post('/api/organization/members/m1/transfer-ownership');
+      expect(res.status).toBe(200);
+    });
+
+    for (const role of ['admin', 'quality', 'operator', 'viewer']) {
+      it(`POST /api/organization/members/:id/transfer-ownership : REFUSE ${role} (403)`, async () => {
+        signedInAs(role);
+        const res = await request(app).post('/api/organization/members/m1/transfer-ownership');
         expect(res.status).toBe(403);
       });
     }
