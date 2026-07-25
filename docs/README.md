@@ -18,7 +18,7 @@ Cet index tranche. Trois statuts, un seul sens de lecture.
 
 | Doc | Statut | Contenu |
 |---|:--:|---|
-| [`20_DOSSIER_SOUTENANCE.md`](20_DOSSIER_SOUTENANCE.md) | ✅ | Problème → réponse → démonstration → preuves. **Commencer ici.** |
+| [`20_DOSSIER_SOUTENANCE.md`](20_DOSSIER_SOUTENANCE.md) | ✅ | Problème → réponse → démonstration → preuves, déroulé chronométré et plan B. **Commencer ici.** |
 | [`19_architecture.md`](19_architecture.md) | ✅ | Cinq diagrammes : contexte, modules, anatomie d'un module, flux EPCIS, décisions. |
 | [`00_contexte_projet.md`](00_contexte_projet.md) | 📌 | Cadrage initial et besoins métier. |
 

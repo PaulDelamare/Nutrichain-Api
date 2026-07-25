@@ -180,3 +180,43 @@ Sélection des 7 KPI les plus représentatifs parmi les ~25 suivis (liste compl�
 | Comptes sensibles avec MFA actif | 0 % (fonctionnalité livrée, adoption non mesurée) | 50 % | 100 % |
 | Disponibilité du service | non mesurée (pas d'environnement déployé) | 99 % | 99,9 % (NFR) |
 | Taux de perte de messages IoT | non mesuré (pas de flux réel en continu) | < 0,5 % | < 0,1 % |
+## 11. Déroulé chronométré, répétition, plan B
+
+Montage à partir du scénario en 12 étapes (§5), pas de contenu nouveau. Budget total 30 min :
+intro (3 min), réponse (2 min), architecture (3 min), **démo pas-à-pas (17 min)**, sécurité et
+limites (3 min), conclusion (2 min).
+
+Répartition des 17 min de démo — les étapes qui ne produisent qu'une ligne de résultat (import,
+étiquette) vont vite ; celles à effet visible et démonstratif (quarantaine, alerte froid, rappel)
+en méritent davantage :
+
+| Étape (§5) | Temps cible |
+|---|---|
+| 1. Import ERP | 1 min |
+| 2. Réception fournisseur | 1 min |
+| 3. Étiquette GS1 | 30 s |
+| 4-5. Quarantaine + séparation des tâches | **3 min** — le point le plus démonstratif de la rigueur HACCP |
+| 6. Transformation + généalogie | 1,5 min |
+| 7. Expédition + SSCC | 1 min |
+| 8. Excursion chaîne du froid | **2,5 min** — alerte + quarantaine automatique |
+| 9. Rappel produit | **2,5 min** — le chrono en millisecondes est l'argument à appuyer |
+| 10. Scan consommateur | 1 min |
+| 11. Export EPCIS | 1 min |
+| 12. Preuve d'intégrité WORM | 1 min |
+
+Total 16,5 min — 30 s de marge pour un aléa.
+
+**Répétition — non faite à ce stade** : ces temps sont des cibles, aucun temps réel n'a encore
+été mesuré. Protocole : dérouler les 12 étapes chronomètre en main sans s'arrêter pour corriger
+(noter les blocages plutôt que les résoudre en direct), comparer au tableau ci-dessus, ajuster
+la cible ou la démo si l'écart dépasse 20 %, puis répéter une fois avec interruptions simulées.
+
+**Plan B — captures de secours, non produites à ce stade.** Le scénario e2e rejouable (§5) prouve
+que le système fonctionne, mais une CLI qui défile n'est pas une preuve visuelle convaincante en
+direct. Il faudrait, en plus, une capture (écran ou courte vidéo) prise à l'avance pour chaque
+étape à fort impact visuel — quarantaine + séparation des tâches (4-5), excursion froid (8),
+rappel produit (9), scan consommateur (10), preuve d'intégrité (12) — montrable sans réseau.
+Ce tableau définit quoi capturer ; produire les captures suppose un run complet du système
+(serveur + seed + Bruno ou front), à faire séparément et proche de la date pour rester
+représentatif. Leçon déjà tirée : tout ce qui dépend du réseau de la salle doit avoir un repli
+(le scan caméra en dépendait, corrigé par Mobile PR #28) — ces captures sont ce repli côté API.
