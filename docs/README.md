@@ -52,6 +52,7 @@ Cet index tranche. Trois statuts, un seul sens de lecture.
 | [`18_PCA_PRA.md`](18_PCA_PRA.md) | ✅ | Continuité, reprise, vérification de la chaîne d'audit. |
 | [`22_JOURNALISATION_SIEM.md`](22_JOURNALISATION_SIEM.md) | ✅ | Rétention des journaux, point de collecte, et inventaire vérifié de ce qui est détectable. |
 | [`23_DPIA.md`](23_DPIA.md) | ✅ | Analyse d'impact RGPD : données traitées, ce qui existe, ce qui manque (droit à l'effacement, rétention). |
+| [`24_DASHBOARDS_SUPERVISION.md`](24_DASHBOARDS_SUPERVISION.md) | ✅ | Supervision technique (santé, sécurité, intégrité d'audit) — distincte du dashboard métier du front. Rien n'est déployé. |
 | [`02_roles_et_permissions.md`](02_roles_et_permissions.md) | 📌 | Conception **ABAC**, jamais implémentée. Le code applique un RBAC à 5 rôles. |
 | [`01_analyse_authentification.md`](01_analyse_authentification.md) | 📌 | Analyse comparative des solutions d'authentification. |
 | [`03_plan_implementation_auth.md`](03_plan_implementation_auth.md) | 📌 | Plan d'authentification. La partie ABAC et trois routes n'existent pas. |
