@@ -1,7 +1,7 @@
-# 21 — Analyse d'impact relative à la protection des données (DPIA)
+# 23 — Analyse d'impact relative à la protection des données (DPIA)
 
 Document honnête : ce qui existe est décrit, ce qui n'existe pas est assumé — pas de case
-cochée à tort ([`20_DOSSIER_SOUTENANCE.md`](20_DOSSIER_SOUTENANCE.md) applique la même règle
+cochée à tort ([`20_PRESENTATION_PROJET.md`](20_PRESENTATION_PROJET.md) applique la même règle
 sur les objectifs SMART).
 
 ## 1. Périmètre et responsable de traitement
@@ -9,7 +9,7 @@ sur les objectifs SMART).
 NutriChain est un logiciel multi-tenant : chaque organisation cliente (`Organization`) est
 responsable de traitement pour ses propres données. NutriChain, en tant qu'éditeur, est
 sous-traitant au sens RGPD. Ce document couvre le traitement tel qu'implémenté dans l'API,
-pas un contrat de sous-traitance (absent — projet d'école, aucun client réel).
+pas un contrat de sous-traitance (absent — aucun déploiement client réel à ce stade).
 
 ## 2. Données à caractère personnel traitées
 
@@ -30,7 +30,7 @@ il ne renvoie aucune donnée personnelle, seulement le lot et sa généalogie pr
 
 - **Empreinte, pas texte clair** : l'email utilisé pour le verrou anti-bruteforce n'est jamais
   stocké en clair, seulement son HMAC (`LoginAttempt.email_hash`), purgé quotidiennement
-  (cf. `20_DOSSIER_SOUTENANCE.md` §6).
+  (cf. `20_PRESENTATION_PROJET.md` §6).
 - **Logs applicatifs bornés dans le temps** : les logs Winston (dont l'IP de chaque requête)
   tournent avec une rétention explicite — 14 jours (`LOG_RETENTION_DAYS`) pour les logs
   applicatifs, 90 jours pour les logs d'erreur (`src/shared/utils/logger/logger.ts`).

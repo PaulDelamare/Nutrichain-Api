@@ -1,6 +1,6 @@
-# 20 — Dossier de soutenance NutriChain
+# 20 — Présentation du projet NutriChain
 
-> Fil conducteur de la présentation au jury : le problème, la réponse, la preuve.
+> Fil conducteur de la présentation du projet : le problème, la réponse, la preuve.
 > Les schémas d'architecture sont dans [`19_architecture.md`](19_architecture.md) ;
 > le démarrage technique dans le [`Readme`](../Readme.md).
 
@@ -68,7 +68,7 @@ Préparation : `npx prisma migrate deploy`, `npx prisma db seed`, **`npm run see
 et Généalogie s'affichent vides — le socle ne contient ni site, ni capteur, ni transformation.
 Requêtes prêtes dans la collection Bruno (`Nutrichain.json`).
 
-| # | Action | Endpoint | Ce que le jury voit |
+| # | Action | Endpoint | Résultat observé |
 |---|---|---|---|
 | 1 | L'ERP pousse son catalogue | `POST /api/connectors/imports/products` puis `/customers` (CSV) | Import idempotent, validation ligne à ligne, GTIN-13/14 imposé |
 | 2 | Réception fournisseur | `POST /api/logistics/receipts` (avec `id_materiel` de stockage) | Lot créé avec **numéro GS1 court** (`AAMMJJ-XXXXXX`), **rattaché à son emplacement** (matériel → lieu, position connue) + ObjectEvent EPCIS en **URN LGTIN** |
@@ -114,7 +114,7 @@ Requêtes prêtes dans la collection Bruno (`Nutrichain.json`).
 
 ## 7. Limites assumées et perspectives
 
-Dire au jury ce qui n'est **pas** fait vaut mieux que de le laisser le découvrir :
+Documenter honnêtement ce qui n'est **pas** fait vaut mieux que de le laisser découvrir plus tard :
 
 - **MFA (TOTP) livrée end-to-end, activation non obligatoire.** Le plugin `twoFactor` de
   Better-Auth est activé ; quatre routes (`enable`, `get-totp-uri`, `verify-totp`,
@@ -134,9 +134,9 @@ Dire au jury ce qui n'est **pas** fait vaut mieux que de le laisser le découvri
   La granularité par attribut (permissions atomiques, affectation par site) décrite en
   `02_roles_et_permissions.md` reste une cible de conception.
 - **Préfixe GS1 simulé** : les identifiants sont structurellement conformes, mais le
-  préfixe entreprise est fictif (aucun préfixe acheté auprès de GS1 — projet d'école).
-  Chaque organisation peut renseigner le sien ; les URN sont découpées positionnellement
-  sans vérifier la correspondance préfixe/GTIN (GTIN de démo fictifs).
+  préfixe entreprise est fictif — aucun préfixe n'a été acheté auprès de GS1 dans cet
+  environnement de démonstration. Chaque organisation peut renseigner le sien ; les URN sont
+  découpées positionnellement sans vérifier la correspondance préfixe/GTIN (GTIN de démo fictifs).
 - **Connecteurs ERP génériques** : CSV normalisé en entrée, export EPCIS en sortie —
   pas d'adaptateur natif SAP/Odoo (l'architecture les accueille : un service par
   adaptateur dans `connectors`).
@@ -180,6 +180,7 @@ Sélection des 7 KPI les plus représentatifs parmi les ~25 suivis (liste compl�
 | Comptes sensibles avec MFA actif | 0 % (fonctionnalité livrée, adoption non mesurée) | 50 % | 100 % |
 | Disponibilité du service | non mesurée (pas d'environnement déployé) | 99 % | 99,9 % (NFR) |
 | Taux de perte de messages IoT | non mesuré (pas de flux réel en continu) | < 0,5 % | < 0,1 % |
+
 ## 11. Déroulé chronométré, répétition, plan B
 
 Montage à partir du scénario en 12 étapes (§5), pas de contenu nouveau. Budget total 30 min :

@@ -2,9 +2,9 @@
 
 API REST B2B/B2C de **traçabilité agroalimentaire « de la ferme au rayon »**, conforme aux standards **GS1/EPCIS**, avec **surveillance de la chaîne du froid** (IoT) et **rappel produit rapide** (< 15 min décision → notification).
 
-> Projet fil rouge 4e année. Monolithe modulaire multi-tenant (SaaS), orienté conformité réglementaire (HACCP / ISO 22000) et intégrité d'audit (WORM).
+> Monolithe modulaire multi-tenant (SaaS), orienté conformité réglementaire (HACCP / ISO 22000) et intégrité d'audit (WORM).
 
-**État** : `develop` — build TypeScript strict ✅ · ESLint ✅ · **724 tests verts** (Vitest, 86 % de couverture de lignes) · migrations Prisma versionnées.
+**État** : `develop` — build TypeScript strict ✅ · ESLint ✅ · **870 tests verts** (Vitest, 88,86 % de couverture de lignes) · migrations Prisma versionnées.
 
 ---
 
@@ -79,9 +79,10 @@ Le code transverse (utilitaires, middlewares, configs, constantes, types) vit da
 - **Runtime** : Node.js + TypeScript (mode strict, `tsx`)
 - **HTTP** : Express 4, Helmet, CORS, compression, rate-limit
 - **Données** : PostgreSQL via **Prisma** (tout l'état métier) + MongoDB via **Mongoose** (télémétrie IoT en série temporelle uniquement ; les logs applicatifs vont dans des fichiers Winston)
-- **Auth** : **Better-Auth** (sessions, multi-organisations). MFA implémentée mais **non exposée** :
-  les routes du cœur Better-Auth sont fermées par allowlist car elles contourneraient le RBAC et
-  l'audit — motif détaillé dans `docs/20_DOSSIER_SOUTENANCE.md` §7.
+- **Auth** : **Better-Auth** (sessions, multi-organisations), MFA TOTP livrée end-to-end (front +
+  mobile web). Le reste du cœur Better-Auth (gestion de session, changement d'email/mot de passe)
+  reste fermé par allowlist car il contournerait le RBAC et l'audit — motif détaillé dans
+  `docs/20_PRESENTATION_PROJET.md` §7.
 - **Validation** : **VineJS** (messages en français)
 - **Tests** : **Vitest** + Supertest
 - **Observabilité** : Winston (logs rotatifs)
@@ -126,7 +127,7 @@ npm run seed:demo           # jeu de démonstration : sites, capteurs, alerte fr
 ```
 
 **Les deux sont nécessaires pour une démonstration.** Le socle seul laisse Traçabilité, Chaîne du
-froid, Rappels et Généalogie **vides** : ce sont les écrans que verrait un correcteur qui s'arrête au
+froid, Rappels et Généalogie **vides** : ce sont les écrans que verrait quiconque s'arrête au
 premier seed.
 
 Les deux sont **rejouables** : les relancer rétablit l'état de démonstration sans rien dupliquer.
@@ -285,7 +286,7 @@ Preuve reproductible, contre l'API réelle : `npm run e2e:api-key`.
 - **Authenticité des capteurs (trou assumé, et il est sérieux)** : la clé d'une passerelle couvre **tous les capteurs de son organisation**, et le `sensor_id` est déclaré dans le corps de la requête sans être rattaché à un appareil authentifié. Qui détient cette clé (une passerelle compromise) peut donc agir au nom de n'importe quel capteur **de cette organisation** — et une trame ne fait pas qu'écrire une mesure : elle **met en quarantaine tous les lots du matériel visé** et lève une alerte PANIC. Autrement dit : fabriquer une chaîne du froid conforme, noyer une vraie excursion, **ou arrêter la production**. La séparation des clés met cette capacité hors de portée d'un client public (le bundle mobile), et l'enregistrement des passerelles la borne à un seul tenant (elle est de plus **révocable** sans redéploiement) ; la fermer complètement demande un **secret par appareil** ou une **signature des trames** — hors périmètre de ce projet, et c'est le prochain durcissement à faire.
 - **Aperçu d'invitation** (`GET /identity/invitations/:token/preview`) : accessible avec la seule clé publique, il expose l'e-mail et le rôle de l'invité — une donnée personnelle. C'est nécessaire (l'écran d'inscription s'affiche avant toute session) et borné par la connaissance du jeton, mais c'est une lecture de PII sans compte, à connaître pour le DPIA.
 - **ABAC** : l'attribution par site (`Location`) prévue par l'objectif sécurité est reportée — les utilisateurs sont rattachés à l'organisation, pas au site.
-- **Préfixe GS1 simulé** : les identifiants GS1 sont conformes (numéro de lot court AI 10, URN LGTIN/SSCC, GS1 Digital Link), mais le préfixe entreprise par défaut (`3456789`) est fictif — projet d'école, aucun préfixe réel acheté auprès de GS1. Chaque organisation peut renseigner le sien (`Organization.gs1_company_prefix`). Les URN sont découpées positionnellement à la longueur du préfixe déclaré, sans vérifier que le GTIN (fictif en démo) encode réellement ce préfixe ; un déploiement réel validerait cette correspondance à l'enregistrement produit. Le `lot_number` (suffixe aléatoire, ~2 Md de combinaisons/jour/org) s'appuie sur la contrainte d'unicité en base sans retry applicatif — une collision (improbable avant ~50 000 lots/jour/org) renverrait un 400.
+- **Préfixe GS1 simulé** : les identifiants GS1 sont conformes (numéro de lot court AI 10, URN LGTIN/SSCC, GS1 Digital Link), mais le préfixe entreprise par défaut (`3456789`) est fictif — environnement de démonstration, aucun préfixe réel acheté auprès de GS1. Chaque organisation peut renseigner le sien (`Organization.gs1_company_prefix`). Les URN sont découpées positionnellement à la longueur du préfixe déclaré, sans vérifier que le GTIN (fictif en démo) encode réellement ce préfixe ; un déploiement réel validerait cette correspondance à l'enregistrement produit. Le `lot_number` (suffixe aléatoire, ~2 Md de combinaisons/jour/org) s'appuie sur la contrainte d'unicité en base sans retry applicatif — une collision (improbable avant ~50 000 lots/jour/org) renverrait un 400.
 
 ---
 
@@ -295,7 +296,7 @@ Preuve reproductible, contre l'API réelle : `npm run e2e:api-key`.
 
 Les documents techniques par domaine sont dans [`docs/`](docs/) :
 
-- [`20_DOSSIER_SOUTENANCE.md`](docs/20_DOSSIER_SOUTENANCE.md) — **dossier de soutenance** (problème → solution → démo → preuves)
+- [`20_PRESENTATION_PROJET.md`](docs/20_PRESENTATION_PROJET.md) — **présentation du projet** (problème → solution → démo → preuves)
 - [`19_architecture.md`](docs/19_architecture.md) — **schémas d'architecture** (5 diagrammes Mermaid)
 - [`00_contexte_projet.md`](docs/00_contexte_projet.md) — contexte et cadrage
 - [`04_tracabilite_et_lots.md`](docs/04_tracabilite_et_lots.md), [`11_TECH_TRANSFORMATIONS_GENEALOGY.md`](docs/11_TECH_TRANSFORMATIONS_GENEALOGY.md) — traçabilité & généalogie
@@ -310,7 +311,7 @@ Les documents techniques par domaine sont dans [`docs/`](docs/) :
 
 **Tous droits réservés** — voir [`LICENSE`](LICENSE).
 
-Le code est consultable, exécutable et évaluable librement (jury, recruteur). Sa redistribution,
+Le code est consultable, exécutable et évaluable librement (recruteur, partenaire). Sa redistribution,
 sa publication et toute réutilisation dans un autre projet demandent l'accord écrit des auteurs.
 
 Ce choix est le plus réversible : une licence permissive peut être accordée plus tard, alors qu'un
