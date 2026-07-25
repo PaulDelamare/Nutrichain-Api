@@ -71,10 +71,11 @@ const buildPoint = (minutesAgo: number, temperature: number) => ({
 });
 
 const mockMongoFind = (points: ReturnType<typeof buildPoint>[]) => {
-  // Chain: find() → { limit } → { lean } → Promise<docs[]>
+  // Chain: find() → { session } → { limit } → { lean } → Promise<docs[]>
   const lean = vi.fn().mockResolvedValue(points);
   const limit = vi.fn().mockReturnValue({ lean });
-  vi.mocked(TelemetryModel.find).mockReturnValue({ limit } as never);
+  const session = vi.fn().mockReturnValue({ limit });
+  vi.mocked(TelemetryModel.find).mockReturnValue({ session } as never);
 };
 
 beforeEach(() => {
@@ -361,7 +362,8 @@ describe('iotAlertService.checkAndAlert', () => {
   it('Mongo indisponible : aucun verrou n a été pris, rien à relâcher', async () => {
     const lean = vi.fn().mockRejectedValue(new Error('Mongo down'));
     const limit = vi.fn().mockReturnValue({ lean });
-    vi.mocked(TelemetryModel.find).mockReturnValue({ limit } as never);
+    const session = vi.fn().mockReturnValue({ limit });
+    vi.mocked(TelemetryModel.find).mockReturnValue({ session } as never);
 
     await expect(iotAlertService.checkAndAlert(baseParams)).rejects.toThrow('Mongo down');
 

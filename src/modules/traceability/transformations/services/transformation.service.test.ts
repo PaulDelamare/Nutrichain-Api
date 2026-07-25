@@ -301,6 +301,55 @@ describe('TransformationService', () => {
     }
   });
 
+  /**
+   * `quantite_prelevee` est soustraite telle quelle de `quantite_actuelle` (exprimée dans
+   * `unite_code`). Sans ce garde, déclarer 2 KG prélevés sur un lot en G décompterait 2 au
+   * lieu de 2000 : le stock et la traçabilité GS1 divergent en silence (#119).
+   */
+  it("doit échouer (400) si l'unité déclarée diffère de celle du lot parent", async () => {
+    const mockTx = {
+      product: {
+        findFirst: vi.fn().mockResolvedValue({ code_gtin: '3456789012345', is_active: true }),
+      },
+      organization: { findUnique: vi.fn().mockResolvedValue({ gs1_company_prefix: '3456789' }) },
+      equipment: { findFirst: vi.fn().mockResolvedValue({ id: 'mat-1' }) },
+      batch: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'lot-p1',
+          organization_id: activeOrgId,
+          quantite_actuelle: { toNumber: () => 100 },
+          unite_code: 'KG',
+          statut: 'EN_STOCK',
+          version: 1,
+        }),
+      },
+    };
+    vi.mocked(prisma.$transaction).mockImplementation(
+      (callback: (tx: unknown) => Promise<unknown>) => callback(mockTx)
+    );
+
+    const data = {
+      organization_id: activeOrgId,
+      id_produit_fini: 'prod-fini',
+      id_materiel: 'mat-1',
+      quantite_produite: 50,
+      unite_code: 'KG',
+      created_by: userId,
+      inputs: [
+        { id_lot_parent: 'lot-p1', quantite_prelevee: 2, unite: 'G', lot_parent_epuise: false },
+      ],
+    };
+
+    try {
+      await transformationService.createTransformation(data);
+      expect.fail('Should have thrown');
+    } catch (error: unknown) {
+      const err = error as APIError;
+      expect(err.status).toBe(400);
+      expect(err.body.error[0].message).toContain('Unité incompatible');
+    }
+  });
+
   it('doit créer une transformation et un lot enfant avec succès', async () => {
     const mockTx = buildHappyMockTx();
 
