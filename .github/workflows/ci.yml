@@ -170,6 +170,11 @@ jobs:
       - name: 🌱 Seed de démonstration
         run: npm run seed:demo
 
+      # Contre un vrai PostgreSQL, sans mock : contraintes, verrous, séquences, cascades — un mock
+      # validerait un comportement qui n'existe pas (#150).
+      - name: 🧪 Tests d'intégration (PostgreSQL réel, sans mock)
+        run: npm run test:integration
+
       # Un step par scénario : le log dit immédiatement lequel casse. Séquence validée en local sur
       # base fraîche puis rejouée (idempotence 14/14), en conditions CI (NODE_ENV=test, SMTP fermé).
       # --- Audit WORM (orgs éphémères, sans dépendance au seed) ---
