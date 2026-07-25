@@ -8,16 +8,35 @@
  * quarantaine. Objectif : que Traçabilité, Rappels, Chaîne du froid, etc. ne soient
  * plus vides en démo.
  *
- * Idempotent : IDs fixes, purge des données de démo précédentes avant recréation,
- * + nettoyage des résidus de tests e2e (`E2E-*`).
+ * Les lots, réceptions, transformations et expéditions passent PAR LES SERVICES
+ * métier (receiptService, transformationService, qualityControlService,
+ * shipmentService, batchService) — jamais par une écriture Prisma directe. C'est ce
+ * qui fait exister le magasin d'événements EPCIS et les Receipt en démo : un seed qui
+ * écrit en direct ne produit ni l'un ni l'autre, quel que soit le code réellement
+ * exécuté en production (cf. issue #72).
+ *
+ * Conséquence : Batch/Transformation/Shipment reçoivent leur id du SERVEUR (uuid), pas
+ * d'un id figé — les services ne prennent pas cet id en paramètre, et il n'y a aucune
+ * raison de le leur ajouter pour un seed. L'idempotence (purge avant recréation) se fait
+ * donc par CLÉ MÉTIER qu'on contrôle (numéro de bon de réception, numéro d'expédition,
+ * matériel de la cuve), pas par UUID — même principe que `purgeE2EResidue` ci-dessous.
  *
  * Lancement : npm run seed:demo   (après `npx prisma db seed`)
  */
 import 'dotenv/config';
 import { prisma } from '../src/shared/configs/prismaClient.config';
 import { logger } from '../src/shared/utils/logger/logger';
+import { receiptService } from '../src/modules/logistics/receipts/services/receipt.service';
+import { transformationService } from '../src/modules/traceability/transformations/services/transformation.service';
+import { qualityControlService } from '../src/modules/organization/services/qualityControl.service';
+import { batchService } from '../src/modules/logistics/shared/services/batch.service';
+import { shipmentService } from '../src/modules/logistics/shipments/services/shipment.service';
+import { QUALITY_RESULTS, RECEIPT_STATUSES } from '../src/modules/logistics/constants/logistics.constants';
 
-// UUID déterministes (satisfont la validation vine.uuid() des routes métier).
+// IDs fixes UNIQUEMENT pour ce que le seed crée lui-même en direct (sites, matériel,
+// produit matière première, second client, alerte) : aucun de ces modèles n'est
+// couvert par l'issue #72, et un id figé y reste le moyen le plus simple de rester
+// idempotent (cf. règle YAGNI — ne pas réinventer une clé métier là où il en existe déjà une).
 const ID = {
   locReception: 'd0000000-0000-4000-8000-000000000001',
   locFroid: 'd0000000-0000-4000-8000-000000000002',
@@ -27,58 +46,74 @@ const ID = {
   eqRack: 'd0000000-0000-4000-8000-000000000013',
   eqFroidSain: 'd0000000-0000-4000-8000-000000000014',
   prodLaitCru: 'd0000000-0000-4000-8000-000000000021',
-  lotCruA: 'd0000000-0000-4000-8000-000000000031',
-  lotCruB: 'd0000000-0000-4000-8000-000000000032',
-  lotLait: 'd0000000-0000-4000-8000-000000000033',
-  lotBeurre: 'd0000000-0000-4000-8000-000000000034',
-  lotQuarantaine: 'd0000000-0000-4000-8000-000000000035',
-  lotAttenteQc: 'd0000000-0000-4000-8000-000000000036',
-  transfoLait: 'd0000000-0000-4000-8000-000000000041',
-  transfoBeurre: 'd0000000-0000-4000-8000-000000000042',
-  transfoAttenteQc: 'd0000000-0000-4000-8000-000000000043',
-  shipLait: 'd0000000-0000-4000-8000-000000000051',
-  shipBeurre: 'd0000000-0000-4000-8000-000000000052',
   customer2: 'd0000000-0000-4000-8000-000000000061',
   alertFroid: 'd0000000-0000-4000-8000-000000000071',
 };
 
-const ALL_LOTS = [
-  ID.lotCruA,
-  ID.lotCruB,
-  ID.lotLait,
-  ID.lotBeurre,
-  ID.lotQuarantaine,
-  ID.lotAttenteQc,
-];
-const ALL_TRANSFOS = [ID.transfoLait, ID.transfoBeurre, ID.transfoAttenteQc];
-const ALL_SHIPMENTS = [ID.shipLait, ID.shipBeurre];
-const ALL_EQUIP = [ID.eqFrigo, ID.eqCuve, ID.eqRack, ID.eqFroidSain];
-const ALL_LOCS = [ID.locReception, ID.locFroid, ID.locProduction];
+// Clés métier des lots/réceptions/expéditions créés PAR LES SERVICES — c'est par elles
+// qu'on retrouve et purge les données de démo d'une exécution à l'autre, pas par un id.
+const RECEIPT_BONS = ['DEMO-BON-LIVRAISON-A', 'DEMO-BON-LIVRAISON-B'];
+const SHIPMENT_IDS = ['340123450000000017', '340123450000000024'];
 
 const day = (n: number) => new Date(Date.now() + n * 24 * 60 * 60 * 1000);
 
-async function purgePreviousDemo() {
+/**
+ * Purge la précédente exécution du seed démo, en retrouvant les lignes créées par les
+ * services via leur clé métier (bons de réception, numéros d'expédition, matériel de la
+ * cuve) — les UUID de Batch/Transformation/Shipment ne sont pas connus à l'avance,
+ * puisque ce sont désormais les services qui les génèrent.
+ */
+async function purgePreviousDemo(orgId: string) {
+  const receipts = await prisma.receipt.findMany({
+    where: { organization_id: orgId, shipment_id: { in: RECEIPT_BONS } },
+    select: { id: true },
+  });
+  const receiptIds = receipts.map((r) => r.id);
+
+  // `Transformation` ne porte pas `organization_id` en colonne propre : le cloisonnement passe par
+  // le lot enfant qu'elle a produit (`lot_enfant.organization_id`), pas par un filtre absent.
+  const transformations = await prisma.transformation.findMany({
+    where: { id_materiel: ID.eqCuve, lot_enfant: { organization_id: orgId } },
+    select: { id: true, id_lot_enfant: true },
+  });
+  const transformationIds = transformations.map((t) => t.id);
+
+  const receiptBatches = await prisma.batch.findMany({
+    where: { id_receipt: { in: receiptIds } },
+    select: { id: true },
+  });
+  const batchIds = Array.from(
+    new Set([...receiptBatches.map((b) => b.id), ...transformations.map((t) => t.id_lot_enfant)])
+  );
+
+  const shipments = await prisma.shipment.findMany({
+    where: { organization_id: orgId, shipment_id: { in: SHIPMENT_IDS } },
+    select: { id: true },
+  });
+  const shipmentIds = shipments.map((s) => s.id);
+
   // Ordre inverse des clés étrangères.
   await prisma.batch_Mouvement.deleteMany({
     where: {
       OR: [
-        { id_lot: { in: ALL_LOTS } },
-        { id_expedition: { in: ALL_SHIPMENTS } },
-        { id_transformation: { in: ALL_TRANSFOS } },
+        { id_lot: { in: batchIds } },
+        { id_expedition: { in: shipmentIds } },
+        { id_transformation: { in: transformationIds } },
       ],
     },
   });
-  await prisma.liaison_Shipment.deleteMany({ where: { id_expedition: { in: ALL_SHIPMENTS } } });
-  await prisma.shipment.deleteMany({ where: { id: { in: ALL_SHIPMENTS } } });
+  await prisma.liaison_Shipment.deleteMany({ where: { id_expedition: { in: shipmentIds } } });
+  await prisma.qualityControl.deleteMany({ where: { id_lot: { in: batchIds } } });
   await prisma.transformationComposition.deleteMany({
-    where: { id_transformation: { in: ALL_TRANSFOS } },
+    where: { id_transformation: { in: transformationIds } },
   });
-  await prisma.transformation.deleteMany({ where: { id: { in: ALL_TRANSFOS } } });
-  await prisma.qualityControl.deleteMany({ where: { id_lot: { in: ALL_LOTS } } });
+  await prisma.transformation.deleteMany({ where: { id: { in: transformationIds } } });
   await prisma.alert.deleteMany({
-    where: { OR: [{ id: ID.alertFroid }, { related_id: { in: ALL_LOTS } }] },
+    where: { OR: [{ id: ID.alertFroid }, { related_id: { in: batchIds } }] },
   });
-  await prisma.batch.deleteMany({ where: { id: { in: ALL_LOTS } } });
+  await prisma.shipment.deleteMany({ where: { id: { in: shipmentIds } } });
+  await prisma.batch.deleteMany({ where: { id: { in: batchIds } } });
+  await prisma.receipt.deleteMany({ where: { id: { in: receiptIds } } });
   // ⚠️ Matériels et sites NE SONT PAS supprimés : d'autres lots (réceptions réelles, e2e) les
   // référencent, la clé étrangère est en RESTRICT, et le seed mourait au milieu de sa purge —
   // après avoir déjà effacé les lots de démo. Ils ont des identifiants fixes : on les RÉÉCRIT.
@@ -122,7 +157,9 @@ async function main() {
 
   // Les lots sont PRODUITS par l'opérateur, pas par l'administrateur qui fera la démonstration.
   // Sans cela, la levée de quarantaine de l'étape 5 du scénario est refusée en 403 : on ne libère
-  // pas sa propre production (séparation des tâches HACCP).
+  // pas sa propre production (séparation des tâches HACCP). Le contrôle qualité qui libère les
+  // lots de démo est donc signé par `userId` (l'admin), jamais par `producerId`, pour la même
+  // raison — cf. `enforceSeparationOfDuties`.
   //
   // On vise le compte de démonstration NOMMÉ, pas « un opérateur » : un `findFirst` sur le rôle
   // désignait au hasard n'importe quel opérateur de l'organisation — y compris un compte personnel
@@ -144,6 +181,7 @@ async function main() {
     );
   }
 
+  const supplier = await prisma.supplier.findFirst({ where: { organization_id: orgId } });
   const milk = await prisma.product.findFirst({
     where: { organization_id: orgId, nom: { contains: 'Lait 1L' } },
   });
@@ -151,9 +189,11 @@ async function main() {
     where: { organization_id: orgId, nom: { contains: 'Beurre' } },
   });
   const customer1 = await prisma.customer.findFirst({ where: { organization_id: orgId } });
-  if (!milk || !butter || !customer1) throw new Error('Produits/client de base manquants.');
+  if (!milk || !butter || !customer1 || !supplier) {
+    throw new Error('Produits/client/fournisseur de base manquants.');
+  }
 
-  await purgePreviousDemo();
+  await purgePreviousDemo(orgId);
   await purgeE2EResidue(orgId);
 
   // 1. Sites réels
@@ -238,164 +278,132 @@ async function main() {
     },
   });
 
-  // 4. Lots matière première (parents)
-  await prisma.batch.createMany({
-    data: [
-      {
-        id: ID.lotCruA,
-        organization_id: orgId,
-        id_materiel_actuel: ID.eqRack,
-        lot_number: '260710-000101',
-        id_produit: ID.prodLaitCru,
-        quantite_actuelle: 2000,
-        unite_code: 'L',
-        quantite_base: 2000,
-        date_peremption: day(4),
-        statut: 'EN_STOCK',
-        created_by: producerId,
-      },
-      {
-        id: ID.lotCruB,
-        organization_id: orgId,
-        id_materiel_actuel: ID.eqRack,
-        lot_number: '260710-000102',
-        id_produit: ID.prodLaitCru,
-        quantite_actuelle: 1500,
-        unite_code: 'L',
-        quantite_base: 1500,
-        date_peremption: day(4),
-        statut: 'EN_STOCK',
-        created_by: producerId,
-      },
-      // Lots produits finis (enfants) — créés puis reliés par transformation
-      {
-        id: ID.lotLait,
-        organization_id: orgId,
-        id_materiel_actuel: ID.eqFroidSain,
-        lot_number: '260711-000201',
-        id_produit: milk.id,
-        quantite_actuelle: 3000,
-        unite_code: 'L',
-        quantite_base: 3000,
-        date_peremption: day(30),
-        statut: 'EN_STOCK',
-        created_by: producerId,
-      },
-      {
-        id: ID.lotBeurre,
-        organization_id: orgId,
-        id_materiel_actuel: ID.eqFroidSain,
-        lot_number: '260711-000202',
-        id_produit: butter.id,
-        quantite_actuelle: 800,
-        unite_code: 'KG',
-        quantite_base: 200,
-        date_peremption: day(90),
-        statut: 'EN_STOCK',
-        created_by: producerId,
-      },
-      // Lot fraîchement transformé : il ATTEND son contrôle de sortie d'usine.
-      // Barrière qualité : il n'est ni expédiable ni transformable tant qu'un contrôle
-      // ne l'a pas libéré. C'est l'état nominal d'un produit fini qui vient d'être produit.
-      {
-        id: ID.lotAttenteQc,
-        organization_id: orgId,
-        id_materiel_actuel: ID.eqFroidSain,
-        lot_number: '260713-000203',
-        id_produit: milk.id,
-        quantite_actuelle: 1200,
-        unite_code: 'L',
-        quantite_base: 1200,
-        date_peremption: day(28),
-        statut: 'EN_ATTENTE_QC',
-        created_by: producerId,
-      },
-      // Lot en quarantaine (contrôle non conforme)
-      {
-        id: ID.lotQuarantaine,
-        organization_id: orgId,
-        id_materiel_actuel: ID.eqFrigo,
-        lot_number: '260709-000099',
-        id_produit: butter.id,
-        quantite_actuelle: 120,
-        unite_code: 'KG',
-        quantite_base: 30,
-        date_peremption: day(60),
-        statut: 'BLOQUE',
-        created_by: producerId,
-      },
+  // 4. Réceptions de matière première (Receipt + Batch + EPCIS ObjectEvent, via le service réel)
+  const receptionA = await receiptService.createReceipt({
+    organization_id: orgId,
+    id_fournisseur: supplier.id,
+    id_produit: ID.prodLaitCru,
+    shipment_id: RECEIPT_BONS[0],
+    statut_controle: RECEIPT_STATUSES.OK,
+    received_by: producerId,
+    quantite_actuelle: 2000,
+    unite_code: 'L',
+    id_materiel: ID.eqRack,
+    lot_number: '260710-000101',
+    date_peremption: day(4).toISOString().slice(0, 10),
+  });
+  const receptionB = await receiptService.createReceipt({
+    organization_id: orgId,
+    id_fournisseur: supplier.id,
+    id_produit: ID.prodLaitCru,
+    shipment_id: RECEIPT_BONS[1],
+    statut_controle: RECEIPT_STATUSES.OK,
+    received_by: producerId,
+    quantite_actuelle: 1500,
+    unite_code: 'L',
+    id_materiel: ID.eqRack,
+    lot_number: '260710-000102',
+    date_peremption: day(4).toISOString().slice(0, 10),
+  });
+  const lotCruA = receptionA.batchId;
+  const lotCruB = receptionB.batchId;
+
+  // 5. Transformations (généalogie) : B(300L) → Lait attente QC (300L), A(1700L)+B(1200L) → Lait
+  // en stock (2900L), A(200L) → Beurre en stock, A(100L) → Beurre non conforme (quarantaine).
+  // Chaque transformation naît PENDING_QC (barrière qualité) — c'est `qualityControlService`,
+  // pas la transformation, qui décide de la libérer ou de la bloquer.
+  //
+  // `lot_parent_epuise` ne vaut `true` que sur la DERNIÈRE consommation d'un lot parent donné :
+  // le poser plus tôt marque le lot EPUISE alors qu'il lui reste du stock, un état auto-contradictoire
+  // qui se scelle tel quel dans l'audit WORM (`TRANSFORM_CONSUME`). lotCruA est consommé par 3 appels
+  // (transfoLait, transfoBeurre, transfoQuarantaine, dans cet ordre) : seul le dernier l'épuise.
+  // lotCruB n'est consommé que par 2 appels (transfoAttenteQc, puis transfoLait) : seul le second.
+
+  // Lot fraîchement transformé : il ATTEND son contrôle de sortie d'usine. Barrière qualité :
+  // il n'est ni expédiable ni transformable tant qu'un contrôle ne l'a pas libéré. C'est l'état
+  // nominal d'un produit fini qui vient d'être produit — aucun contrôle n'est déclenché ici.
+  const transfoAttenteQc = await transformationService.createTransformation({
+    organization_id: orgId,
+    id_produit_fini: milk.id,
+    id_materiel: ID.eqCuve,
+    quantite_produite: 300,
+    unite_code: 'L',
+    date_peremption: day(28),
+    created_by: producerId,
+    inputs: [{ id_lot_parent: lotCruB, quantite_prelevee: 300, unite: 'L', lot_parent_epuise: false }],
+  });
+  await batchService.moveBatch(transfoAttenteQc.lot_enfant_id, orgId, producerId, ID.eqFroidSain);
+
+  const transfoLait = await transformationService.createTransformation({
+    organization_id: orgId,
+    id_produit_fini: milk.id,
+    id_materiel: ID.eqCuve,
+    quantite_produite: 2900,
+    unite_code: 'L',
+    date_peremption: day(30),
+    created_by: producerId,
+    inputs: [
+      { id_lot_parent: lotCruA, quantite_prelevee: 1700, unite: 'L', lot_parent_epuise: false },
+      { id_lot_parent: lotCruB, quantite_prelevee: 1200, unite: 'L', lot_parent_epuise: true },
     ],
   });
-
-  // 5. Transformations (généalogie) : A+B → Lait ; A → Beurre ; B → lot en attente de contrôle
-  await prisma.transformation.create({
-    data: {
-      id: ID.transfoAttenteQc,
-      id_lot_enfant: ID.lotAttenteQc,
-      id_produit_fini: milk.id,
-      id_user: producerId,
-      id_materiel: ID.eqCuve,
-      statut: 'TERMINE',
-      compositions: {
-        create: [
-          {
-            id_lot_parent: ID.lotCruB,
-            quantite_prelevee: 300,
-            unite: 'L',
-            lot_parent_epuise: false,
-          },
-        ],
-      },
-    },
-  });
-  await prisma.transformation.create({
-    data: {
-      id: ID.transfoLait,
-      id_lot_enfant: ID.lotLait,
-      id_produit_fini: milk.id,
-      id_user: producerId,
-      id_materiel: ID.eqCuve,
-      statut: 'TERMINE',
-      compositions: {
-        create: [
-          {
-            id_lot_parent: ID.lotCruA,
-            quantite_prelevee: 1800,
-            unite: 'L',
-            lot_parent_epuise: false,
-          },
-          {
-            id_lot_parent: ID.lotCruB,
-            quantite_prelevee: 1200,
-            unite: 'L',
-            lot_parent_epuise: false,
-          },
-        ],
-      },
-    },
-  });
-  await prisma.transformation.create({
-    data: {
-      id: ID.transfoBeurre,
-      id_lot_enfant: ID.lotBeurre,
-      id_produit_fini: butter.id,
-      id_user: producerId,
-      id_materiel: ID.eqCuve,
-      statut: 'TERMINE',
-      compositions: {
-        create: [
-          {
-            id_lot_parent: ID.lotCruA,
-            quantite_prelevee: 200,
-            unite: 'L',
-            lot_parent_epuise: false,
-          },
-        ],
-      },
-    },
+  await batchService.moveBatch(transfoLait.lot_enfant_id, orgId, producerId, ID.eqFroidSain);
+  await qualityControlService.createQualityControl({
+    organization_id: orgId,
+    id_lot: transfoLait.lot_enfant_id,
+    type_test: 'Analyse microbiologique',
+    resultat: QUALITY_RESULTS.CONFORM,
+    id_user_labo: userId,
+    notes: 'Listeria négatif, flore totale conforme.',
   });
 
-  // 6. Deuxième client + expéditions (lots finis livrés)
+  const transfoBeurre = await transformationService.createTransformation({
+    organization_id: orgId,
+    id_produit_fini: butter.id,
+    id_materiel: ID.eqCuve,
+    quantite_produite: 800,
+    unite_code: 'KG',
+    date_peremption: day(90),
+    created_by: producerId,
+    inputs: [{ id_lot_parent: lotCruA, quantite_prelevee: 200, unite: 'L', lot_parent_epuise: false }],
+  });
+  await batchService.moveBatch(transfoBeurre.lot_enfant_id, orgId, producerId, ID.eqFroidSain);
+  // Le beurre a été EXPÉDIÉ (§6) : il ne peut l'avoir été que parce qu'un contrôle l'a libéré.
+  // Sans cet appel, la démo contredirait la barrière qualité qu'elle est censée illustrer.
+  await qualityControlService.createQualityControl({
+    organization_id: orgId,
+    id_lot: transfoBeurre.lot_enfant_id,
+    type_test: 'Analyse microbiologique',
+    resultat: QUALITY_RESULTS.CONFORM,
+    id_user_labo: userId,
+    notes: 'Conforme — lot libéré pour expédition.',
+  });
+
+  // Lot en quarantaine : produit fini non conforme à son contrôle de sortie. Déplacé dans le
+  // frigo EN ALERTE avant le verdict — un lot BLOQUE n'est plus déplaçable (cf. `moveBatch`).
+  const transfoQuarantaine = await transformationService.createTransformation({
+    organization_id: orgId,
+    id_produit_fini: butter.id,
+    id_materiel: ID.eqCuve,
+    quantite_produite: 40,
+    unite_code: 'KG',
+    date_peremption: day(60),
+    created_by: producerId,
+    inputs: [{ id_lot_parent: lotCruA, quantite_prelevee: 100, unite: 'L', lot_parent_epuise: true }],
+  });
+  await batchService.moveBatch(transfoQuarantaine.lot_enfant_id, orgId, producerId, ID.eqFrigo);
+  await qualityControlService.createQualityControl({
+    organization_id: orgId,
+    id_lot: transfoQuarantaine.lot_enfant_id,
+    type_test: 'Analyse microbiologique',
+    resultat: QUALITY_RESULTS.NON_CONFORM,
+    id_user_labo: userId,
+    notes: 'Dépassement flore totale — lot bloqué.',
+  });
+  const lotQuarantaine = transfoQuarantaine.lot_enfant_id;
+
+  // 6. Deuxième client + expéditions (lots finis livrés, via le service réel : EPCIS
+  // ObjectEvent + AggregationEvent, mouvement, audit).
   await prisma.customer.upsert({
     where: { id: ID.customer2 },
     update: {},
@@ -407,102 +415,35 @@ async function main() {
       adresse_livraison: '12 place du Marché, 69001 Lyon',
     },
   });
-  await prisma.shipment.create({
-    data: {
-      id: ID.shipLait,
-      organization_id: orgId,
-      id_client: customer1.id,
-      shipment_id: '340123450000000017',
-      date_envoi: day(-1),
-      transporteur: 'TransFroid Express',
-      statut_livraison: 'LIVRE',
-      created_by: userId,
-      liaisons: { create: { id_lot: ID.lotLait, quantite_expediee: 1500, unite: 'L' } },
-    },
+  const shipLait = await shipmentService.createShipment({
+    organization_id: orgId,
+    id_client: customer1.id,
+    shipment_id: SHIPMENT_IDS[0],
+    transporteur: 'TransFroid Express',
+    date_envoi: day(-1),
+    created_by: userId,
+    items: [{ id_lot: transfoLait.lot_enfant_id, quantite: 1500 }],
   });
-  await prisma.shipment.create({
-    data: {
-      id: ID.shipBeurre,
-      organization_id: orgId,
-      id_client: ID.customer2,
-      shipment_id: '340123450000000024',
-      date_envoi: day(-1),
-      transporteur: 'TransFroid Express',
-      statut_livraison: 'EN_TRANSIT',
-      created_by: userId,
-      liaisons: { create: { id_lot: ID.lotBeurre, quantite_expediee: 400, unite: 'KG' } },
-    },
+  const shipBeurre = await shipmentService.createShipment({
+    organization_id: orgId,
+    id_client: ID.customer2,
+    shipment_id: SHIPMENT_IDS[1],
+    transporteur: 'TransFroid Express',
+    date_envoi: day(-1),
+    created_by: userId,
+    items: [{ id_lot: transfoBeurre.lot_enfant_id, quantite: 400 }],
   });
-
-  // 7. Mouvements de lots (réception, transformation, expédition)
-  await prisma.batch_Mouvement.createMany({
-    data: [
-      { id_lot: ID.lotCruA, type_action: 'RECEPTION', quantite: 2000, unite: 'L', id_user: producerId },
-      { id_lot: ID.lotCruB, type_action: 'RECEPTION', quantite: 1500, unite: 'L', id_user: producerId },
-      {
-        id_lot: ID.lotLait,
-        type_action: 'TRANSFORMATION',
-        quantite: 3000,
-        unite: 'L',
-        id_transformation: ID.transfoLait,
-        id_user: producerId,
-      },
-      {
-        id_lot: ID.lotBeurre,
-        type_action: 'TRANSFORMATION',
-        quantite: 800,
-        unite: 'KG',
-        id_transformation: ID.transfoBeurre,
-        id_user: producerId,
-      },
-      {
-        id_lot: ID.lotLait,
-        type_action: 'EXPEDITION',
-        quantite: 1500,
-        unite: 'L',
-        id_expedition: ID.shipLait,
-        id_user: producerId,
-      },
-    ],
+  // `createShipment` crée toujours l'expédition EN_ROUTE (pas de service de confirmation de
+  // livraison à ce jour). Les statuts LIVRE / EN_TRANSIT sont uniquement cosmétiques pour la
+  // démo (aucun événement EPCIS n'y est attaché) : une mise à jour directe reste ici la solution
+  // la plus simple, sans inventer un service hors du périmètre de cette issue.
+  await prisma.shipment.update({ where: { id: shipLait.id }, data: { statut_livraison: 'LIVRE' } });
+  await prisma.shipment.update({
+    where: { id: shipBeurre.id },
+    data: { statut_livraison: 'EN_TRANSIT' },
   });
 
-  // 8. Contrôles qualité (1 conforme, 1 non conforme sur le lot en quarantaine)
-  await prisma.qualityControl.createMany({
-    data: [
-      {
-        organization_id: orgId,
-        id_lot: ID.lotLait,
-        type_test: 'Analyse microbiologique',
-        resultat: 'CONFORME',
-        id_user_labo: userId,
-        date_test: day(-1),
-        notes: 'Listeria négatif, flore totale conforme.',
-      },
-      {
-        organization_id: orgId,
-        id_lot: ID.lotQuarantaine,
-        type_test: 'Analyse microbiologique',
-        resultat: 'NON_CONFORME',
-        id_user_labo: userId,
-        date_test: day(-2),
-        notes: 'Dépassement flore totale — lot bloqué.',
-      },
-      {
-        // Le beurre a été EXPÉDIÉ : il ne peut l'avoir été que parce qu'un contrôle l'a libéré.
-        // Sans cette ligne, la base de démo contredirait la barrière qualité qu'elle est censée
-        // illustrer — un lot fini expédié sans le moindre contrôle.
-        organization_id: orgId,
-        id_lot: ID.lotBeurre,
-        type_test: 'Analyse microbiologique',
-        resultat: 'CONFORME',
-        id_user_labo: userId,
-        date_test: day(-1),
-        notes: 'Conforme — lot libéré pour expédition.',
-      },
-    ],
-  });
-
-  // 9. Alerte chaîne du froid ACTIVE (type réel émis par l'API)
+  // 7. Alerte chaîne du froid ACTIVE (type réel émis par l'API)
   await prisma.alert.create({
     data: {
       id: ID.alertFroid,
@@ -519,9 +460,9 @@ async function main() {
   logger.info(
     '   3 sites, 4 matériels, lots rattachés à leur emplacement, généalogie A+B→Lait / A→Beurre,'
   );
-  logger.info('   2 expéditions,');
-  logger.info('   2 contrôles qualité, 1 lot en quarantaine, 1 alerte froid active.');
-  logger.info(`   Rappel de démo à déclencher sur le lot ${ID.lotCruA} (bloque Lait + Beurre).`);
+  logger.info('   2 expéditions, 3 contrôles qualité, 1 lot en quarantaine, 1 alerte froid active.');
+  logger.info(`   Rappel de démo à déclencher sur le lot ${lotCruA} (bloque Lait + Beurre).`);
+  logger.info(`   Lot en quarantaine (contrôle non conforme) : ${lotQuarantaine}`);
 }
 
 main()
