@@ -18,14 +18,15 @@ export const transformationSchema = vine.object({
   // résultat du premier appel au lieu de re-prélever les lots parents. Absente = comportement direct.
   client_op_id: vine.string().uuid().optional(),
 
-  // Liste des composants utilisés (limité à 50 pour éviter les DoS)
+  // Liste des composants utilisés (limité à 50 pour éviter les DoS).
+  // Pas de `lot_parent_epuise` ici : l'épuisement est dérivé du stock restant côté serveur
+  // (transformation.service.ts), jamais déclaré par l'appelant (cf. #123).
   inputs: vine
     .array(
       vine.object({
         id_lot_parent: vine.string().uuid(),
         quantite_prelevee: vine.number().positive().decimal([0, 2]),
         unite: vine.enum(VALID_UNITS),
-        lot_parent_epuise: vine.boolean(),
       })
     )
     .minLength(1)

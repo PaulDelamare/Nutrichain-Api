@@ -24,7 +24,7 @@ const basePayload = {
   id_materiel: 'mat-1',
   quantite_produite: 10,
   unite_code: 'kg',
-  inputs: [{ id_lot_parent: 'lot-1', quantite_prelevee: 5, unite: 'kg', lot_parent_epuise: false }],
+  inputs: [{ id_lot_parent: 'lot-1', quantite_prelevee: 5, unite: 'kg' }],
 };
 
 describe('TransformationController', () => {
