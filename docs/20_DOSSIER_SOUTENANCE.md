@@ -165,7 +165,7 @@ Dire au jury ce qui n'est **pas** fait vaut mieux que de le laisser le découvri
 | Standards | GS1 : GTIN, AI(10), SSCC, URN LGTIN/SSCC, Digital Link · EPCIS : Object/Transformation/AggregationEvent |
 | Conformité visée | HACCP, ISO 22000, RPO 15 min / RTO 60-120 min (PCA/PRA, cf. `18_PCA_PRA.md`) |
 
-## 10. Déroulé chronométré, répétition, plan B
+## 11. Déroulé chronométré, répétition, plan B
 
 Montage à partir du scénario en 12 étapes (§5), pas de contenu nouveau. Budget total 30 min :
 intro (3 min), réponse (2 min), architecture (3 min), **démo pas-à-pas (17 min)**, sécurité et
