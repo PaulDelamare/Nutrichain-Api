@@ -40,10 +40,10 @@ organisation** (multi-tenancy en défense en profondeur).
 
 | Échéance | Objectif | Livré | Preuve mesurable |
 |---|---|---|---|
-| 01/03 | Auth + MFA + contrôle d'accès | ⚠️ partiel (MFA et ABAC reportés, cf. §7) | Better-Auth sessions, invitations, organisations, RBAC 5 rôles |
-| 10/03 | CI/CD industrielle | ✅ | GitHub Actions (build, lint, tests) |
-| 15/03 | Alerte chaîne du froid < 30 s p95 | ✅ | `e2e:iot-alert` : excursion → alerte + email |
-| 10/06 | Mobile : scan rapide, mode offline | ✅ | Sync idempotente (HTTP 207, `clientOpId`), `e2e:sync` |
+| 01/03 | Auth + MFA + contrôle d'accès | ⚠️ partiel (ABAC reporté, cf. §7 — MFA TOTP livrée end-to-end) | Better-Auth sessions, invitations, organisations, RBAC 5 rôles, 2FA TOTP (front + mobile web) |
+| 10/03 | CI/CD industrielle | ✅ | GitHub Actions (build, lint, tests, migrations) |
+| 15/03 | Alerte chaîne du froid < 30 s p95 | ⚠️ partiel | `e2e:iot-alert` prouve l'enchaînement excursion → alerte, mais ne chronomètre pas ; le seuil 30 s n'est pas mesuré automatiquement |
+| 10/06 | Mobile : scan rapide, mode offline | ⚠️ partiel | Sync idempotente prouvée (HTTP 207, `clientOpId`, `e2e:sync`) ; la latence de scan n'est pas mesurée |
 | 20/06 | Traçabilité EPCIS conforme GS1 | ✅ | ObjectEvent / TransformationEvent / AggregationEvent en URN LGTIN/SSCC, `e2e:epcis` 24/24 |
 | 22/06 | Rappel produit complet < 15 min | ✅ | **~21 ms pour 4 645 lots descendants** (`bench:genealogy`) |
 | 30/09 | Connecteurs ERP/WMS + audit WORM | ✅ partiel | Import CSV produits/clients + export EPCIS ; hash-chain vérifiée (`e2e:audit-verify`) |
@@ -56,7 +56,7 @@ Le détail (5 diagrammes) est dans [`19_architecture.md`](19_architecture.md). L
    mouvement, l'événement EPCIS et l'entrée d'audit dans **une seule transaction ACID**.
    En microservices : des sagas, pour aucun bénéfice à cette échelle (YAGNI).
 2. **Couches strictes par module** — routes → middlewares (auth, validation) → controllers →
-   services. Aucun service ne dépend d'Express : 724 tests rapides, utilitaires GS1
+   services. Aucun service ne dépend d'Express : 870 tests rapides, utilitaires GS1
    en fonctions pures.
 3. **PostgreSQL comme unique source de vérité** — transactions Serializable, optimistic
    locking (`Batch.version`), migrations Prisma versionnées.
@@ -116,17 +116,15 @@ Requêtes prêtes dans la collection Bruno (`Nutrichain.json`).
 
 Dire au jury ce qui n'est **pas** fait vaut mieux que de le laisser le découvrir :
 
-- **MFA implémentée mais non exposée — décision de sécurité, pas un oubli.** Le plugin
-  `twoFactor` de Better-Auth est activé et sa table existe, mais les routes
-  `/auth/two-factor/*` sont fermées, comme le reste du cœur Better-Auth. Motif : ces routes
-  sont servies par un passthrough qui **ne traverse ni notre RBAC ni le journal d'audit
-  WORM**. Les ouvrir en bloc rouvrirait aussi `update-user`, `change-email`,
-  `change-password` et la gestion des sessions, hors de tout contrôle de rôle et sans
-  trace. Nous avons donc préféré une **allowlist stricte de trois routes** (connexion,
-  inscription, déconnexion) : la règle échoue *fermé*, et un nouvel endpoint apparu dans
-  une version ultérieure de la dépendance ne rouvre pas un trou en silence. Exposer la MFA
-  proprement suppose de la faire passer par nos propres routes gardées : c'est l'itération
-  suivante, pas une case à cocher.
+- **MFA (TOTP) livrée end-to-end, activation non obligatoire.** Le plugin `twoFactor` de
+  Better-Auth est activé ; quatre routes (`enable`, `get-totp-uri`, `verify-totp`,
+  `disable`) sont ouvertes dans l'allowlist du passthrough — les autres (`update-user`,
+  `change-email`, `change-password`, gestion des sessions) restent fermées, hors de tout
+  contrôle de rôle et sans trace d'audit. Écran d'activation/désactivation côté front
+  (`/mon-compte`) et challenge de connexion côté front et mobile web. Ce qui reste :
+  l'activation n'est pas **obligatoire** pour les rôles sensibles (`owner`/`admin`), et
+  seule la cible web du mobile a été vérifiée en conditions réelles — pas les cibles
+  natives iOS/Android.
 - **ABAC reporté** : le contrôle d'accès livré est un **RBAC à cinq rôles**
   (`owner`, `admin`, `quality`, `operator`, `viewer`), vocabulaire unique et canonique — il a
   remplacé les anciens `logistics_*`, `quality_control` et `manager`, absents du code. Reste une
@@ -147,8 +145,8 @@ Dire au jury ce qui n'est **pas** fait vaut mieux que de le laisser le découvri
 
 ## 8. Qualité logicielle (comment c'est construit)
 
-- **TDD à trois niveaux** : 724 tests unitaires/intégration (Vitest + Supertest,
-  104 fichiers, 86 % de couverture de lignes) + suites e2e contre PostgreSQL réel + benchmark de généalogie.
+- **TDD à trois niveaux** : 870 tests unitaires/intégration (Vitest + Supertest,
+  116 fichiers, 88,86 % de couverture de lignes) + suites e2e contre PostgreSQL réel + benchmark de généalogie.
 - **TypeScript strict, zéro `any` en production** ; validation typée aux frontières
   (`Infer<typeof schema>`).
 - **Migrations versionnées** (`prisma/migrations/`), commits conventionnels, hooks
@@ -161,8 +159,49 @@ Dire au jury ce qui n'est **pas** fait vaut mieux que de le laisser le découvri
 | Indicateur | Valeur |
 |---|---|
 | Rappel produit (généalogie + blocage) | **~21 ms** pour 4 645 lots (budget : 15 min) |
-| Alerte chaîne du froid | **< 30 s** entre télémétrie et alerte |
-| Tests automatisés | **724** verts (86 % de couverture de lignes) + suites e2e |
-| Modules métier | 11 (+ noyau partagé), 30 modèles de données |
+| Alerte chaîne du froid | seuil visé **< 30 s** ; enchaînement excursion → alerte prouvé (`e2e:iot-alert`), délai non chronométré |
+| Tests automatisés | **870** verts (88,86 % de couverture de lignes) + suites e2e |
+| Modules métier | 10 (+ noyau partagé `core`), 31 modèles de données |
 | Standards | GS1 : GTIN, AI(10), SSCC, URN LGTIN/SSCC, Digital Link · EPCIS : Object/Transformation/AggregationEvent |
 | Conformité visée | HACCP, ISO 22000, RPO 15 min / RTO 60-120 min (PCA/PRA, cf. `18_PCA_PRA.md`) |
+
+## 11. Déroulé chronométré, répétition, plan B
+
+Montage à partir du scénario en 12 étapes (§5), pas de contenu nouveau. Budget total 30 min :
+intro (3 min), réponse (2 min), architecture (3 min), **démo pas-à-pas (17 min)**, sécurité et
+limites (3 min), conclusion (2 min).
+
+Répartition des 17 min de démo — les étapes qui ne produisent qu'une ligne de résultat (import,
+étiquette) vont vite ; celles à effet visible et démonstratif (quarantaine, alerte froid, rappel)
+en méritent davantage :
+
+| Étape (§5) | Temps cible |
+|---|---|
+| 1. Import ERP | 1 min |
+| 2. Réception fournisseur | 1 min |
+| 3. Étiquette GS1 | 30 s |
+| 4-5. Quarantaine + séparation des tâches | **3 min** — le point le plus démonstratif de la rigueur HACCP |
+| 6. Transformation + généalogie | 1,5 min |
+| 7. Expédition + SSCC | 1 min |
+| 8. Excursion chaîne du froid | **2,5 min** — alerte + quarantaine automatique |
+| 9. Rappel produit | **2,5 min** — le chrono en millisecondes est l'argument à appuyer |
+| 10. Scan consommateur | 1 min |
+| 11. Export EPCIS | 1 min |
+| 12. Preuve d'intégrité WORM | 1 min |
+
+Total 16,5 min — 30 s de marge pour un aléa.
+
+**Répétition — non faite à ce stade** : ces temps sont des cibles, aucun temps réel n'a encore
+été mesuré. Protocole : dérouler les 12 étapes chronomètre en main sans s'arrêter pour corriger
+(noter les blocages plutôt que les résoudre en direct), comparer au tableau ci-dessus, ajuster
+la cible ou la démo si l'écart dépasse 20 %, puis répéter une fois avec interruptions simulées.
+
+**Plan B — captures de secours, non produites à ce stade.** Le scénario e2e rejouable (§5) prouve
+que le système fonctionne, mais une CLI qui défile n'est pas une preuve visuelle convaincante en
+direct. Il faudrait, en plus, une capture (écran ou courte vidéo) prise à l'avance pour chaque
+étape à fort impact visuel — quarantaine + séparation des tâches (4-5), excursion froid (8),
+rappel produit (9), scan consommateur (10), preuve d'intégrité (12) — montrable sans réseau.
+Ce tableau définit quoi capturer ; produire les captures suppose un run complet du système
+(serveur + seed + Bruno ou front), à faire séparément et proche de la date pour rester
+représentatif. Leçon déjà tirée : tout ce qui dépend du réseau de la salle doit avoir un repli
+(le scan caméra en dépendait, corrigé par Mobile PR #28) — ces captures sont ce repli côté API.
