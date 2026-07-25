@@ -8,10 +8,9 @@ dupliquer — un burndown recopié ici se périmerait à la prochaine PR, ce lie
 ## La méthode
 
 1. **Chaque issue porte une conséquence vérifiée dans le code**, pas un vague intitulé. Exemples
-   pris tels quels dans le tracker de l'API : « `npm test` renvoie exit 1 — la commande la plus
-   évidente pour un correcteur » (#163), « le seuil de couverture de 70 % n'est **jamais**
-   évalué — aucun job ne lance `test:coverage` » (#157), « le document de référence ignore
-   MongoDB et décrit un middleware supprimé » (#160).
+   pris tels quels dans le tracker de l'API : « `npm test` renvoie exit 1 » (#163), « le seuil de
+   couverture de 70 % n'est **jamais** évalué — aucun job ne lance `test:coverage` » (#157), « le
+   document de référence ignore MongoDB et décrit un middleware supprimé » (#160).
 2. **Une PR ferme son issue** (`Closes #N` dans le corps) : l'historique Git *est* le journal de
    sprint. `gh issue list --state closed` et `gh pr list --state merged` reconstituent l'un à
    partir de l'autre à tout moment.
@@ -34,8 +33,7 @@ dupliquer — un burndown recopié ici se périmerait à la prochaine PR, ce lie
 - **Traçabilité / GS1-EPCIS** : lien GS1 Digital Link (API #214), généalogie et rappel côté
   mobile (#77), amont fournisseur côté front (#50).
 - **Qualité et CI** : CI réparée (issue historique, close), couverture de test réellement
-  évaluée (#157 ouverte au moment de l'écriture — pas encore refermée), Docker/seed en
-  conteneur (#155, #156).
+  évaluée (#157, fermée), Docker/seed en conteneur (#155, #156).
 - **Ergonomie** : alertes cliquables (front #28), grille figée à l'accueil (mobile #74), session
   expirée qui détruisait une saisie en cours (mobile #73).
 
