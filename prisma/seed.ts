@@ -158,6 +158,15 @@ async function upsertIotGateway(organizationId: string): Promise<void> {
 }
 
 async function main() {
+  // Ce seed crée des comptes à mot de passe public (dont un admin plateforme hors organisation) :
+  // le commentaire au-dessus de DEMO_PASSWORD l'affirmait déjà sans que rien ne l'impose (#108).
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      'Ce seed ne doit jamais tourner en production : il crée des comptes de démonstration ' +
+        `au mot de passe public (dont un admin plateforme). NODE_ENV="${process.env.NODE_ENV}".`
+    );
+  }
+
   logger.info('🌱 Start seeding Traceability...');
 
   const usine = await prisma.organization.upsert({

@@ -146,6 +146,10 @@ Tous avec le mot de passe **`NutriChain!2026`**, dans l'organisation « Usine La
 > Se connecter en `owner` **masque tous les 403** : il a tous les droits. Pour vérifier qu'une garde
 > tient réellement, rejouer le parcours avec le rôle le plus faible qui devrait être refusé.
 
+En plus de ces comptes rattachés à l'organisation de démo, le seed crée aussi
+**`platform@nutrichain.local`** (même mot de passe), un compte **hors de toute organisation** —
+personnel de la plateforme, pas un rôle métier. Le seed refuse de tourner si `NODE_ENV=production`.
+
 > ⚠️ Les migrations sont **versionnées** (`prisma/migrations/`). Toute évolution de schéma passe par une nouvelle migration — **jamais `db push`**.
 
 ### Lancer
