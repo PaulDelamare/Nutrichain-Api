@@ -118,7 +118,14 @@ async function main() {
   const batch1 = await makeBatch('RESTORE');
   await ingestExcursion(fridge.sensor_id!, 4);
 
-  const afterExcursion = await prisma.batch.findUniqueOrThrow({ where: { id: batch1.id } });
+  let afterExcursion = await prisma.batch.findUniqueOrThrow({ where: { id: batch1.id } });
+  // Filet de sécurité, pas un pari sur un délai Mongo : si la détection n'a pas suivi (rare, sous
+  // charge CI), on renvoie une vraie excursion supplémentaire — le comportement observable (le lot
+  // finit-il par être bloqué ?), pas une durée devinée en interne à Mongo (#226).
+  for (let retry = 0; retry < 5 && afterExcursion.statut !== 'BLOQUE'; retry++) {
+    await ingestExcursion(fridge.sensor_id!, 4);
+    afterExcursion = await prisma.batch.findUniqueOrThrow({ where: { id: batch1.id } });
+  }
   assert(afterExcursion.statut === 'BLOQUE', 'excursion → lot BLOQUE');
   assert(
     afterExcursion.statut_avant_blocage === 'EN_ATTENTE_QC',

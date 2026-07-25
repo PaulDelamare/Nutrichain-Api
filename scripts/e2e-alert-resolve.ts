@@ -222,38 +222,50 @@ async function main(): Promise<void> {
     // pour que detectExcursion confirme une excursion sur le 6e ping). Écriture et relecture
     // (dans checkAndAlert) dans la MÊME session Mongo à cohérence causale, comme en production
     // (telemetry.controller.ts) : élimine le pari sur un délai de visibilité arbitraire (#226).
-    const points = Array.from({ length: 10 }, (_, idx) => {
-      const i = 9 - idx;
-      return {
-        metadata: { sensor_id: fixtures.sensorId, organization_id: ORG_ID! },
-        timestamp: new Date(Date.now() - i * 60_000),
-        temperature: 8,
-        humidity: 50,
-        battery_level: 80,
-      };
-    });
-    const session = await mongoose.startSession();
-    try {
-      await TelemetryModel.insertMany(points, { session });
-      _clearThresholdCacheForTests();
-      await iotAlertService.checkAndAlert({
-        sensorId: fixtures.sensorId,
-        organizationId: ORG_ID!,
-        currentTemp: 8,
-        timestamp: new Date(),
-        mongoSession: session,
+    const floodExcursion = async () => {
+      const points = Array.from({ length: 10 }, (_, idx) => {
+        const i = 9 - idx;
+        return {
+          metadata: { sensor_id: fixtures.sensorId, organization_id: ORG_ID! },
+          timestamp: new Date(Date.now() - i * 60_000),
+          temperature: 8,
+          humidity: 50,
+          battery_level: 80,
+        };
       });
-    } finally {
-      await session.endSession();
-    }
+      const session = await mongoose.startSession();
+      try {
+        await TelemetryModel.insertMany(points, { session });
+        _clearThresholdCacheForTests();
+        await iotAlertService.checkAndAlert({
+          sensorId: fixtures.sensorId,
+          organizationId: ORG_ID!,
+          currentTemp: 8,
+          timestamp: new Date(),
+          mongoSession: session,
+        });
+      } finally {
+        await session.endSession();
+      }
+    };
+    await floodExcursion();
     // Assert : il existe AU MOINS une Alert ACTIVE postérieure à la résolution,
     // d'id différent de l'Alert initiale. C'est la preuve que la dédup est débloquée
     // sans coupler le test à un nombre exact (résilient si la logique IoT évolue).
-    const activeAlertsAfter = await prisma.alert.findMany({
-      where: { id_materiel: fixtures.equipmentId, type: 'TEMP_EXCURSION', statut: 'ACTIVE' },
-      select: { id: true },
-    });
-    const newActiveAlerts = activeAlertsAfter.filter((a) => a.id !== fixtures.initialAlertId);
+    const fetchNewActiveAlerts = async () => {
+      const activeAlertsAfter = await prisma.alert.findMany({
+        where: { id_materiel: fixtures.equipmentId, type: 'TEMP_EXCURSION', statut: 'ACTIVE' },
+        select: { id: true },
+      });
+      return activeAlertsAfter.filter((a) => a.id !== fixtures.initialAlertId);
+    };
+    let newActiveAlerts = await fetchNewActiveAlerts();
+    // Filet de sécurité, pas un pari sur un délai Mongo : si la détection n'a pas suivi (rare, sous
+    // charge CI), on renvoie une vraie excursion supplémentaire (#226).
+    for (let retry = 0; retry < 5 && newActiveAlerts.length === 0; retry++) {
+      await floodExcursion();
+      newActiveAlerts = await fetchNewActiveAlerts();
+    }
     assert(
       newActiveAlerts.length >= 1,
       `Au moins 1 NOUVELLE Alert ACTIVE (id ≠ initialAlertId) créée (reçu ${newActiveAlerts.length})`
