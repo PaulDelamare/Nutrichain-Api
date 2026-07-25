@@ -125,7 +125,7 @@ describe('TransformationService', () => {
       unite_code: 'KG',
       created_by: userId,
       inputs: [
-        { id_lot_parent: 'lot-p1', quantite_prelevee: 50, unite: 'KG', lot_parent_epuise: true },
+        { id_lot_parent: 'lot-p1', quantite_prelevee: 50, unite: 'KG' },
       ],
     };
 
@@ -161,7 +161,7 @@ describe('TransformationService', () => {
       unite_code: 'KG',
       created_by: userId,
       inputs: [
-        { id_lot_parent: 'lot-p1', quantite_prelevee: 50, unite: 'KG', lot_parent_epuise: true },
+        { id_lot_parent: 'lot-p1', quantite_prelevee: 50, unite: 'KG' },
       ],
     };
 
@@ -199,7 +199,7 @@ describe('TransformationService', () => {
       unite_code: 'KG',
       created_by: userId,
       inputs: [
-        { id_lot_parent: 'lot-p1', quantite_prelevee: 10, unite: 'KG', lot_parent_epuise: false },
+        { id_lot_parent: 'lot-p1', quantite_prelevee: 10, unite: 'KG' },
       ],
     };
 
@@ -243,7 +243,7 @@ describe('TransformationService', () => {
       unite_code: 'KG',
       created_by: userId,
       inputs: [
-        { id_lot_parent: 'lot-p1', quantite_prelevee: 10, unite: 'KG', lot_parent_epuise: false },
+        { id_lot_parent: 'lot-p1', quantite_prelevee: 10, unite: 'KG' },
       ],
     };
 
@@ -287,7 +287,7 @@ describe('TransformationService', () => {
       unite_code: 'KG',
       created_by: userId,
       inputs: [
-        { id_lot_parent: 'lot-p1', quantite_prelevee: 10, unite: 'KG', lot_parent_epuise: false },
+        { id_lot_parent: 'lot-p1', quantite_prelevee: 10, unite: 'KG' },
       ],
     };
 
@@ -316,7 +316,7 @@ describe('TransformationService', () => {
       unite_code: 'KG',
       created_by: userId,
       inputs: [
-        { id_lot_parent: 'lot-p1', quantite_prelevee: 30, unite: 'KG', lot_parent_epuise: false },
+        { id_lot_parent: 'lot-p1', quantite_prelevee: 30, unite: 'KG' },
       ],
     };
 
@@ -352,7 +352,7 @@ describe('TransformationService', () => {
       unite_code: 'KG',
       created_by: userId,
       inputs: [
-        { id_lot_parent: 'lot-p1', quantite_prelevee: 30, unite: 'KG', lot_parent_epuise: false },
+        { id_lot_parent: 'lot-p1', quantite_prelevee: 30, unite: 'KG' },
       ],
     });
 
@@ -400,7 +400,7 @@ describe('TransformationService', () => {
         unite_code: 'KG',
         created_by: userId,
         inputs: [
-          { id_lot_parent: 'lot-p1', quantite_prelevee: 30, unite: 'KG', lot_parent_epuise: false },
+          { id_lot_parent: 'lot-p1', quantite_prelevee: 30, unite: 'KG' },
         ],
       })
     ).rejects.toMatchObject({
@@ -411,7 +411,7 @@ describe('TransformationService', () => {
     expect(mockTx.batch.create).not.toHaveBeenCalled();
   });
 
-  it("doit enregistrer dans l'audit les valeurs réelles du lot consommé (Bug 2)", async () => {
+  it("doit enregistrer dans l'audit les valeurs réelles du lot consommé", async () => {
     const mockTx = buildHappyMockTx();
 
     vi.mocked(prisma.$transaction).mockImplementation(
@@ -426,7 +426,7 @@ describe('TransformationService', () => {
       unite_code: 'KG',
       created_by: userId,
       inputs: [
-        { id_lot_parent: 'lot-p1', quantite_prelevee: 30, unite: 'KG', lot_parent_epuise: false },
+        { id_lot_parent: 'lot-p1', quantite_prelevee: 30, unite: 'KG' },
       ],
     };
 
@@ -458,7 +458,7 @@ describe('TransformationService', () => {
       unite_code: 'KG',
       created_by: userId,
       inputs: [
-        { id_lot_parent: 'lot-p1', quantite_prelevee: 30, unite: 'KG', lot_parent_epuise: false },
+        { id_lot_parent: 'lot-p1', quantite_prelevee: 30, unite: 'KG' },
       ],
     };
 
@@ -472,7 +472,12 @@ describe('TransformationService', () => {
     }
   });
 
-  it("doit marquer le lot comme EPUISE dans l'audit si lot_parent_epuise (Bug 2)", async () => {
+  /**
+   * `lot_parent_epuise` n'existe plus côté client (#123) : un opérateur qui prélève la
+   * totalité du stock voit le lot marqué EPUISE même sans jamais avoir déclaré ce booléen —
+   * c'est dérivé de la quantité réellement relue en base, pas d'une case cochée.
+   */
+  it("doit marquer le lot comme EPUISE dans l'audit quand le prélèvement épuise le stock réel", async () => {
     const mockTx = buildHappyMockTx();
 
     vi.mocked(prisma.$transaction).mockImplementation(
@@ -487,7 +492,7 @@ describe('TransformationService', () => {
       unite_code: 'KG',
       created_by: userId,
       inputs: [
-        { id_lot_parent: 'lot-p1', quantite_prelevee: 100, unite: 'KG', lot_parent_epuise: true },
+        { id_lot_parent: 'lot-p1', quantite_prelevee: 100, unite: 'KG' },
       ],
     };
 

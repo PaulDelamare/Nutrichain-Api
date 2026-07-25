@@ -122,8 +122,6 @@ router.get(
  *                       type: number
  *                     unite:
  *                       type: string
- *                     lot_parent_epuise:
- *                       type: boolean
  *     responses:
  *       201:
  *         description: Transformation enregistrée

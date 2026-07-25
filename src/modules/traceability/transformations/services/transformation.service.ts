@@ -35,7 +35,6 @@ export interface TransformationInput {
     id_lot_parent: string;
     quantite_prelevee: number;
     unite: string;
-    lot_parent_epuise: boolean;
   }>;
 }
 
@@ -266,6 +265,13 @@ async function runTransformation(
           });
         }
 
+        // Épuisement dérivé du stock restant, jamais déclaré par l'appelant : un booléen client
+        // écrit tel quel désynchronisait le statut (et l'audit WORM) de la quantité réelle —
+        // un lot pouvait rester EN_STOCK à 0, ou passer EPUISE avec du stock réellement restant,
+        // et l'audit entérinait la valeur déclarée plutôt que la réalité (#123). Même dérivation
+        // que shipment.service.ts (comparaison stricte à la quantité fraîchement relue).
+        const isExhausted = currentParent.quantite_actuelle.toNumber() === input.quantite_prelevee;
+
         // Enregistrement du lien de généalogie
         await tx.transformationComposition.create({
           data: {
@@ -273,13 +279,12 @@ async function runTransformation(
             id_lot_parent: input.id_lot_parent,
             quantite_prelevee: input.quantite_prelevee,
             unite: input.unite,
-            lot_parent_epuise: input.lot_parent_epuise,
+            lot_parent_epuise: isExhausted,
           },
         });
 
         // Déduction du stock sur le parent avec Verrouillage Optimiste (version)
         // On utilise updateMany car Prisma update exige un identifiant unique (id seul)
-        const isExhausted = input.lot_parent_epuise;
 
         const updateResult = await tx.batch.updateMany({
           where: {
