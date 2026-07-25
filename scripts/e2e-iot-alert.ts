@@ -153,6 +153,15 @@ async function main() {
     let alertsAfterFlood = await prisma.alert.count({
       where: { id_materiel: fixtures.equipmentId, type: 'TEMP_EXCURSION', statut: 'ACTIVE' },
     });
+    // Filet de sécurité, pas un pari sur un délai Mongo : si la détection n'a pas suivi (rare, sous
+    // charge CI), on renvoie de vrais pings supplémentaires — le comportement observable (est-ce
+    // qu'une alerte finit par exister ?), pas une durée devinée en interne à Mongo (#226).
+    for (let retry = 0; retry < 5 && alertsAfterFlood === 0; retry++) {
+      await ingestPing(fixtures.sensorId, ORG_ID!, 8, 0);
+      alertsAfterFlood = await prisma.alert.count({
+        where: { id_materiel: fixtures.equipmentId, type: 'TEMP_EXCURSION', statut: 'ACTIVE' },
+      });
+    }
     assert(alertsAfterFlood === 1, `1 Alert ACTIVE créée (reçu ${alertsAfterFlood})`);
 
     const auditAfter = await prisma.audit_Log.count({

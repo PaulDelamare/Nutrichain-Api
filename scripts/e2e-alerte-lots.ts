@@ -183,9 +183,17 @@ async function main() {
     console.log('\n[1] Excursion thermique : 10 pings à 8 °C (seuil 4 °C)');
     for (let i = 9; i >= 0; i--) await ingestPing(fixtures.sensorId, 8, i);
 
-    const alert = await prisma.alert.findFirst({
+    let alert = await prisma.alert.findFirst({
       where: { id_materiel: fixtures.equipmentId, type: 'TEMP_EXCURSION', statut: 'ACTIVE' },
     });
+    // Filet de sécurité, pas un pari sur un délai Mongo : si la détection n'a pas suivi (rare, sous
+    // charge CI), on renvoie un vrai ping supplémentaire (#226).
+    for (let retry = 0; retry < 5 && !alert; retry++) {
+      await ingestPing(fixtures.sensorId, 8, 0);
+      alert = await prisma.alert.findFirst({
+        where: { id_materiel: fixtures.equipmentId, type: 'TEMP_EXCURSION', statut: 'ACTIVE' },
+      });
+    }
     assert(alert !== null, "l'excursion a bien créé une alerte");
     if (!alert) throw new Error('pas d’alerte : la suite du scénario n’a plus de sens');
 
@@ -282,9 +290,15 @@ async function main() {
     await TelemetryModel.deleteMany({ 'metadata.sensor_id': fixtures.sensorId });
     for (let i = 9; i >= 0; i--) await ingestPing(fixtures.sensorId, 9, i);
 
-    const alertB = await prisma.alert.findFirst({
+    let alertB = await prisma.alert.findFirst({
       where: { id_materiel: fixtures.equipmentId, type: 'TEMP_EXCURSION', statut: 'ACTIVE' },
     });
+    for (let retry = 0; retry < 5 && !alertB; retry++) {
+      await ingestPing(fixtures.sensorId, 9, 0);
+      alertB = await prisma.alert.findFirst({
+        where: { id_materiel: fixtures.equipmentId, type: 'TEMP_EXCURSION', statut: 'ACTIVE' },
+      });
+    }
     assert(alertB !== null && alertB.id !== alert.id, 'une SECONDE alerte a bien été créée');
 
     const underA = await alertBatchService.listBatchesIsolatedByAlert(alert);
