@@ -4,6 +4,7 @@ import { sendSuccess } from '../../../../shared/utils/returnSuccess/returnSucces
 import { transformationService } from '../services/transformation.service';
 import { AuthenticatedRequest } from '../../../identity/middlewares/requireAuth.middleware';
 import { APIError } from '../../../../shared/utils/errorHandler/APIError';
+import { parseExpiryDay } from '../../../../shared/utils/expiryDate/expiryDate';
 
 /**
  * Contrôleur pour les transformations de lots (Généalogie).
@@ -27,9 +28,11 @@ export const createTransformation = catchAsync(async (req: AuthenticatedRequest,
 
   const result = await transformationService.createTransformation({
     ...validatedTransformation,
-    // Validé en string (JSON) mais le service attend une Date — conversion explicite
+    // Validé en string (format) mais le service attend une Date — un `new Date()` brut acceptait
+    // un jour inexistant (décalage silencieux) et ancrait à minuit UTC (un lot naissait périmé
+    // dès sa DLC) ; `parseExpiryDay` refuse les deux, comme à la réception (cf. #120).
     date_peremption: validatedTransformation.date_peremption
-      ? new Date(validatedTransformation.date_peremption)
+      ? parseExpiryDay(validatedTransformation.date_peremption)
       : undefined,
     organization_id: activeOrgId,
     created_by: userId,
