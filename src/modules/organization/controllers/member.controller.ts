@@ -38,6 +38,15 @@ export const changeMemberRoleController = catchAsync(
   }
 );
 
+export const transferOwnershipController = catchAsync(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const { activeOrgId, actorUserId } = callerContext(req);
+
+    await memberService.transferOwnership(req.params.id, activeOrgId, actorUserId);
+    sendSuccess(res, 200, 'Propriété de l’organisation transférée', { id: req.params.id });
+  }
+);
+
 export const revokeMemberController = catchAsync(
   async (req: AuthenticatedRequest, res: Response) => {
     const { activeOrgId, actorUserId } = callerContext(req);
