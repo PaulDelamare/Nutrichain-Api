@@ -1,4 +1,5 @@
 import { Response } from 'express';
+import mongoose from 'mongoose';
 import { sendSuccess } from '../../../shared/utils/returnSuccess/returnSuccess';
 import { TelemetryModel } from '../models/telemetry.model';
 import { APIError } from '../../../shared/utils/errorHandler/APIError';
@@ -23,29 +24,35 @@ export const ingestTelemetry = catchAsync(async (req: AuthenticatedRequest, res:
     });
   }
 
-  // Insert in MongoDB Time-Series Collection with mandatory isolation
-  const timestamp = new Date();
-  await TelemetryModel.create({
-    metadata: { sensor_id, organization_id },
-    timestamp,
-    temperature,
-    humidity,
-    battery_level,
-  });
-
-  // Détection d'excursion thermique synchrone (Objectif SMART n°2, ~50ms cache miss).
+  // Insert in MongoDB Time-Series Collection with mandatory isolation.
   //
-  // C'est une décision SANITAIRE : si elle échoue, on ne répond PAS « succès ». Sinon le capteur
-  // croit l'excursion traitée alors que l'alerte n'est pas créée et que les lots ne sont PAS mis en
-  // quarantaine (ils restent expédiables) — une rupture de chaîne du froid passerait inaperçue.
-  // On laisse donc l'erreur remonter (500) pour que le capteur ré-émette. Le point brut est déjà
-  // persisté ci-dessus. Les conflits de sérialisation transitoires sont rejoués dans checkAndAlert.
-  const detection = await iotAlertService.checkAndAlert({
-    sensorId: sensor_id,
-    organizationId: organization_id,
-    currentTemp: temperature,
-    timestamp,
-  });
+  // Écriture et relecture (dans checkAndAlert → fetchRecentPoints) partagent la MÊME session
+  // MongoDB à cohérence causale : sans elle, rien ne garantit que ce point tout juste écrit soit
+  // visible à la relecture immédiate qui suit (constaté en pratique — cf. issue #226). Une
+  // excursion pouvait alors n'être détectée qu'au ping SUIVANT, pas au ping courant.
+  const timestamp = new Date();
+  const session = await mongoose.startSession();
+  let detection;
+  try {
+    await TelemetryModel.create([{ metadata: { sensor_id, organization_id }, timestamp, temperature, humidity, battery_level }], { session });
+
+    // Détection d'excursion thermique synchrone (Objectif SMART n°2, ~50ms cache miss).
+    //
+    // C'est une décision SANITAIRE : si elle échoue, on ne répond PAS « succès ». Sinon le capteur
+    // croit l'excursion traitée alors que l'alerte n'est pas créée et que les lots ne sont PAS mis en
+    // quarantaine (ils restent expédiables) — une rupture de chaîne du froid passerait inaperçue.
+    // On laisse donc l'erreur remonter (500) pour que le capteur ré-émette. Le point brut est déjà
+    // persisté ci-dessus. Les conflits de sérialisation transitoires sont rejoués dans checkAndAlert.
+    detection = await iotAlertService.checkAndAlert({
+      sensorId: sensor_id,
+      organizationId: organization_id,
+      currentTemp: temperature,
+      timestamp,
+      mongoSession: session,
+    });
+  } finally {
+    await session.endSession();
+  }
 
   // La trame est persistée dans tous les cas, mais la surveillance ne tourne QUE si le capteur est
   // rattaché à un matériel doté d'un seuil. Le taire derrière un « success » laissait une

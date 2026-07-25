@@ -21,10 +21,10 @@
  *     → Alert RESOLVED, Batch RESTE ALERTE (preuve du découplage volontaire)
  *  6. Cleanup
  */
+import mongoose from 'mongoose';
 import { prisma } from '../src/shared/configs/prismaClient.config';
 import { connectMongoDB, disconnectMongoDB } from '../src/shared/configs/mongoClient.config';
 import { TelemetryModel } from '../src/modules/iot/models/telemetry.model';
-import { waitForDetectableWindow } from './helpers/telemetryVisibility';
 import {
   iotAlertService,
   _clearThresholdCacheForTests,
@@ -219,26 +219,33 @@ async function main(): Promise<void> {
     // ===== Scénario 4 : Re-déclencher la dédup IoT =====
     console.log('\nScénario 4 — Dédup débloquée : nouveau ping IoT → nouvelle Alert ACTIVE');
     // Insérer ≥ 5 points au-dessus du seuil dans la fenêtre 15min (préparer le terrain
-    // pour que detectExcursion confirme une excursion sur le 6e ping).
-    for (let i = 9; i >= 0; i--) {
-      await TelemetryModel.create({
+    // pour que detectExcursion confirme une excursion sur le 6e ping). Écriture et relecture
+    // (dans checkAndAlert) dans la MÊME session Mongo à cohérence causale, comme en production
+    // (telemetry.controller.ts) : élimine le pari sur un délai de visibilité arbitraire (#226).
+    const points = Array.from({ length: 10 }, (_, idx) => {
+      const i = 9 - idx;
+      return {
         metadata: { sensor_id: fixtures.sensorId, organization_id: ORG_ID! },
         timestamp: new Date(Date.now() - i * 60_000),
         temperature: 8,
         humidity: 50,
         battery_level: 80,
-      });
-    }
-    // La détection lit une fenêtre, pas le dernier point : sans cette attente, elle peut la lire
-    // incomplète et conclure « aucune excursion » — un faux échec métier.
-    await waitForDetectableWindow(fixtures.sensorId, ORG_ID!, 10);
-    _clearThresholdCacheForTests();
-    await iotAlertService.checkAndAlert({
-      sensorId: fixtures.sensorId,
-      organizationId: ORG_ID!,
-      currentTemp: 8,
-      timestamp: new Date(),
+      };
     });
+    const session = await mongoose.startSession();
+    try {
+      await TelemetryModel.insertMany(points, { session });
+      _clearThresholdCacheForTests();
+      await iotAlertService.checkAndAlert({
+        sensorId: fixtures.sensorId,
+        organizationId: ORG_ID!,
+        currentTemp: 8,
+        timestamp: new Date(),
+        mongoSession: session,
+      });
+    } finally {
+      await session.endSession();
+    }
     // Assert : il existe AU MOINS une Alert ACTIVE postérieure à la résolution,
     // d'id différent de l'Alert initiale. C'est la preuve que la dédup est débloquée
     // sans coupler le test à un nombre exact (résilient si la logique IoT évolue).

@@ -20,10 +20,10 @@
  *  5. Cross-tenant : ping avec sensor_id d'une autre org → 0 alerte créée dans cette org
  *  6. Cleanup
  */
+import mongoose from 'mongoose';
 import { prisma } from '../src/shared/configs/prismaClient.config';
 import { connectMongoDB, disconnectMongoDB } from '../src/shared/configs/mongoClient.config';
 import { TelemetryModel } from '../src/modules/iot/models/telemetry.model';
-import { waitForDetectableWindow } from './helpers/telemetryVisibility';
 import {
   iotAlertService,
   _clearThresholdCacheForTests,
@@ -100,27 +100,26 @@ async function cleanup(f: Fixtures) {
   console.log('  → fixtures supprimées');
 }
 
-/** Compté par capteur : chaque scénario écrit dans sa propre fenêtre. */
-const writtenPerSensor = new Map<string, number>();
-
 async function ingestPing(sensorId: string, organizationId: string, temperature: number, minutesAgo = 0) {
   const ts = new Date(Date.now() - minutesAgo * 60_000);
-  await TelemetryModel.create({
-    metadata: { sensor_id: sensorId, organization_id: organizationId },
-    timestamp: ts,
-    temperature,
-    humidity: 50,
-    battery_level: 80,
-  });
-  const written = (writtenPerSensor.get(sensorId) ?? 0) + 1;
-  writtenPerSensor.set(sensorId, written);
-  await waitForDetectableWindow(sensorId, organizationId, written);
-  await iotAlertService.checkAndAlert({
-    sensorId,
-    organizationId,
-    currentTemp: temperature,
-    timestamp: ts,
-  });
+  // Écriture et relecture dans la MÊME session Mongo à cohérence causale, comme en production
+  // (telemetry.controller.ts) : élimine le pari sur un délai de visibilité arbitraire (#226).
+  const session = await mongoose.startSession();
+  try {
+    await TelemetryModel.create(
+      [{ metadata: { sensor_id: sensorId, organization_id: organizationId }, timestamp: ts, temperature, humidity: 50, battery_level: 80 }],
+      { session }
+    );
+    await iotAlertService.checkAndAlert({
+      sensorId,
+      organizationId,
+      currentTemp: temperature,
+      timestamp: ts,
+      mongoSession: session,
+    });
+  } finally {
+    await session.endSession();
+  }
 }
 
 async function main() {
