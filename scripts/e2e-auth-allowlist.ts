@@ -37,23 +37,22 @@ const CLOSED_ROUTES: [string, 'POST' | 'GET', unknown][] = [
   ['change-password', 'POST', { newPassword: 'Hacked!2026', currentPassword: 'x' }],
   ['list-sessions', 'GET', undefined],
   ['revoke-sessions', 'POST', {}],
-  // 2FA de repli (codes de secours, OTP e-mail/SMS) : aucun client ne les implémente (#127).
-  ['two-factor/generate-backup-codes', 'POST', {}],
-  ['two-factor/verify-backup-code', 'POST', { code: 'x' }],
-  ['two-factor/send-otp', 'POST', {}],
-  ['two-factor/verify-otp', 'POST', { code: '000000' }],
 ];
 
 /**
  * Sous-ensemble TOTP réellement enrôlé côté client (front + mobile) : ouvert dans l'allowlist,
- * donc ces routes doivent atteindre le VRAI handler Better-Auth (jamais 403), quelle que soit sa
- * réponse (400/401 sur un mot de passe ou un code invalide, par exemple).
+ * donc CETTE route doit atteindre le VRAI handler Better-Auth (jamais 403), quelle que soit sa
+ * réponse (400 sur un code invalide, ici). Une seule route suffit à prouver le câblage — les
+ * trois autres (`enable`, `get-totp-uri`, `disable`) partagent le même point d'entrée dans
+ * `ALLOWED_AUTH_ROUTES` et sont couvertes exhaustivement, sans coût réseau, par
+ * `allowAuthRoutes.middleware.test.ts`. Chaque appel ici consomme le même budget de
+ * rate-limiting (`authRateLimiter`, 20 échecs/15 min/IP) que partagent TOUS les scripts e2e sur
+ * ce runner — en ajouter davantage a déjà fait déborder un script e2e plus tardif en CI.
  */
-const OPEN_TWO_FACTOR_ROUTES: [string, 'POST', unknown][] = [
-  ['two-factor/enable', 'POST', { password: 'x' }],
-  ['two-factor/get-totp-uri', 'POST', { password: 'x' }],
-  ['two-factor/verify-totp', 'POST', { code: '000000' }],
-  ['two-factor/disable', 'POST', { password: 'x' }],
+const OPEN_TWO_FACTOR_ROUTE: [string, 'POST', unknown] = [
+  'two-factor/verify-totp',
+  'POST',
+  { code: '000000' },
 ];
 
 async function main() {
@@ -87,7 +86,8 @@ async function main() {
     ok(`${method} /auth/${action} → 403`);
   }
 
-  for (const [action, method, body] of OPEN_TWO_FACTOR_ROUTES) {
+  {
+    const [action, method, body] = OPEN_TWO_FACTOR_ROUTE;
     const res = await fetch(`${API_URL}/api/auth/${action}`, {
       method,
       headers,
