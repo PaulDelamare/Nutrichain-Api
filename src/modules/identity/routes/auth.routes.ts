@@ -9,6 +9,7 @@ import { authRateLimiter } from '../middlewares/authRateLimiter.middleware';
 import { loginThrottle } from '../middlewares/loginThrottle.middleware';
 import { allowAuthRoutes } from '../middlewares/allowAuthRoutes.middleware';
 import invitationRoutes from './invitation.routes';
+import accountRoutes from './account.routes';
 
 const router = Router();
 
@@ -188,5 +189,6 @@ router.all('/auth/*', async (req: Request, res: Response, next: NextFunction) =>
 
 // Joindre les routes d'Identity Métier (Invitations)
 router.use('/', invitationRoutes);
+router.use('/', accountRoutes);
 
 export default router;
