@@ -165,6 +165,21 @@ Dire au jury ce qui n'est **pas** fait vaut mieux que de le laisser le découvri
 | Standards | GS1 : GTIN, AI(10), SSCC, URN LGTIN/SSCC, Digital Link · EPCIS : Object/Transformation/AggregationEvent |
 | Conformité visée | HACCP, ISO 22000, RPO 15 min / RTO 60-120 min (PCA/PRA, cf. `18_PCA_PRA.md`) |
 
+## 10. Indicateurs KPI (Baseline → Cible M6 → Cible M12)
+
+Sélection des 7 KPI les plus représentatifs parmi les ~25 suivis (liste complète :
+`context.md` §VII). Baseline = mesuré en environnement de démonstration, pas en production
+(aucune n'est déployée, cf. §7).
+
+| KPI | Baseline | Cible M6 | Cible M12 |
+|---|---|---|---|
+| Temps p95 ingest → alerte (chaîne du froid) | non chronométré (`e2e:iot-alert` prouve l'enchaînement, pas la latence) | < 20 s, mesuré | < 15 s, mesuré |
+| Temps médian rappel produit (généalogie + blocage) | ~21 ms pour 4 645 lots (`bench:genealogy`) | < 5 min en prod | < 15 min en prod (seuil contractuel) |
+| Taux d'évènements EPCIS conformes GS1 | 100 % (`e2e:epcis`, 24/24) | > 99 % en prod | > 99,5 % en prod |
+| Couverture de tests (lignes) | 88,86 % (870 tests) | 90 % | 92 % |
+| Comptes sensibles avec MFA actif | 0 % (fonctionnalité livrée, adoption non mesurée) | 50 % | 100 % |
+| Disponibilité du service | non mesurée (pas d'environnement déployé) | 99 % | 99,9 % (NFR) |
+| Taux de perte de messages IoT | non mesuré (pas de flux réel en continu) | < 0,5 % | < 0,1 % |
 ## 11. Déroulé chronométré, répétition, plan B
 
 Montage à partir du scénario en 12 étapes (§5), pas de contenu nouveau. Budget total 30 min :
