@@ -77,6 +77,7 @@ Requêtes prêtes dans la collection Bruno (`Nutrichain.json`).
 | 5a | L'opérateur tente de lever SA propre quarantaine | `POST /api/logistics/batches/:id/release` | **403** : on ne libère pas le lot qu'on a enregistré (séparation des tâches) |
 | 5b | Décision qualité — **se reconnecter en `quality`** | `POST /api/logistics/batches/:id/release` (motif obligatoire) | Levée acceptée et tracée dans l'audit WORM |
 | 6 | Transformation | `POST /api/traceability/transformations` | Lot enfant + généalogie (`GET .../batches/:id/genealogy`) + TransformationEvent LGTIN |
+| 6c | Contrôle qualité de sortie — **connecté en `quality`** | `POST /api/organization/quality-controls` (`resultat: CONFORME`) | Un produit fini sort en `EN_ATTENTE_QC` : sans ce contrôle, il n'est ni transformable ni expédiable — il libère le lot en `EN_STOCK` |
 | 7 | Expédition | `POST /api/logistics/shipments` (`shipment_id: AUTO`) | **SSCC 18 chiffres** généré + AggregationEvent (palette ⊃ lots) |
 | 8 | Excursion chaîne du froid | `POST /api/telemetry/ping` (température hors seuil) | Alerte TEMP_EXCURSION < 30 s + email **ET les lots stockés dans l'équipement passent automatiquement en quarantaine (`BLOQUE`)** ; résolution `PATCH /api/alerts/:id/resolve` |
 | 9 | **Rappel produit** | `POST /api/traceability/batches/:id/recall` | Toute la descendance passe en ALERTE (chrono affiché : millisecondes), expéditions impactées listées, **clients notifiés par email automatiquement** |
@@ -207,17 +208,57 @@ en méritent davantage :
 
 Total 16,5 min — 30 s de marge pour un aléa.
 
-**Répétition — non faite à ce stade** : ces temps sont des cibles, aucun temps réel n'a encore
-été mesuré. Protocole : dérouler les 12 étapes chronomètre en main sans s'arrêter pour corriger
-(noter les blocages plutôt que les résoudre en direct), comparer au tableau ci-dessus, ajuster
-la cible ou la démo si l'écart dépasse 20 %, puis répéter une fois avec interruptions simulées.
+**Répétition technique — faite, temps réels mesurés.** Le scénario complet (§5, 5a/5b compris) a
+été rejoué en HTTP réel contre un Postgres/Mongo Docker, chronomètre au niveau serveur (avant/après
+chaque appel) :
 
-**Plan B — captures de secours, non produites à ce stade.** Le scénario e2e rejouable (§5) prouve
-que le système fonctionne, mais une CLI qui défile n'est pas une preuve visuelle convaincante en
-direct. Il faudrait, en plus, une capture (écran ou courte vidéo) prise à l'avance pour chaque
-étape à fort impact visuel — quarantaine + séparation des tâches (4-5), excursion froid (8),
-rappel produit (9), scan consommateur (10), preuve d'intégrité (12) — montrable sans réseau.
-Ce tableau définit quoi capturer ; produire les captures suppose un run complet du système
-(serveur + seed + Bruno ou front), à faire séparément et proche de la date pour rester
-représentatif. Leçon déjà tirée : tout ce qui dépend du réseau de la salle doit avoir un repli
-(le scan caméra en dépendait, corrigé par Mobile PR #28) — ces captures sont ce repli côté API.
+| Étape | Temps serveur mesuré |
+|---|---|
+| 1. Import ERP (produits + clients) | 13 + 13 ms |
+| 2. Réception fournisseur | 17 ms |
+| 3. Étiquette GS1 | 20 ms |
+| 4. Réception NON CONFORME | 17 ms |
+| 5a. Refus operator (403 attendu) | 9 ms |
+| 5b. Levée de quarantaine (quality) | 13 ms |
+| 6. Transformation + généalogie | 21 + 13 ms |
+| 6c. Contrôle qualité de sortie d'usine | 13 ms |
+| 7. Expédition (SSCC) | 15 ms |
+| 8. Excursion chaîne du froid | 7 ms |
+| 9. Rappel produit | 17 ms |
+| 10. Scan consommateur | 3 ms |
+| 11. Événements EPCIS + export | 11 + 9 ms |
+| 12. Vérification audit WORM | 11 ms |
+
+**Total serveur : ~220 ms.** Ce chiffre confirme que le système n'est pas le facteur limitant : le
+temps réel d'une présentation sera dicté par la narration et la saisie humaines, pas par une
+latence technique. Les cibles du tableau ci-dessus (16,5 min) restent donc la bonne base pour
+caler un passage parlé — mesurer le débit de parole réel reste à faire, séparément, avec une
+personne qui présente à voix haute.
+
+Une étape absente du scénario d'origine a été découverte pendant cette répétition : un produit
+issu d'une transformation sort en `EN_ATTENTE_QC` et n'est **pas expédiable** tant qu'un contrôle
+qualité de sortie (`POST /organization/quality-controls`, rôle `quality`) ne le libère pas en
+`EN_STOCK` — l'étape 7 échouait (400) sans elle. Ajoutée au tableau §5 comme étape 6c.
+
+**Découverte critique — la base de développement partagée avait une chaîne d'audit WORM rompue**
+(`GET /audit/verify` → `valid: false`, rupture à une ligne ancienne, plusieurs lignes manquantes
+en séquence). Cause : des suppressions directes de lignes `Audit_Log` lors de nettoyages de tests
+antérieurs, hors du chemin applicatif normal — pas un défaut du code de production (les écritures
+de cette répétition, elles, sont toutes passées par les services réels et n'ont rien cassé).
+Conséquence directe pour le jour de la présentation : **ne jamais présenter sur une base de
+développement réutilisée**. Item de check avant démarrage à ajouter systématiquement : relancer
+`GET /audit/verify` juste avant de commencer, sur la base qui servira réellement, et n'utiliser
+que `npx prisma migrate deploy && npx prisma db seed && npm run seed:demo` sur un volume Postgres
+fraîchement créé pour cette occasion.
+
+**Plan B — captures de secours, produites.** Capturées en réel (front + navigateur, connecté
+`operator`) pendant cette même répétition : tableau de bord (activité EPCIS + rappel actif),
+non-conformités (lot en quarantaine + note de séparation des tâches), chaîne du froid (alerte
+active sur `SENSOR-FROID-A1`), rappels produits (carte du rappel avec lots bloqués et expédition
+notifiée), scan consommateur (`⚠ Rappel en cours — ne pas consommer`). Non capturée : la preuve
+d'intégrité WORM (12) — la session navigateur est restée bloquée sur le rôle `operator`, qui n'a
+pas accès à cet écran ; la preuve existe malgré tout en réel, via la réponse JSON de
+`GET /audit/verify` ci-dessus. Captures actuellement hors du dépôt (non commitées) : à committer
+dans un dossier dédié si retenues comme repli, décision hors périmètre de ce correctif. Leçon déjà
+tirée : tout ce qui dépend du réseau de la salle doit avoir un repli (le scan caméra en dépendait,
+corrigé par Mobile PR #28) — ces captures sont ce repli côté API/front.
