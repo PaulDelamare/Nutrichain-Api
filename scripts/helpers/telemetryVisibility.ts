@@ -14,11 +14,13 @@ import { TelemetryModel } from '../../src/modules/iot/models/telemetry.model';
  *    échouait sur « 1 Alert ACTIVE créée (reçu 0) » — un symptôme métier pour une cause technique.
  *    On lève désormais une erreur explicite : le message dit ce qui manque.
  *
- * La borne reste stricte (pas d'attente infinie), simplement dimensionnée pour la latence observée
- * sur le runner (~1 à 2 s), pas pour celle d'un poste de développement (quelques ms).
+ * La borne reste stricte (pas d'attente infinie). Elle visait la latence observée sur le runner
+ * (~1 à 2 s), mais la CI a échoué deux fois sur ce même point avec une latence qui dépassait les
+ * 6 s d'origine (cf. issue #215) : la marge était trop juste pour la queue de distribution réelle
+ * sous charge CI, pas seulement pour le cas moyen. Relevée à 15 s.
  */
 const WINDOW_MINUTES = 15;
-const MAX_ATTEMPTS = 60;
+const MAX_ATTEMPTS = 150;
 const DELAY_MS = 100;
 
 export async function waitForDetectableWindow(
