@@ -130,3 +130,98 @@ describe('publicScanBatch controller (route publique B2C — Sec C)', () => {
     expect(res.status).toBe(409);
   });
 });
+
+describe('publicScanDigitalLink controller (GS1 Digital Link — GTIN + lot, #139)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  // Avant #139, ce lien ne correspondait à AUCUNE route montée : le QR imprimé sur chaque
+  // étiquette (labelService.generateDigitalLink) était un lien mort. Ce test verrouille le câblage
+  // réel (route → middleware → contrôleur), pas seulement la logique de résolution en isolation.
+  it('doit résoudre le lot par la PAIRE (gtin, lot) — le lien réellement imprimé', async () => {
+    vi.mocked(prisma.batch.findMany).mockResolvedValue([buildBatch()]);
+
+    const res = await request(buildApp()).get('/api/gs1/01/1234567890/10/260704-ABC123');
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.lot.nom_produit).toBe('Yaourt nature');
+    expect(prisma.batch.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          lot_number: '260704-ABC123',
+          produit: { code_gtin: '1234567890' },
+        }),
+      })
+    );
+  });
+
+  it('normalise le lot en MAJUSCULES avant la requête (comme au stockage, receipt.service.ts)', async () => {
+    // `lot_number` est toujours stocké en majuscules. Un lot transmis en minuscule (tapé à la
+    // main, ou une URL réécrite par un intermédiaire) doit quand même trouver le lot — sinon
+    // c'est un 404 silencieux sur un scan pourtant valide.
+    vi.mocked(prisma.batch.findMany).mockResolvedValue([buildBatch()]);
+
+    const res = await request(buildApp()).get('/api/gs1/01/1234567890/10/260704-abc123');
+
+    expect(res.status).toBe(200);
+    expect(prisma.batch.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ lot_number: '260704-ABC123' }),
+      })
+    );
+  });
+
+  it('renvoie un message spécifique (pas « code incomplet ») sur une collision GTIN+lot', async () => {
+    // Contrairement à `/public/scan/:id`, ce canal a déjà reçu la paire complète : redemander de
+    // « scanner le code GS1 complet » n'aurait aucun sens ici.
+    vi.mocked(prisma.batch.findMany).mockResolvedValue([
+      buildBatch({ id: 'b-1', organization_id: 'org-1', statut: 'EXPEDIE' }),
+      buildBatch({ id: 'b-2', organization_id: 'org-2', statut: 'EXPEDIE' }),
+    ]);
+
+    const res = await request(buildApp()).get('/api/gs1/01/1234567890/10/LOT001');
+
+    expect(res.status).toBe(409);
+    expect(res.body.error[0].message).not.toContain('code GS1 complet');
+  });
+
+  it('refuse (400) un GTIN hors format, avant toute requête Prisma', async () => {
+    const res = await request(buildApp()).get('/api/gs1/01/pas-un-gtin/10/LOT001');
+
+    expect(res.status).toBe(400);
+    expect(prisma.batch.findMany).not.toHaveBeenCalled();
+  });
+
+  it('refuse (400) un lot hors format (caractère interdit)', async () => {
+    const res = await request(buildApp()).get('/api/gs1/01/1234567890/10/LOT%2F001');
+
+    expect(res.status).toBe(400);
+    expect(prisma.batch.findMany).not.toHaveBeenCalled();
+  });
+
+  it('doit refuser (404) si aucun lot ne correspond à la paire', async () => {
+    vi.mocked(prisma.batch.findMany).mockResolvedValue([]);
+
+    const res = await request(buildApp()).get('/api/gs1/01/1234567890/10/LOT001');
+
+    expect(res.status).toBe(404);
+  });
+
+  it('conserve le rappel-prioritaire même sur la paire GTIN+lot (coïncidence entre deux org)', async () => {
+    vi.mocked(prisma.batch.findMany).mockResolvedValue([
+      buildBatch({ id: 'b-ok', organization_id: 'org-1', statut: 'EXPEDIE' }),
+      buildBatch({
+        id: 'b-recall',
+        organization_id: 'org-2',
+        statut: 'ALERTE',
+        organization: { name: 'Producteur Rappelé' },
+      }),
+    ]);
+
+    const res = await request(buildApp()).get('/api/gs1/01/1234567890/10/LOT001');
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.lot.statut_sanitaire).toBe('RAPPEL_CONSOMMATEUR');
+  });
+});

@@ -25,7 +25,7 @@ describe('labelService', () => {
     it('assemble une URI GS1 Digital Link avec les AI 01 (GTIN) et 10 (lot) aux bonnes positions', () => {
       const uri = labelService.generateDigitalLink('03400000000000', 'LOT-XYZ');
 
-      expect(uri).toBe('https://api.nutrichain.fr/gs1/01/03400000000000/10/LOT-XYZ');
+      expect(uri).toBe('https://api.nutrichain.fr/api/gs1/01/03400000000000/10/LOT-XYZ');
     });
 
     it('utilise API_BASE_URL comme base quand la variable est definie', () => {
@@ -33,13 +33,22 @@ describe('labelService', () => {
 
       const uri = labelService.generateDigitalLink('12345678', 'B42');
 
-      expect(uri).toBe('https://example.test/gs1/01/12345678/10/B42');
+      expect(uri).toBe('https://example.test/api/gs1/01/12345678/10/B42');
     });
 
     it('retombe sur le domaine par defaut quand API_BASE_URL est absente', () => {
       const uri = labelService.generateDigitalLink('99', 'L1');
 
-      expect(uri.startsWith('https://api.nutrichain.fr/gs1/01/')).toBe(true);
+      expect(uri.startsWith('https://api.nutrichain.fr/api/gs1/01/')).toBe(true);
+    });
+
+    // Le lien doit correspondre à une route RÉELLEMENT montée (`/api/gs1/01/:gtin/10/:lot`,
+    // transformation.routes.ts) — sans ce préfixe, chaque étiquette imprimée encodait un lien mort
+    // (404 au premier scan réel, cf. #139).
+    it('pointe sous /api, comme TOUTES les routes montées par ce serveur (app.ts)', () => {
+      const uri = labelService.generateDigitalLink('03400000000000', 'LOT-XYZ');
+
+      expect(uri).toContain('/api/gs1/01/03400000000000/10/LOT-XYZ');
     });
   });
 

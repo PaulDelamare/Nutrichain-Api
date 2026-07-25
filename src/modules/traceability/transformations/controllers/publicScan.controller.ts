@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { Prisma } from '@prisma/client';
 import { catchAsync } from '../../../../shared/utils/errorHandler/catchAsync';
 import { sendSuccess } from '../../../../shared/utils/returnSuccess/returnSuccess';
 import { genealogyService } from '../services/genealogy.service';
@@ -6,21 +7,24 @@ import { prisma } from '../../../../shared/configs/prismaClient.config';
 import { APIError } from '../../../../shared/utils/errorHandler/APIError';
 
 /**
- * Contrôleur pour le scan public des lots (B2C).
- * Permet à un consommateur de voir l'origine d'un produit via son ID de lot ou son SSCC.
+ * Résout un lot pour le scan public (B2C), quel que soit le critère de recherche fourni par
+ * l'appelant (UUID interne, lot_number seul, ou paire GTIN+lot_number). Scan B2C : seuls les lots
+ * déjà commercialisés (EXPEDIE) ou en rappel (ALERTE) sont exposés.
+ *
+ * ⚠️ Ce canal public n'a AUCUN contexte d'organisation : `lot_number` seul n'est unique que PAR
+ * organisation (`@@unique([organization_id, lot_number])`), et vient d'une étiquette fournisseur
+ * saisie à la main — deux organisations peuvent porter le même. La paire (GTIN, lot_number) lève
+ * l'ambiguïté à la source (`Product.code_gtin` est lui aussi scopé par organisation, donc pas
+ * PROUVABLEMENT unique au niveau mondial — coïncidence astronomiquement improbable, mais on
+ * garde la même arbitrage défensif par sécurité plutôt que de le supprimer).
  */
-export const publicScanBatch = catchAsync(async (req: Request, res: Response) => {
-  const { id } = req.params;
-
-  // Scan B2C : seuls les lots déjà commercialisés (EXPEDIE) ou en rappel (ALERTE) sont exposés.
-  // Résolution par UUID interne OU par numéro de lot GS1 (AI 10, imprimé sur l'étiquette).
-  //
-  // ⚠️ `lot_number` n'est unique que PAR organisation (@@unique([organization_id, lot_number])) et
-  // vient de l'étiquette fournisseur (saisi à la main) : deux organisations peuvent porter le même.
-  // Ce canal public n'a aucun contexte d'organisation → on récupère TOUTES les correspondances et on
-  // tranche par la sécurité, jamais au hasard.
+async function resolvePublicBatch(
+  where: Prisma.BatchWhereInput,
+  notFoundField: string,
+  ambiguousMessage: string
+) {
   const matches = await prisma.batch.findMany({
-    where: { OR: [{ id }, { lot_number: id }], statut: { in: ['EXPEDIE', 'ALERTE'] } },
+    where: { ...where, statut: { in: ['EXPEDIE', 'ALERTE'] } },
     include: {
       produit: { select: { nom: true, code_gtin: true } },
       organization: { select: { name: true } },
@@ -29,7 +33,7 @@ export const publicScanBatch = catchAsync(async (req: Request, res: Response) =>
 
   if (matches.length === 0) {
     throw new APIError(404, {
-      error: [{ field: 'id', message: 'Lot introuvable ou code invalide.' }],
+      error: [{ field: notFoundField, message: 'Lot introuvable ou code invalide.' }],
     });
   }
 
@@ -39,24 +43,25 @@ export const publicScanBatch = catchAsync(async (req: Request, res: Response) =>
   const batch = recalled ?? (matches.length === 1 ? matches[0] : null);
 
   if (!batch) {
-    // Plusieurs lots homonymes, aucun rappelé : impossible de désigner le bon producteur sans le
-    // GTIN. On refuse plutôt que d'attribuer le produit à un producteur au hasard.
+    // Plusieurs lots homonymes, aucun rappelé : impossible de désigner le bon producteur sans plus
+    // d'information. Le message dépend du canal — il ne doit jamais prétendre que l'appelant a
+    // scanné un code incomplet quand ce n'est pas le cas (cf. `publicScanDigitalLink`, qui a DÉJÀ
+    // reçu la paire GTIN+lot complète).
     throw new APIError(409, {
-      error: [
-        {
-          field: 'id',
-          message: 'Code ambigu : plusieurs lots correspondent. Scannez le code GS1 complet (GTIN et lot).',
-        },
-      ],
+      error: [{ field: notFoundField, message: ambiguousMessage }],
     });
   }
 
-  // 2. Récupérer l'origine simplifiée (sans exposer les IDs ou fournisseurs sensibles)
+  return batch;
+}
+
+async function buildPublicScanResponse(
+  batch: Awaited<ReturnType<typeof resolvePublicBatch>>
+) {
+  // Origine simplifiée (sans exposer les IDs internes ni les fournisseurs sensibles).
   const ancestors = await genealogyService.getUpstream(batch.id, batch.organization_id);
 
-  // 3. Formater la réponse pour le consommateur final (Données anonymisées et filtrées)
-  // On ne renvoie JAMAIS les objets 'ancestors' complets car ils contiennent des IDs internes et des quantités
-  const publicData = {
+  return {
     lot: {
       numero_lot: batch.lot_number,
       date_peremption: batch.date_peremption,
@@ -75,6 +80,46 @@ export const publicScanBatch = catchAsync(async (req: Request, res: Response) =>
       })),
     },
   };
+}
+
+/**
+ * Contrôleur pour le scan public des lots (B2C) par UUID interne ou lot_number seul.
+ * Conservé pour compatibilité (recherche interne) ; le canal GS1 correct est
+ * `publicScanDigitalLink` (GTIN + lot), qui lève l'ambiguïté à la source.
+ */
+export const publicScanBatch = catchAsync(async (req: Request, res: Response) => {
+  const { id } = req.params;
+
+  const batch = await resolvePublicBatch(
+    { OR: [{ id }, { lot_number: id }] },
+    'id',
+    'Code ambigu : plusieurs lots correspondent. Scannez le code GS1 complet (GTIN et lot).'
+  );
+  const publicData = await buildPublicScanResponse(batch);
+
+  sendSuccess(res, 200, 'Informations de traçabilité récupérées', publicData);
+});
+
+/**
+ * Résolution GS1 Digital Link (AI 01 = GTIN, AI 10 = lot) : c'est le lien réellement imprimé sur
+ * l'étiquette (`labelService.generateDigitalLink`). Élimine l'ambiguïté inter-organisation à la
+ * source — un scan réel ne tombe plus jamais sur le 409 « code ambigu ».
+ */
+export const publicScanDigitalLink = catchAsync(async (req: Request, res: Response) => {
+  const { gtin, lot } = req.params;
+
+  // `lot_number` est stocké en MAJUSCULES (cf. receipt.service.ts) : un lot tapé ou transmis en
+  // minuscule matcherait le validateur (regex tolérant la casse) mais ne trouverait rien en base —
+  // 404 silencieux sur un scan pourtant valide.
+  const batch = await resolvePublicBatch(
+    { lot_number: lot.toUpperCase(), produit: { code_gtin: gtin } },
+    'lot',
+    // Le consommateur a DÉJÀ fourni la paire complète (GTIN + lot) : le lui redemander n'aurait
+    // aucun sens. Cette collision (même GTIN, même lot, deux organisations) reste une coïncidence
+    // possible mais non tranchable automatiquement — on l'annonce comme telle.
+    'Ce code correspond à plusieurs producteurs différents : contactez le support NutriChain.'
+  );
+  const publicData = await buildPublicScanResponse(batch);
 
   sendSuccess(res, 200, 'Informations de traçabilité récupérées', publicData);
 });
