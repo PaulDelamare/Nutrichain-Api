@@ -37,7 +37,22 @@ const CLOSED_ROUTES: [string, 'POST' | 'GET', unknown][] = [
   ['change-password', 'POST', { newPassword: 'Hacked!2026', currentPassword: 'x' }],
   ['list-sessions', 'GET', undefined],
   ['revoke-sessions', 'POST', {}],
-  ['two-factor/enable', 'POST', { password: 'x' }],
+];
+
+/**
+ * Sous-ensemble TOTP réellement enrôlé côté client (front + mobile) : ouvert dans l'allowlist,
+ * donc CETTE route doit atteindre le VRAI handler Better-Auth (jamais 403), quelle que soit sa
+ * réponse (400 sur un code invalide, ici). Une seule route suffit à prouver le câblage — les
+ * trois autres (`enable`, `get-totp-uri`, `disable`) partagent le même point d'entrée dans
+ * `ALLOWED_AUTH_ROUTES` et sont couvertes exhaustivement, sans coût réseau, par
+ * `allowAuthRoutes.middleware.test.ts`. Chaque appel ici consomme le même budget de
+ * rate-limiting (`authRateLimiter`, 20 échecs/15 min/IP) que partagent TOUS les scripts e2e sur
+ * ce runner — en ajouter davantage a déjà fait déborder un script e2e plus tardif en CI.
+ */
+const OPEN_TWO_FACTOR_ROUTE: [string, 'POST', unknown] = [
+  'two-factor/verify-totp',
+  'POST',
+  { code: '000000' },
 ];
 
 async function main() {
@@ -69,6 +84,19 @@ async function main() {
       fail(`/auth/${action} répond ${res.status} au lieu de 403 — le passthrough est encore ouvert.`);
     }
     ok(`${method} /auth/${action} → 403`);
+  }
+
+  {
+    const [action, method, body] = OPEN_TWO_FACTOR_ROUTE;
+    const res = await fetch(`${API_URL}/api/auth/${action}`, {
+      method,
+      headers,
+      body: JSON.stringify(body),
+    });
+    if (res.status === 403) {
+      fail(`/auth/${action} répond 403 — la route TOTP enrôlée par les clients est encore fermée.`);
+    }
+    ok(`${method} /auth/${action} → ${res.status} (pas 403 : atteint le vrai handler)`);
   }
 
   // get-session : la session ne doit se lire que par /api/me (route à nous), jamais par le core.
