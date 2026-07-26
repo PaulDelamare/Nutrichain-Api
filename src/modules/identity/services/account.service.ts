@@ -18,9 +18,11 @@ export const accountService = {
    * propres données (aucun paramètre d'identité ne vient du corps de la requête).
    */
   async deleteMyAccount(userId: string) {
+    // `select` réduit à l'ID : l'ancienne identité n'étant plus journalisée (voir plus bas), la
+    // charger n'aurait servi qu'à la promener en mémoire sans usage.
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, email: true, name: true },
+      select: { id: true },
     });
     if (!user) {
       throw new APIError(404, {
@@ -73,6 +75,19 @@ export const accountService = {
         // La chaîne d'audit WORM est scellée PAR ORGANISATION (Audit_Log.organization_id est
         // requis) : un utilisateur sans organisation (cas du seul compte plateforme) n'a aucun
         // journal auquel rattacher cette écriture — l'anonymisation elle-même reste inconditionnelle.
+        // L'ancienne identité n'est PAS consignée (#236). Le journal est WORM — jamais d'UPDATE ni
+        // de DELETE, chaîné par hash : un e-mail écrit ici resterait en clair indéfiniment, et
+        // survivrait donc à l'anonymisation que cette ligne est censée tracer. Le droit à
+        // l'effacement en serait vidé de sa substance.
+        //
+        // Un hachage n'a pas été retenu comme compromis : l'espace des adresses e-mail est
+        // devinable, et un condensat reste une donnée à caractère personnel au sens du RGPD
+        // (pseudonymisation, considérant 26) puisque la clé vit sur le même serveur. Seule la
+        // non-écriture règle réellement le problème.
+        //
+        // La redevabilité est préservée sans PII : l'action, l'horodatage, l'organisation et
+        // `entityId` (= `User.id`, conservé pour l'intégrité référentielle) suffisent à prouver
+        // QUI a été anonymisé et QUAND. `newValue` ne contient que des valeurs dérivées de l'ID.
         await auditService.logAction(
           {
             organizationId: membership.organizationId,
@@ -80,7 +95,6 @@ export const accountService = {
             action: 'USER_ANONYMIZED',
             entity: 'User',
             entityId: userId,
-            oldValue: { email: user.email, name: user.name },
             newValue: { email: anonymizedEmail, name: 'Compte supprimé' },
           },
           tx

@@ -32,7 +32,9 @@ const transporter = nodemailer.createTransport({
  */
 export const sendEmail = async (options: SendEmailOptions): Promise<void> => {
   try {
-    logger.info(`[MailerService] Préparation de l'e-mail pour: ${options.to}`);
+    // Pas de destinataire dans le journal : les fichiers de `logs/` persistent avec rotation et
+    // survivraient à l'anonymisation RGPD du compte (#236). L'objet suffit à suivre un envoi.
+    logger.info(`[MailerService] Préparation de l'e-mail — objet: ${options.subject}`);
 
     // Vérification de la configuration avant l'envoi
     await transporter.verify();
