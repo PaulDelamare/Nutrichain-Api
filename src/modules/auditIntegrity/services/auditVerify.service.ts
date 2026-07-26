@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '../../../shared/configs/prismaClient.config';
 import { computeAuditHash, GENESIS_PREV_HASH } from '../../../shared/utils/audit/auditHash.util';
 
@@ -38,11 +39,21 @@ const BATCH_SIZE = 1000;
  * **Lecture seule** : aucune écriture sur `Audit_Log`. WORM intact.
  * Écrit uniquement sur `Audit_Checkpoint` (table dédiée, mutable par design)
  * via `recordCheckpoint`, appelé par le cron sur résultat valide uniquement.
+ *
+ * Les deux méthodes acceptent un client `db` optionnel, sur le modèle de
+ * `auditService.logAction(params, tx?)`. Le cron l'utilise pour travailler sur la connexion qui
+ * détient déjà son verrou consultatif de transaction (#238) : sans ça, il mobiliserait deux
+ * connexions par organisation — une pour la transaction porteuse du verrou, une pour les lectures —
+ * et plusieurs répliques concurrentes pourraient épuiser le pool en s'attendant mutuellement.
+ * Sans argument, le comportement est inchangé : client global.
  */
 export const auditVerifyService = {
-  async verifyChain(params: { organizationId: string }): Promise<VerifyChainResult> {
+  async verifyChain(
+    params: { organizationId: string },
+    db: Pick<Prisma.TransactionClient, 'audit_Log' | 'audit_Checkpoint'> = prisma
+  ): Promise<VerifyChainResult> {
     const { organizationId } = params;
-    const checkpoint = await prisma.audit_Checkpoint.findUnique({
+    const checkpoint = await db.audit_Checkpoint.findUnique({
       where: { organization_id: organizationId },
     });
 
@@ -54,7 +65,7 @@ export const auditVerifyService = {
     let lastId: number | null = null;
 
     for (;;) {
-      const batch = await prisma.audit_Log.findMany({
+      const batch = await db.audit_Log.findMany({
         where: { organization_id: organizationId, id: { gt: cursorId } },
         orderBy: { id: 'asc' },
         take: BATCH_SIZE,
@@ -122,11 +133,15 @@ export const auditVerifyService = {
    * Si `result.valid === false`, la fonction est no-op (n'écrase pas un checkpoint
    * valide avec un état broken).
    */
-  async recordCheckpoint(organizationId: string, result: VerifyChainResult): Promise<void> {
+  async recordCheckpoint(
+    organizationId: string,
+    result: VerifyChainResult,
+    db: Pick<Prisma.TransactionClient, 'audit_Checkpoint'> = prisma
+  ): Promise<void> {
     if (!result.valid || result.lastId === null || result.lastSignatureHash === null) {
       return;
     }
-    await prisma.audit_Checkpoint.upsert({
+    await db.audit_Checkpoint.upsert({
       where: { organization_id: organizationId },
       create: {
         organization_id: organizationId,
