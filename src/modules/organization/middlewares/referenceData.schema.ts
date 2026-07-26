@@ -22,16 +22,31 @@ const updateSupplierSchema = vine.object({
 
 // Emplacement. `type` est une chaîne libre : le jeu de démonstration utilise RECEPTION /
 // COLD_STORAGE / PRODUCTION, un enum fermé invaliderait ces valeurs à l'édition.
+//
+// Coordonnées : bornées au domaine géographique réel. Hors bornes, ce n'est pas un point sur Terre
+// mais une saisie inversée (lat/lng permutées) ou une unité étrangère — le refuser vaut mieux que
+// poser un repère absurde sur la fiche lot.
+// `requiredIfExists` croise les deux champs : une latitude seule ne place aucun point sur une carte,
+// donc on n'accepte jamais la moitié d'une position.
+const latitudeRule = () => vine.number().min(-90).max(90);
+const longitudeRule = () => vine.number().min(-180).max(180);
+
 const createLocationSchema = vine.object({
   nom: vine.string().trim().minLength(2).maxLength(120),
   type: vine.string().trim().minLength(2).maxLength(60),
   description: vine.string().trim().maxLength(300).optional(),
+  latitude: latitudeRule().optional().requiredIfExists('longitude'),
+  longitude: longitudeRule().optional().requiredIfExists('latitude'),
 });
 
 const updateLocationSchema = vine.object({
   nom: vine.string().trim().minLength(2).maxLength(120).optional(),
   type: vine.string().trim().minLength(2).maxLength(60).optional(),
   description: vine.string().trim().maxLength(300).nullable().optional(),
+  // `null` sur les DEUX efface la position (le lieu redevient sans carte). La cohérence du couple
+  // face à l'état déjà en base est vérifiée par le service, qui seul connaît cet état.
+  latitude: latitudeRule().nullable().optional().requiredIfExists('longitude'),
+  longitude: longitudeRule().nullable().optional().requiredIfExists('latitude'),
 });
 
 // L'archivage/réactivation porte l'état cible. VineJS coerce 'true'/'false'/1/0 en booléen.

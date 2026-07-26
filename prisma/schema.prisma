@@ -227,6 +227,12 @@ model Location {
   nom             String
   type            String
   description     String?
+  // Position réelle du lieu, saisie par l'organisation — jamais déduite du nom (cf. #23 : le front
+  // devinait « Loire » → Nantes et affichait ce point comme une donnée de la base).
+  // Nullable et indissociables : un lieu sans coordonnées est légitime, la fiche lot n'affiche alors
+  // pas de carte. DECIMAL(9,6) = ~11 cm de résolution, la précision d'un plan d'usine.
+  latitude        Decimal?     @db.Decimal(9, 6)
+  longitude       Decimal?     @db.Decimal(9, 6)
   // Désactivation douce : un lieu référencé par du matériel ne peut pas être supprimé (FK Restrict).
   // Archivé, il disparaît des listes de sélection mais reste lisible sur l'historique existant.
   is_active       Boolean      @default(true)

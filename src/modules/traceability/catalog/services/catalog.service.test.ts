@@ -109,7 +109,12 @@ describe('CatalogService', () => {
           include: {
             produit: { select: { nom: true, code_gtin: true } },
             unite: { select: { nom: true } },
-            materiel: { select: { nom: true, lieu: { select: { nom: true } } } },
+            materiel: {
+              select: {
+                nom: true,
+                lieu: { select: { nom: true, latitude: true, longitude: true } },
+              },
+            },
           },
         })
       );

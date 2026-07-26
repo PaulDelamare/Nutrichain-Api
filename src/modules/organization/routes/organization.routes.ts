@@ -354,6 +354,8 @@ router.get('/organization/shipments', sessionAuth(READ_ROLES), listShipmentsCont
  *       Lieux du plan d'usine, triés par nom. Actifs seulement par défaut.
  *
  *       `?includeArchived=true` n'est honoré que pour l'administration ; ignoré sinon.
+ *
+ *       `latitude`/`longitude` valent `null` tant que la position du lieu n'a pas été saisie.
  *     tags: [Organisation]
  *     security:
  *       - bearerAuth: []
@@ -735,6 +737,10 @@ router.patch(
  *     description: |
  *       `type` est une chaîne libre (le jeu de démonstration utilise RECEPTION / COLD_STORAGE /
  *       PRODUCTION) : un enum fermé invaliderait ces valeurs à l'édition.
+ *
+ *       `latitude`/`longitude` sont facultatives mais INDISSOCIABLES : fournir l'une sans l'autre
+ *       est refusé en 400. Renseignées, elles sont la seule source du repère affiché sur la fiche
+ *       lot ; absentes, la fiche n'affiche pas de carte.
  *     tags: [Organisation]
  *     security:
  *       - bearerAuth: []
@@ -757,6 +763,16 @@ router.patch(
  *               description:
  *                 type: string
  *                 maxLength: 300
+ *               latitude:
+ *                 type: number
+ *                 minimum: -90
+ *                 maximum: 90
+ *                 description: Requise si `longitude` est fournie
+ *               longitude:
+ *                 type: number
+ *                 minimum: -180
+ *                 maximum: 180
+ *                 description: Requise si `latitude` est fournie
  *     responses:
  *       201:
  *         description: Emplacement créé
@@ -778,7 +794,12 @@ router.post(
  * /api/organization/locations/{id}:
  *   patch:
  *     summary: Modifier un emplacement
- *     description: Modification partielle. Au moins un champ doit être fourni (sinon 400).
+ *     description: |
+ *       Modification partielle. Au moins un champ doit être fourni (sinon 400).
+ *
+ *       Position : `latitude` et `longitude` se modifient ENSEMBLE, et `null` sur les deux efface la
+ *       position. Toute combinaison laissant une moitié de coordonnées — dans le corps comme après
+ *       fusion avec l'état en base — est refusée en 400.
  *     tags: [Organisation]
  *     security:
  *       - bearerAuth: []
@@ -808,11 +829,21 @@ router.post(
  *                 type: string
  *                 maxLength: 300
  *                 nullable: true
+ *               latitude:
+ *                 type: number
+ *                 minimum: -90
+ *                 maximum: 90
+ *                 nullable: true
+ *               longitude:
+ *                 type: number
+ *                 minimum: -180
+ *                 maximum: 180
+ *                 nullable: true
  *     responses:
  *       200:
  *         description: Emplacement modifié
  *       400:
- *         description: Payload invalide ou aucune modification fournie
+ *         description: Payload invalide, coordonnées incomplètes, ou aucune modification fournie
  *       401:
  *         description: Aucune session
  *       403:

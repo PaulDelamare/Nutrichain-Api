@@ -196,15 +196,33 @@ async function main() {
   await purgePreviousDemo(orgId);
   await purgeE2EResidue(orgId);
 
-  // 1. Sites réels
+  // 1. Sites réels. Les coordonnées sont celles du plan d'usine (trois points distincts du même
+  // site parisien) : c'est la SEULE source du repère de la fiche lot, que le front devinait
+  // auparavant par regex sur le nom du lieu (cf. #23).
   const locations = [
-    { id: ID.locReception, organization_id: orgId, nom: 'Quai de réception', type: 'RECEPTION' },
-    { id: ID.locFroid, organization_id: orgId, nom: 'Chambre froide A', type: 'COLD_STORAGE' },
+    {
+      id: ID.locReception,
+      organization_id: orgId,
+      nom: 'Quai de réception',
+      type: 'RECEPTION',
+      latitude: 48.83291,
+      longitude: 2.28654,
+    },
+    {
+      id: ID.locFroid,
+      organization_id: orgId,
+      nom: 'Chambre froide A',
+      type: 'COLD_STORAGE',
+      latitude: 48.83318,
+      longitude: 2.28691,
+    },
     {
       id: ID.locProduction,
       organization_id: orgId,
       nom: 'Ligne de conditionnement',
       type: 'PRODUCTION',
+      latitude: 48.83345,
+      longitude: 2.287281,
     },
   ];
   for (const loc of locations) {
