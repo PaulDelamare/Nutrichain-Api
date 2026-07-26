@@ -62,7 +62,14 @@ export const catalogService = {
           // donnée personnelle, inutile à un opérateur qui consulte le catalogue.
           ...(revealAuthor ? { user: { select: { name: true, email: true } } } : {}),
           // Emplacement de stockage (matériel → lieu) : permet de connaître la position du lot.
-          materiel: { select: { nom: true, lieu: { select: { nom: true } } } },
+          // Les coordonnées suivent le nom pour que la fiche lot servie depuis le catalogue place le
+          // même repère que celle servie par `getBatchById` — sinon la carte apparaît selon le chemin.
+          materiel: {
+            select: {
+              nom: true,
+              lieu: { select: { nom: true, latitude: true, longitude: true } },
+            },
+          },
         },
         orderBy: { date_creation: 'desc' },
         skip: (page - 1) * limit,

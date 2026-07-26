@@ -6,6 +6,8 @@ export interface LocationInput {
   nom: string;
   type: string;
   description?: string;
+  latitude?: number | null;
+  longitude?: number | null;
 }
 
 const notFound = () =>
@@ -13,9 +15,33 @@ const notFound = () =>
     error: [{ field: 'id', message: 'Emplacement introuvable ou accès refusé.' }],
   });
 
+const isSet = (value: unknown) => value !== null && value !== undefined;
+
+/**
+ * Une position est un COUPLE : une latitude sans longitude ne place aucun repère sur une carte.
+ *
+ * On valide l'état RÉSULTANT (base + patch), pas le seul payload : un `PATCH { latitude: null }`
+ * laisserait sinon une longitude orpheline en base, et plus personne ne saurait dire si la position
+ * du lieu est connue ou non. Le schéma VineJS couvre le payload, ce garde couvre la ligne.
+ */
+function assertCoordinatePair(coords: { latitude?: unknown; longitude?: unknown }) {
+  if (isSet(coords.latitude) === isSet(coords.longitude)) return;
+
+  throw new APIError(400, {
+    error: [
+      {
+        field: isSet(coords.latitude) ? 'longitude' : 'latitude',
+        message: 'Latitude et longitude vont ensemble : renseignez les deux, ou aucune.',
+      },
+    ],
+  });
+}
+
 // La lecture (liste) vit dans `equipmentService.listLocations`, enrichie du filtre `is_active`.
 export const locationService = {
   async create(input: LocationInput, organizationId: string, actorUserId: string) {
+    assertCoordinatePair(input);
+
     // Écriture et audit dans une SEULE transaction : une donnée de référence ne doit jamais
     // exister sans sa trace WORM, ni une trace désigner une entité qui n'existe pas.
     return retryableTransaction(async (tx) => {
@@ -53,6 +79,11 @@ export const locationService = {
         where: { id, organization_id: organizationId },
       });
       if (!existing) throw notFound();
+
+      assertCoordinatePair({
+        latitude: 'latitude' in input ? input.latitude : existing.latitude,
+        longitude: 'longitude' in input ? input.longitude : existing.longitude,
+      });
 
       const location = await tx.location.update({ where: { id }, data: input });
 

@@ -72,10 +72,45 @@ async function main() {
   const cL = await call(admin, '/organization/locations', 'POST', {
     nom: `Quai e2e ${Date.now()}`,
     type: 'RECEPTION',
+    latitude: 48.83291,
+    longitude: 2.28654,
   });
   if (cL.status !== 201) fail(`Création emplacement échouée (${cL.status})`);
   const locationId = (await cL.json()).data.id as string;
   ok('Emplacement créé par un admin');
+
+  // 2 bis. La position du lieu est une donnée SAISIE, pas déduite d'un nom (cf. #23). On prouve
+  // qu'elle est persistée telle quelle, que la moitié d'un couple est refusée, et qu'on peut
+  // l'effacer — sinon la fiche lot afficherait un repère sans savoir d'où il vient.
+  const stored = await prisma.location.findUniqueOrThrow({ where: { id: locationId } });
+  if (Number(stored.latitude) !== 48.83291 || Number(stored.longitude) !== 2.28654)
+    fail(`Coordonnées non persistées (${stored.latitude}, ${stored.longitude})`);
+  ok('Coordonnées du lieu persistées à l’identique');
+
+  const halfPair = await call(admin, `/organization/locations/${locationId}`, 'PATCH', {
+    latitude: 48.9,
+  });
+  if (halfPair.status !== 400)
+    fail(`Une latitude sans longitude a été acceptée (${halfPair.status})`);
+  ok('Demi-position refusée (400) : latitude et longitude vont ensemble');
+
+  const outOfRange = await call(admin, `/organization/locations/${locationId}`, 'PATCH', {
+    latitude: 122.4,
+    longitude: 37.77,
+  });
+  if (outOfRange.status !== 400)
+    fail(`Une latitude hors bornes a été acceptée (${outOfRange.status})`);
+  ok('Coordonnées hors domaine terrestre refusées (400) : lat/lng permutées');
+
+  const cleared = await call(admin, `/organization/locations/${locationId}`, 'PATCH', {
+    latitude: null,
+    longitude: null,
+  });
+  if (cleared.status !== 200) fail(`Effacement de la position échoué (${cleared.status})`);
+  const afterClear = await prisma.location.findUniqueOrThrow({ where: { id: locationId } });
+  if (afterClear.latitude !== null || afterClear.longitude !== null)
+    fail('La position n’a pas été effacée');
+  ok('Position effaçable : le lieu redevient sans carte');
 
   // 3. L'audit a tracé les créations
   const auditCount = await prisma.audit_Log.count({

@@ -50,6 +50,70 @@ describe('locationService.create', () => {
   });
 });
 
+describe('locationService — cohérence du couple de coordonnées', () => {
+  it('accepte une position complète et la transmet telle quelle', async () => {
+    create.mockResolvedValue({ id: 's1' });
+
+    await locationService.create(
+      { nom: 'Quai A', type: 'RECEPTION', latitude: 48.83291, longitude: 2.28654 },
+      ORG,
+      'admin'
+    );
+
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ latitude: 48.83291, longitude: 2.28654 }),
+      })
+    );
+  });
+
+  it('refuse une création avec une latitude sans longitude', async () => {
+    await expect(
+      locationService.create({ nom: 'Quai A', type: 'RECEPTION', latitude: 48.83291 }, ORG, 'admin')
+    ).rejects.toMatchObject({ status: 400 });
+
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("refuse d'effacer la seule latitude et de laisser une longitude orpheline en base", async () => {
+    findFirst.mockResolvedValue({ id: 's1', latitude: 48.83291, longitude: 2.28654 });
+
+    await expect(
+      locationService.update('s1', { latitude: null }, ORG, 'admin')
+    ).rejects.toMatchObject({ status: 400 });
+
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('efface la position quand les deux coordonnées sont mises à null', async () => {
+    findFirst.mockResolvedValue({ id: 's1', latitude: 48.83291, longitude: 2.28654 });
+    update.mockResolvedValue({ id: 's1', latitude: null, longitude: null });
+
+    await locationService.update('s1', { latitude: null, longitude: null }, ORG, 'admin');
+
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { latitude: null, longitude: null } })
+    );
+  });
+
+  it("refuse d'ajouter une longitude à un lieu qui n'a pas de latitude", async () => {
+    findFirst.mockResolvedValue({ id: 's1', latitude: null, longitude: null });
+
+    await expect(
+      locationService.update('s1', { longitude: 2.28654 }, ORG, 'admin')
+    ).rejects.toMatchObject({ status: 400 });
+  });
+
+  it('laisse renommer un lieu déjà positionné sans redemander ses coordonnées', async () => {
+    findFirst.mockResolvedValue({ id: 's1', latitude: 48.83291, longitude: 2.28654 });
+    update.mockResolvedValue({ id: 's1', nom: 'Quai B' });
+
+    await locationService.update('s1', { nom: 'Quai B' }, ORG, 'admin');
+
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({ data: { nom: 'Quai B' } }));
+  });
+});
+
 describe('locationService.update — multi-tenancy', () => {
   it("refuse de modifier un emplacement d'une autre organisation", async () => {
     findFirst.mockResolvedValue(null);
