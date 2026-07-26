@@ -42,6 +42,15 @@ const MAX_TRACKED_KEYS = 200;
 
 const samplesByKey = new Map<string, RequestSample[]>();
 
+/**
+ * Compteur MONOTONE par organisation, indépendant du ring buffer : celui-ci s'évince (plafond
+ * `MAX_SAMPLES_PER_ROUTE`, `MAX_TRACKED_KEYS`), donc son contenu courant n'est PAS un delta
+ * comparable dans le temps — sa fenêtre réelle varie selon le trafic (secondes pour une org très
+ * active, heures pour une org calme). Ce compteur-ci, remis à zéro uniquement par
+ * `getAndResetAllOrganizationTotals`, donne un vrai « depuis le dernier appel ».
+ */
+const totalsByOrg = new Map<string, { count: number; errorCount: number }>();
+
 const routeKey = (organizationId: string, method: string, route: string): string =>
   `${organizationId}::${method}::${route}`;
 
@@ -65,6 +74,13 @@ export const recordRequestSample = (sample: RequestSample): void => {
     samples.shift();
   }
   samplesByKey.set(key, samples);
+
+  const totals = totalsByOrg.get(sample.organizationId) ?? { count: 0, errorCount: 0 };
+  totals.count += 1;
+  if (sample.statusCode >= 500) {
+    totals.errorCount += 1;
+  }
+  totalsByOrg.set(sample.organizationId, totals);
 };
 
 const percentile = (sortedDurations: number[], p: number): number => {
@@ -142,6 +158,23 @@ export const getRequestVolumeSeries = (
   return buckets;
 };
 
+export interface OrganizationTotals {
+  organizationId: string;
+  count: number;
+  errorCount: number;
+}
+
+/** Snapshot + remise à zéro atomique des compteurs monotones — un vrai « depuis le dernier appel ». */
+export const getAndResetAllOrganizationTotals = (): OrganizationTotals[] => {
+  const result = Array.from(totalsByOrg.entries()).map(([organizationId, totals]) => ({
+    organizationId,
+    ...totals,
+  }));
+  totalsByOrg.clear();
+  return result;
+};
+
 export const resetMetricsStore = (): void => {
   samplesByKey.clear();
+  totalsByOrg.clear();
 };

@@ -3,6 +3,7 @@ import {
   recordRequestSample,
   getRouteStats,
   getRequestVolumeSeries,
+  getAndResetAllOrganizationTotals,
   resetMetricsStore,
 } from './metricsStore';
 
@@ -133,6 +134,55 @@ describe('metricsStore', () => {
     expect(stats.length).toBeLessThanOrEqual(200);
     expect(stats.find((s) => s.route === '/api/route-0')).toBeUndefined();
     expect(stats.find((s) => s.route === '/api/route-249')).toBeDefined();
+  });
+
+  describe('getAndResetAllOrganizationTotals', () => {
+    it('20. aucune donnée : []', () => {
+      expect(getAndResetAllOrganizationTotals()).toEqual([]);
+    });
+
+    it('21. compteur monotone : indépendant du plafond du ring buffer (600 échantillons, count=600 pas 500)', () => {
+      for (let i = 0; i < 600; i += 1) {
+        recordRequestSample({ route: '/api/catalog', method: 'GET', statusCode: 200, durationMs: 1, organizationId: orgA, timestamp: 1000 + i });
+      }
+
+      const totals = getAndResetAllOrganizationTotals();
+
+      expect(totals).toEqual([{ organizationId: orgA, count: 600, errorCount: 0 }]);
+    });
+
+    it('22. errorCount compte les 5xx, séparément du total', () => {
+      recordRequestSample({ route: '/api/catalog', method: 'GET', statusCode: 500, durationMs: 1, organizationId: orgA, timestamp: 1000 });
+      recordRequestSample({ route: '/api/catalog', method: 'GET', statusCode: 200, durationMs: 1, organizationId: orgA, timestamp: 1001 });
+
+      expect(getAndResetAllOrganizationTotals()).toEqual([{ organizationId: orgA, count: 2, errorCount: 1 }]);
+    });
+
+    it("23. remet les compteurs à zéro : un deuxième appel immédiat renvoie []", () => {
+      recordRequestSample({ route: '/api/catalog', method: 'GET', statusCode: 200, durationMs: 1, organizationId: orgA, timestamp: 1000 });
+
+      getAndResetAllOrganizationTotals();
+
+      expect(getAndResetAllOrganizationTotals()).toEqual([]);
+    });
+
+    it('24. plusieurs organisations : une entrée par organisation', () => {
+      recordRequestSample({ route: '/api/catalog', method: 'GET', statusCode: 200, durationMs: 1, organizationId: orgA, timestamp: 1000 });
+      recordRequestSample({ route: '/api/catalog', method: 'GET', statusCode: 200, durationMs: 1, organizationId: orgB, timestamp: 1000 });
+
+      const totals = getAndResetAllOrganizationTotals().sort((a, b) => a.organizationId.localeCompare(b.organizationId));
+
+      expect(totals).toEqual([
+        { organizationId: orgA, count: 1, errorCount: 0 },
+        { organizationId: orgB, count: 1, errorCount: 0 },
+      ]);
+    });
+
+    it('25. organizationId null (route publique) : jamais comptabilisé', () => {
+      recordRequestSample({ route: '/health', method: 'GET', statusCode: 200, durationMs: 1, organizationId: null, timestamp: 1000 });
+
+      expect(getAndResetAllOrganizationTotals()).toEqual([]);
+    });
   });
 
   describe('getRequestVolumeSeries', () => {
