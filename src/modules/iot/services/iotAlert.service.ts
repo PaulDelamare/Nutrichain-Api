@@ -1,8 +1,8 @@
-import { createHash } from 'crypto';
 import type { ClientSession } from 'mongoose';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../../shared/configs/prismaClient.config';
 import { auditService } from '../../../shared/utils/audit/audit.service';
+import { advisoryLockKey } from '../../../shared/utils/db/advisoryLockKey';
 import { retryableTransaction } from '../../../shared/utils/db/withWriteConflictRetry';
 import { notifyOrgAdmins } from '../../../shared/utils/mailer/notifyOrgAdmins';
 import { escapeHtml } from '../../../shared/utils/html/escapeHtml';
@@ -292,19 +292,6 @@ async function resolveThreshold(
   };
   thresholdCache.set(key, cached);
   return cached;
-}
-
-/**
- * Génère une clé numérique 64-bit pour `pg_try_advisory_lock`.
- * Hash SHA256 de (orgId, equipmentId) tronqué aux 60 bits de poids faible
- * (Postgres advisory lock prend un BIGINT signé — 63 bits utilisables).
- */
-function advisoryLockKey(orgId: string, equipmentId: string): bigint {
-  const digest = createHash('sha256').update(`${orgId}:${equipmentId}`).digest();
-  // Lire les 8 premiers octets en BigInt signed positive
-  const high = BigInt(digest.readUInt32BE(0)) & 0x7fffffffn; // clear sign bit
-  const low = BigInt(digest.readUInt32BE(4));
-  return (high << 32n) | low;
 }
 
 async function fetchRecentPoints(
