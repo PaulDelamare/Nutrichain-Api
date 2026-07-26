@@ -10,6 +10,7 @@ import createRateLimiter from '../middlewares/rateLimiter/rateLimiter.middleware
 import { sanitizeRequestData } from '../middlewares/sanitizeData/sanitizeData.middleware';
 import { requestIdMiddleware } from '../middlewares/requestId.middleware';
 import { resolveTrustedOrigins } from './trustedOrigins.config';
+import { requestMetricsMiddleware } from '../../modules/observability/middlewares/requestMetrics.middleware';
 
 // ! FONCTION
 
@@ -68,6 +69,8 @@ const configureMiddleware = (app: express.Application) => {
   app.use(limiter);
 
   app.use(sanitizeRequestData);
+
+  app.use(requestMetricsMiddleware);
 
   app.use((req, res, next) => {
     rotateLog();

@@ -17,6 +17,7 @@ import auditRoutes from './modules/auditIntegrity/routes/audit.routes';
 import connectorRoutes from './modules/connectors/routes/connector.routes';
 import organizationRoutes from './modules/organization/routes/organization.routes';
 import platformRoutes from './modules/platform/routes/platform.routes';
+import observabilityRoutes from './modules/observability/routes/observability.routes';
 import configureMiddleware from './shared/configs/apiConfigMiddleware.config';
 import { globalErrorHandler } from './shared/utils/errorHandler/errorHandler';
 
@@ -48,6 +49,7 @@ app.use('/api', auditRoutes);
 app.use('/api', connectorRoutes);
 app.use('/api', organizationRoutes);
 app.use('/api', platformRoutes);
+app.use('/api', observabilityRoutes);
 
 // ! Global Error Handler (Doit être le dernier middleware)
 app.use(globalErrorHandler);
