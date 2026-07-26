@@ -25,7 +25,10 @@ const publicScanLimiter = rateLimit({
  * /api/public/scan/{id}:
  *   get:
  *     summary: "[B2C] Scanner un lot pour voir son origine"
- *     description: Route publique pour les consommateurs finaux.
+ *     description: |
+ *       Route publique pour les consommateurs finaux. Le payload expose le nom commercial
+ *       des fermes d'origine (`trace.origines[].ferme`) via Batch→Receipt→Supplier — jamais
+ *       l'identifiant fournisseur, le contact qualité ni l'adresse (minimisation DPIA / #51).
  *     tags: [Public]
  *     parameters:
  *       - in: path
@@ -35,7 +38,7 @@ const publicScanLimiter = rateLimit({
  *           type: string
  *     responses:
  *       200:
- *         description: Informations de traçabilité
+ *         description: Informations de traçabilité (lot + origines fermes + généalogie produit)
  */
 router.get('/public/scan/:id', publicScanLimiter, publicScanBatch);
 

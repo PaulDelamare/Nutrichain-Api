@@ -24,7 +24,9 @@ pas un contrat de sous-traitance (absent — aucun déploiement client réel à 
 | Auteur d'une action (`received_by`, `created_by`, `id_user`…) | tables métier + `Audit_Log` | Traçabilité HACCP, imputabilité | Obligation légale (HACCP) |
 
 Le scan public B2C (`/api/gs1/01/:gtin/10/:lot`, cf. #139/#146) est correctement minimisé :
-il ne renvoie aucune donnée personnelle, seulement le lot et sa généalogie produit.
+il ne renvoie aucune donnée personnelle (pas de contact fournisseur ni d'adresse), seulement le
+lot, sa généalogie produit et le **nom commercial de la ferme** (`Supplier.nom_ferme`) —
+décision produit issue #51 Front / transparence B2C, sans exposer les coordonnées.
 
 ## 3. Ce qui existe déjà
 

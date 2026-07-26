@@ -14,6 +14,7 @@ vi.mock('../../../../shared/configs/prismaClient.config', () => ({
 vi.mock('../services/genealogy.service', () => ({
   genealogyService: {
     getUpstream: vi.fn().mockResolvedValue([]),
+    getOrigins: vi.fn().mockResolvedValue([]),
   },
 }));
 
@@ -29,6 +30,7 @@ vi.mock('../../../identity/middlewares/requireOrgRole.middleware', () => ({
 
 import transformationRouter from '../routes/transformation.routes';
 import { prisma } from '../../../../shared/configs/prismaClient.config';
+import { genealogyService } from '../services/genealogy.service';
 
 const buildApp = () => {
   const app = express();
@@ -73,6 +75,55 @@ describe('publicScanBatch controller (route publique B2C — Sec C)', () => {
     expect(res.body.data.lot.statut_sanitaire).toBe('CONFORME');
     expect(res.body.data.lot).not.toHaveProperty('organization_id');
     expect(res.body.data.lot).not.toHaveProperty('quantite_actuelle');
+    expect(res.body.data.trace.origines).toEqual([]);
+  });
+
+  it('expose le nom de la ferme d’origine, sans contact ni adresse', async () => {
+    vi.mocked(prisma.batch.findMany).mockResolvedValue([buildBatch()]);
+    vi.mocked(genealogyService.getOrigins).mockResolvedValue([
+      {
+        lot_number: 'LAIT-001',
+        date_reception: new Date('2026-07-01'),
+        fournisseur: { id: 'sup-secret', nom_ferme: 'Ferme Les Aubépines' },
+      },
+    ]);
+
+    const res = await request(buildApp()).get('/api/public/scan/batch-1');
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.trace.origines).toEqual([{ ferme: 'Ferme Les Aubépines' }]);
+    expect(res.body.data.trace.message).toContain('Ferme Les Aubépines');
+    expect(JSON.stringify(res.body.data)).not.toContain('sup-secret');
+    expect(JSON.stringify(res.body.data)).not.toContain('contact');
+    expect(JSON.stringify(res.body.data)).not.toContain('adresse');
+  });
+
+  it('déduplique les fermes quand plusieurs lots racines partagent le même fournisseur', async () => {
+    vi.mocked(prisma.batch.findMany).mockResolvedValue([buildBatch()]);
+    vi.mocked(genealogyService.getOrigins).mockResolvedValue([
+      {
+        lot_number: 'L1',
+        date_reception: new Date('2026-07-01'),
+        fournisseur: { id: 's1', nom_ferme: 'Ferme du Val' },
+      },
+      {
+        lot_number: 'L2',
+        date_reception: new Date('2026-07-02'),
+        fournisseur: { id: 's1', nom_ferme: 'Ferme du Val' },
+      },
+      {
+        lot_number: 'L3',
+        date_reception: new Date('2026-07-03'),
+        fournisseur: { id: 's2', nom_ferme: 'Ferme des Prés' },
+      },
+    ]);
+
+    const res = await request(buildApp()).get('/api/public/scan/batch-1');
+
+    expect(res.body.data.trace.origines).toEqual([
+      { ferme: 'Ferme du Val' },
+      { ferme: 'Ferme des Prés' },
+    ]);
   });
 
   it('doit résoudre le lot par son numéro de lot GS1 (celui du Digital Link imprimé)', async () => {
