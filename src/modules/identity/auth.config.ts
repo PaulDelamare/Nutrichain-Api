@@ -100,7 +100,7 @@ export const auth = betterAuth({
           // l'utilisateur deviendrait propriétaire.
           if (validatedInvitationId && !invitation) {
             logger.warn(
-              `[BetterAuth Hook] Invitation ${validatedInvitationId} introuvable ou déjà consommée — Member non créé pour ${user.email}`
+              `[BetterAuth Hook] Invitation ${validatedInvitationId} introuvable ou déjà consommée — Member non créé pour l'utilisateur ${user.id}`
             );
             return;
           }
@@ -117,7 +117,7 @@ export const auth = betterAuth({
 
               if (count === 0) {
                 logger.warn(
-                  `[BetterAuth Hook] Invitation ${invitation.id} déjà consommée — Member non créé pour ${user.email}`
+                  `[BetterAuth Hook] Invitation ${invitation.id} déjà consommée — Member non créé pour l'utilisateur ${user.id}`
                 );
                 return;
               }
@@ -133,7 +133,7 @@ export const auth = betterAuth({
                 },
               });
               logger.info(
-                `[BetterAuth Hook] Invitation acceptée et Membre généré pour l'utilisateur: ${user.email}`
+                `[BetterAuth Hook] Invitation acceptée et Membre généré pour l'utilisateur: ${user.id}`
               );
             } catch (e) {
               logger.error("[BetterAuth Hook] Erreur lors de la consommation de l'invitation:", e);
@@ -164,7 +164,7 @@ export const auth = betterAuth({
                 },
               });
               logger.info(
-                `[BetterAuth Hook] Premier utilisateur détecté : Zone 'Siège Central' créée pour ${user.email}`
+                `[BetterAuth Hook] Premier utilisateur détecté : Zone 'Siège Central' créée pour l'utilisateur ${user.id}`
               );
             } catch (e) {
               logger.error('[BetterAuth Hook] Erreur lors de la création de la zone initiale:', e);

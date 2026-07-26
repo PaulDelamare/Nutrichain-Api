@@ -103,10 +103,30 @@ describe('accountService.deleteMyAccount', () => {
         action: 'USER_ANONYMIZED',
         entity: 'User',
         entityId: USER_ID,
-        oldValue: { email: 'reel@x.fr', name: 'Vrai Nom' },
       }),
       tx
     );
+  });
+
+  /**
+   * #236 — Le journal d'audit est WORM : jamais d'UPDATE ni de DELETE, et chaque ligne est chaînée
+   * par hash. Une PII écrite là y reste indéfiniment. L'action `USER_ANONYMIZED` consignait
+   * l'ancienne identité en clair : elle survivait donc à l'anonymisation qu'elle était censée
+   * tracer, ce qui vide de son sens le droit à l'effacement.
+   */
+  it("n'écrit jamais l'ancienne identité en clair dans le journal WORM", async () => {
+    memberFindUnique.mockResolvedValue({ id: 'm1', role: 'operator', organizationId: 'org-1' });
+
+    await accountService.deleteMyAccount(USER_ID);
+
+    const [params] = logAction.mock.calls[0];
+    expect(params.oldValue).toBeUndefined();
+
+    // Filet large : la PII ne doit réapparaître dans AUCUN champ de la charge utile, quel que
+    // soit le champ où une évolution future la replacerait.
+    const charge = JSON.stringify(params);
+    expect(charge).not.toContain('reel@x.fr');
+    expect(charge).not.toContain('Vrai Nom');
   });
 
   it("n'échoue pas et ne journalise rien pour un utilisateur sans organisation (compte plateforme)", async () => {

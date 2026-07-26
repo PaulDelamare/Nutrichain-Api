@@ -25,8 +25,11 @@ export async function notifyOrgAdmins(organizationId: string, email: OrgAdminEma
     await Promise.all(
       recipients.map((r) =>
         sendEmail({ to: r.user.email, subject: email.subject, html: email.html }).catch((err) => {
+          // `userId` et non l'adresse : les fichiers de `logs/` survivent à l'anonymisation RGPD
+          // du compte (#236). L'identifiant reste suffisant pour retrouver le destinataire en
+          // base tant que le compte existe — et ne dit plus rien une fois qu'il est anonymisé.
           logger.error(
-            `[notifyOrgAdmins] échec d'envoi vers ${r.user.email}: ${(err as Error).message}`
+            `[notifyOrgAdmins] échec d'envoi au membre ${r.userId}: ${(err as Error).message}`
           );
         })
       )
