@@ -27,7 +27,7 @@ Conformément aux normes HACCP et Objectif 7 du projet, les actions critiques so
 Une route publique a été ouverte pour permettre la transparence totale envers le consommateur final.
 
 - **Endpoint :** `GET /api/public/scan/:id`
-- **Sécurité :** Cette route est **non protégée** (pas de Token requis) mais ne renvoie qu'un sous-ensemble limité et sécurisé des données (Nom produit, producteur, origine simplifiée, statut sanitaire). Elle ne permet pas de voir les prix, les stocks ou les données sensibles des utilisateurs.
+- **Sécurité :** Cette route est **non protégée** (pas de Token requis) mais ne renvoie qu'un sous-ensemble limité et sécurisé des données (nom produit, producteur, **nom commercial de la ferme** via `genealogyService.getOrigins`, généalogie produit, statut sanitaire). Pas de contact fournisseur, d'adresse, de prix ni de stocks.
 
 ## 5. Standards Techniques
 - **GS1 Compatibility :** Les unités de mesure sont validées selon un référentiel strict (`src/shared/constants/units.constants.ts`).

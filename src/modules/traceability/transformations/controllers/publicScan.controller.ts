@@ -58,8 +58,17 @@ async function resolvePublicBatch(
 async function buildPublicScanResponse(
   batch: Awaited<ReturnType<typeof resolvePublicBatch>>
 ) {
-  // Origine simplifiée (sans exposer les IDs internes ni les fournisseurs sensibles).
-  const ancestors = await genealogyService.getUpstream(batch.id, batch.organization_id);
+  // Origine simplifiée : généalogie produit + noms de fermes (Batch→Receipt→Supplier).
+  // Décision produit (#51) : on expose UNIQUEMENT `nom_ferme` (identité commerciale, comme
+  // l'opérateur la voit). Jamais d'id fournisseur, contact qualité ni adresse de siège (DPIA).
+  const [ancestors, origins] = await Promise.all([
+    genealogyService.getUpstream(batch.id, batch.organization_id),
+    genealogyService.getOrigins(batch.id, batch.organization_id),
+  ]);
+
+  const fermes = [
+    ...new Set(origins.map((o) => o.fournisseur.nom_ferme).filter((n) => n.trim().length > 0)),
+  ];
 
   return {
     lot: {
@@ -72,12 +81,19 @@ async function buildPublicScanResponse(
     },
     trace: {
       etapes: ancestors.length,
-      message: "Ce produit a été tracé de la ferme jusqu'à vous via NutriChain.",
-      // On affiche les ingrédients clés avec leurs noms de produits réels
+      message:
+        fermes.length === 1
+          ? `Ce produit a été tracé depuis « ${fermes[0]} » jusqu'à vous via NutriChain.`
+          : fermes.length > 1
+            ? 'Ce produit a été tracé de la ferme jusqu\'à vous via NutriChain — origines ci-dessous.'
+            : "Ce produit a été tracé de la ferme jusqu'à vous via NutriChain.",
+      // Ingrédients amont (noms de produits uniquement).
       etapes_details: ancestors.map((a) => ({
         produit: a.nom_produit,
         date: a.date_creation,
       })),
+      // Fermes d'entrée matière première — nominatif commercial, pas de coordonnées.
+      origines: fermes.map((ferme) => ({ ferme })),
     },
   };
 }
