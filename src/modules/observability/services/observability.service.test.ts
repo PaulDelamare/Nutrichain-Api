@@ -43,8 +43,8 @@ describe('observabilityService.getDashboardMetrics', () => {
   });
 
   it('2. agrège les échantillons de latence du ring buffer en mémoire, pour cette organisation', async () => {
-    recordRequestSample({ route: '/api/catalog', method: 'GET', statusCode: 200, durationMs: 10, organizationId: orgId });
-    recordRequestSample({ route: '/api/catalog', method: 'GET', statusCode: 200, durationMs: 20, organizationId: orgId });
+    recordRequestSample({ route: '/api/catalog', method: 'GET', statusCode: 200, durationMs: 10, organizationId: orgId, timestamp: Date.now() });
+    recordRequestSample({ route: '/api/catalog', method: 'GET', statusCode: 200, durationMs: 20, organizationId: orgId, timestamp: Date.now() });
 
     const result = await observabilityService.getDashboardMetrics({ organizationId: orgId });
 
@@ -59,6 +59,7 @@ describe('observabilityService.getDashboardMetrics', () => {
       statusCode: 200,
       durationMs: 5,
       organizationId: 'org-autre',
+      timestamp: Date.now(),
     });
 
     const result = await observabilityService.getDashboardMetrics({ organizationId: orgId });
@@ -89,5 +90,46 @@ describe('observabilityService.getDashboardMetrics', () => {
     expect(result.auditEntryCount).toBe(0);
     expect(result.alerts).toEqual([]);
     expect(result.requestLatency).toEqual([]);
+  });
+
+  it('6. kpis : totalRequests/errorRate agrégés depuis le ring buffer, activeAlertCount depuis les alertes ACTIVE uniquement', async () => {
+    recordRequestSample({ route: '/api/catalog', method: 'GET', statusCode: 200, durationMs: 5, organizationId: orgId, timestamp: Date.now() });
+    recordRequestSample({ route: '/api/catalog', method: 'GET', statusCode: 500, durationMs: 5, organizationId: orgId, timestamp: Date.now() });
+    recordRequestSample({ route: '/api/catalog', method: 'GET', statusCode: 200, durationMs: 5, organizationId: orgId, timestamp: Date.now() });
+    vi.mocked(prisma.audit_Log.count).mockResolvedValue(7);
+    vi.mocked(prisma.alert.groupBy).mockResolvedValue([
+      { type: 'TEMP_EXCURSION', statut: 'ACTIVE', _count: { _all: 3 } },
+      { type: 'PRODUCT_RECALL', statut: 'RESOLVED', _count: { _all: 1 } },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ] as any);
+
+    const result = await observabilityService.getDashboardMetrics({ organizationId: orgId });
+
+    expect(result.kpis).toEqual({
+      totalRequests: 3,
+      errorRate: 1 / 3,
+      auditEntryCount: 7,
+      activeAlertCount: 3,
+    });
+  });
+
+  it('7. kpis.errorRate = 0 quand il n’y a aucune requête (pas de division par zéro)', async () => {
+    const result = await observabilityService.getDashboardMetrics({ organizationId: orgId });
+
+    expect(result.kpis.errorRate).toBe(0);
+  });
+
+  it('8. requestVolumeSeries : une fenêtre de 30 buckets (30 minutes, 1 par minute)', async () => {
+    const result = await observabilityService.getDashboardMetrics({ organizationId: orgId });
+
+    expect(result.requestVolumeSeries).toHaveLength(30);
+  });
+
+  it("9. requestVolumeSeries : cloisonnée par organisation, comme la latence", async () => {
+    recordRequestSample({ route: '/api/catalog', method: 'GET', statusCode: 200, durationMs: 5, organizationId: 'org-autre', timestamp: Date.now() });
+
+    const result = await observabilityService.getDashboardMetrics({ organizationId: orgId });
+
+    expect(result.requestVolumeSeries.reduce((sum, b) => sum + b.count, 0)).toBe(0);
   });
 });

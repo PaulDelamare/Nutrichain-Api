@@ -32,6 +32,7 @@ describe('requestMetricsMiddleware', () => {
     expect(sample.statusCode).toBe(200);
     expect(sample.durationMs).toBeGreaterThanOrEqual(0);
     expect(sample.organizationId).toBe('org-1');
+    expect(sample.timestamp).toBeGreaterThan(Date.now() - 5000);
   });
 
   it("2. route non résolue (404, req.route jamais défini) : AUCUN échantillon enregistré", async () => {

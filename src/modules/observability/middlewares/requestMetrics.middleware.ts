@@ -26,6 +26,7 @@ export const requestMetricsMiddleware = (req: Request, res: Response, next: Next
       statusCode: res.statusCode,
       durationMs,
       organizationId: (req as AuthenticatedRequest).activeOrgId ?? null,
+      timestamp: Date.now(),
     });
   });
 

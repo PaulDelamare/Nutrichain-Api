@@ -11,6 +11,13 @@ export interface RequestSample {
    * `/organization/:id/recall`).
    */
   organizationId: string | null;
+  timestamp: number;
+}
+
+export interface RequestVolumeBucket {
+  bucketStartMs: number;
+  count: number;
+  errorCount: number;
 }
 
 export interface RouteStats {
@@ -88,6 +95,51 @@ export const getRouteStats = (organizationId: string): RouteStats[] => {
         p99: percentile(durations, 99),
       };
     });
+};
+
+/**
+ * Volume de requêtes (toutes routes/méthodes confondues) bucketé par minute, du plus ancien au
+ * plus récent. Sert la série temporelle du dashboard — le buffer par route ne suffit pas seul, il
+ * faut agréger à travers toutes les clés de l'organisation pour avoir une vue "trafic global".
+ */
+export const getRequestVolumeSeries = (
+  organizationId: string,
+  { bucketMinutes, windowMinutes, now }: { bucketMinutes: number; windowMinutes: number; now: number }
+): RequestVolumeBucket[] => {
+  const bucketMs = bucketMinutes * 60_000;
+  const bucketCount = Math.ceil(windowMinutes / bucketMinutes);
+
+  // `agoIndex = 0` = la minute courante (celle de `now`), `bucketCount - 1` = la plus ancienne
+  // conservée. On indexe par "il y a combien de buckets" plutôt que depuis un point de départ
+  // absolu : ça évite l'arrondi asymétrique qu'un calcul depuis `windowStartMs` introduirait
+  // pile sur les frontières de minute.
+  const buckets: RequestVolumeBucket[] = Array.from({ length: bucketCount }, (_, i) => ({
+    bucketStartMs: now - (bucketCount - i) * bucketMs,
+    count: 0,
+    errorCount: 0,
+  }));
+
+  const prefix = `${organizationId}::`;
+
+  for (const [key, samples] of samplesByKey.entries()) {
+    if (!key.startsWith(prefix)) {
+      continue;
+    }
+
+    for (const sample of samples) {
+      const agoIndex = Math.floor((now - sample.timestamp) / bucketMs);
+      if (agoIndex < 0 || agoIndex >= bucketCount) {
+        continue;
+      }
+      const chronoIndex = bucketCount - 1 - agoIndex;
+      buckets[chronoIndex].count += 1;
+      if (sample.statusCode >= 500) {
+        buckets[chronoIndex].errorCount += 1;
+      }
+    }
+  }
+
+  return buckets;
 };
 
 export const resetMetricsStore = (): void => {

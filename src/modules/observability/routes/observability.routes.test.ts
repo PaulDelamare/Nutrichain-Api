@@ -44,13 +44,15 @@ vi.mock('../services/observability.service', () => ({
 }));
 
 import observabilityRouter from './observability.routes';
-import { observabilityService } from '../services/observability.service';
+import { observabilityService, DashboardMetrics } from '../services/observability.service';
 import { ADMIN_ROLES } from '../../identity/constants/roles.constants';
 
-const emptyMetrics = {
+const emptyMetrics: DashboardMetrics = {
   requestLatency: [],
+  requestVolumeSeries: [],
   auditEntryCount: 0,
   alerts: [],
+  kpis: { totalRequests: 0, errorRate: 0, auditEntryCount: 0, activeAlertCount: 0 },
   windowHours: 24,
 };
 
