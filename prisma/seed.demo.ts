@@ -18,8 +18,10 @@
  * Conséquence : Batch/Transformation/Shipment reçoivent leur id du SERVEUR (uuid), pas
  * d'un id figé — les services ne prennent pas cet id en paramètre, et il n'y a aucune
  * raison de le leur ajouter pour un seed. L'idempotence (purge avant recréation) se fait
- * donc par CLÉ MÉTIER qu'on contrôle (numéro de bon de réception, numéro d'expédition,
- * matériel de la cuve), pas par UUID — même principe que `purgeE2EResidue` ci-dessous.
+ * donc par CLÉ MÉTIER qu'on contrôle (numéro de lot, numéro de bon de réception, numéro
+ * d'expédition, matériel de la cuve), pas par UUID — même principe que `purgeE2EResidue`
+ * ci-dessous. Plusieurs clés, et non une seule : elles n'ont pas toutes le même âge, et la
+ * purge doit reconnaître un jeu de données écrit par une version antérieure du seed.
  *
  * Lancement : npm run seed:demo   (après `npx prisma db seed`)
  */
@@ -55,6 +57,15 @@ const ID = {
 const RECEIPT_BONS = ['DEMO-BON-LIVRAISON-A', 'DEMO-BON-LIVRAISON-B'];
 const SHIPMENT_IDS = ['340123450000000017', '340123450000000024'];
 
+/**
+ * Numéros de lot des deux réceptions de démo. Source unique : ils servent à la fois à CRÉER les
+ * lots et à les RETROUVER pour les purger.
+ *
+ * Ils sont aussi le seul repère qui n'a pas bougé d'une version du seed à l'autre — ce qui les rend
+ * indispensables à la purge (voir `purgePreviousDemo`).
+ */
+const DEMO_LOT_NUMBERS = ['260710-000101', '260710-000102'];
+
 const day = (n: number) => new Date(Date.now() + n * 24 * 60 * 60 * 1000);
 
 /**
@@ -64,26 +75,65 @@ const day = (n: number) => new Date(Date.now() + n * 24 * 60 * 60 * 1000);
  * puisque ce sont désormais les services qui les génèrent.
  */
 async function purgePreviousDemo(orgId: string) {
-  const receipts = await prisma.receipt.findMany({
-    where: { organization_id: orgId, shipment_id: { in: RECEIPT_BONS } },
-    select: { id: true },
-  });
-  const receiptIds = receipts.map((r) => r.id);
+  // DEUX chemins de découverte, et il en faut deux.
+  //
+  // 1. Le bon de réception retrouve ce que la version COURANTE du seed a écrit.
+  // 2. Le numéro de lot retrouve ce qu'une version ANTÉRIEURE a écrit. Ces numéros n'ont pas changé
+  //    depuis juillet, alors que la clé de réception est arrivée avec le passage du seed par les
+  //    services métier : un volume plus ancien que ce changement contient donc des lots que le
+  //    premier chemin ne voit pas. La purge ne supprimait rien, la recréation heurtait
+  //    `@@unique([organization_id, lot_number])`, et le seed sortait en 409 sur un message qui ne
+  //    parle que d'un numéro de lot.
+  //
+  // Ce n'était pas un défaut d'idempotence — deux exécutions consécutives de la MÊME version
+  // passent — mais un défaut de compatibilité avec les jeux de données déjà en place. Le prix était
+  // pourtant maximal : le service `api` du compose attend `seed: service_completed_successfully`,
+  // donc TOUTE la pile cessait de démarrer, et un `docker compose down && up` ne la relevait plus.
+  const [receiptsCourants, lotsHistoriques] = await Promise.all([
+    prisma.receipt.findMany({
+      where: { organization_id: orgId, shipment_id: { in: RECEIPT_BONS } },
+      select: { id: true },
+    }),
+    prisma.batch.findMany({
+      where: { organization_id: orgId, lot_number: { in: DEMO_LOT_NUMBERS } },
+      select: { id: true, id_receipt: true },
+    }),
+  ]);
 
-  // `Transformation` ne porte pas `organization_id` en colonne propre : le cloisonnement passe par
-  // le lot enfant qu'elle a produit (`lot_enfant.organization_id`), pas par un filtre absent.
-  const transformations = await prisma.transformation.findMany({
-    where: { id_materiel: ID.eqCuve, lot_enfant: { organization_id: orgId } },
-    select: { id: true, id_lot_enfant: true },
-  });
-  const transformationIds = transformations.map((t) => t.id);
+  const receiptIds = Array.from(
+    new Set([
+      ...receiptsCourants.map((r) => r.id),
+      // Purger le lot sans sa réception laisserait un bon orphelin dans l'écran Réceptions.
+      ...lotsHistoriques.map((b) => b.id_receipt).filter((id): id is string => id !== null),
+    ])
+  );
 
   const receiptBatches = await prisma.batch.findMany({
     where: { id_receipt: { in: receiptIds } },
     select: { id: true },
   });
+  const lotsIdentifies = Array.from(
+    new Set([...receiptBatches.map((b) => b.id), ...lotsHistoriques.map((b) => b.id)])
+  );
+
+  // `Transformation` ne porte pas `organization_id` en colonne propre : le cloisonnement passe par
+  // le lot enfant qu'elle a produit (`lot_enfant.organization_id`), pas par un filtre absent.
+  // On la retrouve par sa cuve, mais aussi par les lots déjà identifiés — en parent comme en
+  // enfant — car une version antérieure a pu transformer depuis un autre matériel.
+  const transformations = await prisma.transformation.findMany({
+    where: {
+      OR: [
+        { id_materiel: ID.eqCuve, lot_enfant: { organization_id: orgId } },
+        { id_lot_enfant: { in: lotsIdentifies } },
+        { compositions: { some: { id_lot_parent: { in: lotsIdentifies } } } },
+      ],
+    },
+    select: { id: true, id_lot_enfant: true },
+  });
+  const transformationIds = transformations.map((t) => t.id);
+
   const batchIds = Array.from(
-    new Set([...receiptBatches.map((b) => b.id), ...transformations.map((t) => t.id_lot_enfant)])
+    new Set([...lotsIdentifies, ...transformations.map((t) => t.id_lot_enfant)])
   );
 
   const shipments = await prisma.shipment.findMany({
@@ -91,6 +141,19 @@ async function purgePreviousDemo(orgId: string) {
     select: { id: true },
   });
   const shipmentIds = shipments.map((s) => s.id);
+
+  // Les événements EPCIS ne portent aucune clé étrangère vers ces lignes (`related_entity` +
+  // `related_id`, texte libre indexé) : ils ne bloquaient donc pas la purge, ils s'ACCUMULAIENT.
+  // Chaque exécution du seed en rajoutait un jeu complet sans retirer le précédent — 10 après la
+  // première, 50 après cinq — et le journal EPCIS affichait cinq fois la même réception. Ce n'est
+  // pas cosmétique en démonstration : la conformité GS1 est l'argument central du dossier, et le
+  // compteur d'événements est ce qu'on projette.
+  await prisma.ePCIS_Event.deleteMany({
+    where: {
+      organization_id: orgId,
+      related_id: { in: [...receiptIds, ...transformationIds, ...shipmentIds] },
+    },
+  });
 
   // Ordre inverse des clés étrangères.
   await prisma.batch_Mouvement.deleteMany({
@@ -112,6 +175,9 @@ async function purgePreviousDemo(orgId: string) {
     where: { OR: [{ id: ID.alertFroid }, { related_id: { in: batchIds } }] },
   });
   await prisma.shipment.deleteMany({ where: { id: { in: shipmentIds } } });
+  // `ScrapRecord` référence `Batch` en RESTRICT : un lot mis au rebut entre deux exécutions bloquait
+  // la purge, sans que la table figure dans cette liste — elle est arrivée après elle.
+  await prisma.scrapRecord.deleteMany({ where: { id_lot: { in: batchIds } } });
   await prisma.batch.deleteMany({ where: { id: { in: batchIds } } });
   await prisma.receipt.deleteMany({ where: { id: { in: receiptIds } } });
   // ⚠️ Matériels et sites NE SONT PAS supprimés : d'autres lots (réceptions réelles, e2e) les
@@ -318,7 +384,7 @@ async function main() {
     quantite_actuelle: 2000,
     unite_code: 'L',
     id_materiel: ID.eqRack,
-    lot_number: '260710-000101',
+    lot_number: DEMO_LOT_NUMBERS[0],
     date_peremption: day(4).toISOString().slice(0, 10),
   });
   const receptionB = await receiptService.createReceipt({
@@ -331,7 +397,7 @@ async function main() {
     quantite_actuelle: 1500,
     unite_code: 'L',
     id_materiel: ID.eqRack,
-    lot_number: '260710-000102',
+    lot_number: DEMO_LOT_NUMBERS[1],
     date_peremption: day(4).toISOString().slice(0, 10),
   });
   const lotCruA = receptionA.batchId;
