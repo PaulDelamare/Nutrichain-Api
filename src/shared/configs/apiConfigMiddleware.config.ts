@@ -58,7 +58,22 @@ const configureMiddleware = (app: express.Application) => {
     })
   );
 
-  app.set('trust proxy', ['loopback', 'linklocal', 'uniquelocal']);
+  // `trust proxy` décide à qui Express fait confiance pour recalculer `req.ip` depuis
+  // `X-Forwarded-For`. La valeur précédente — `['loopback', 'linklocal', 'uniquelocal']` — déclarait
+  // de confiance TOUT l'espace privé RFC1918, alors qu'aucun reverse proxy ne figure dans la pile
+  // livrée (docker-compose publie l'API directement). L'en-tête venait donc de l'appelant, et
+  // `req.ip` devenait une valeur qu'il choisissait (#247).
+  //
+  // Les limiteurs comptent par `req.ip` (aucun `keyGenerator`) : faire varier l'en-tête suffisait
+  // à obtenir un compteur neuf à chaque requête, donc à annuler le limiteur anti-bruteforce. Les
+  // journaux de `logs/` traçaient au passage l'adresse choisie par l'appelant — une règle SIEM qui
+  // compte les échecs par IP en devenait trompeuse.
+  //
+  // Par défaut on ne fait donc confiance à personne. Le jour où un ingress est réellement placé
+  // devant, `TRUST_PROXY_HOPS` déclare le nombre de sauts à remonter : la confiance se choisit,
+  // elle ne se subit pas. Un espace d'adresses entier n'est jamais la bonne réponse.
+  const trustProxyHops = Number(process.env.TRUST_PROXY_HOPS) || 0;
+  app.set('trust proxy', trustProxyHops > 0 ? trustProxyHops : false);
 
   // 100/15 min était trop bas : une seule page front déclenche ~5 appels en
   // parallèle (SSR) → un usage normal se faisait 429. Défaut confortable pour
