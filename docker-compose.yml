@@ -1,12 +1,25 @@
-# Démarrage complet reproductible : PostgreSQL + MongoDB + seed, puis l'API.
+# Pile de DÉMONSTRATION LOCALE : PostgreSQL + MongoDB + seed, puis l'API.
 #   docker compose up --build
 # Les variables sont surchargées par un fichier .env à la racine s'il existe
 # (mêmes noms que .env.example) ; les valeurs par défaut suffisent pour une démo locale.
+#
+# Ce n'est pas un modèle de déploiement : la base est peuplée de comptes à mot de passe
+# public, et les secrets ci-dessous ont des valeurs de repli connues. Aucun service ne
+# doit donc s'y déclarer en production.
 
 # Environnement applicatif partagé par l'API et le service de seed. Source unique :
 # une origine ou un secret qui divergerait entre les deux ferait seeder une base que
 # l'API interprète autrement.
 x-app-env: &app-env
+  # Ici plutôt que par service, précisément parce que la divergence était le défaut : l'API
+  # annonçait `production` face à une base que le service `seed` venait de peupler de comptes à
+  # mot de passe public, et `docker compose up` livrait donc une « production » dont les
+  # identifiants sont publiés dans ce dépôt (issue #246). Déclaré une seule fois, l'écart entre
+  # les deux services ne peut plus réapparaître.
+  #
+  # Cette ligne n'est pas un simple défaut : l'image applicative porte `ENV NODE_ENV=production`
+  # (Dockerfile). La retirer ne rend pas la pile neutre, elle la remet en production.
+  NODE_ENV: development
   DATABASE_URL: postgresql://nutrichain:nutrichain@postgres:5432/nutrichain?schema=public
   MONGO_URI: mongodb://mongo:27017/nutrichain-logs
   API_URL: ${API_URL:-http://localhost:3000}
@@ -70,11 +83,11 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    # Le seed crée des comptes de démonstration à mot de passe public ; sa garde
+    # `NODE_ENV=production` reste armée pour un vrai déploiement. Elle hérite ici du
+    # `development` de l'environnement partagé, comme l'API.
     environment:
       <<: *app-env
-      # Le seed crée des comptes de démonstration à mot de passe public : c'est un
-      # outil de démonstration, pas un état de production.
-      NODE_ENV: development
     command: >
       sh -c "node_modules/.bin/prisma migrate deploy
       && node_modules/.bin/tsx prisma/seed.ts
@@ -97,7 +110,6 @@ services:
         condition: service_completed_successfully
     environment:
       <<: *app-env
-      NODE_ENV: production
       PORT: 3000
     # Applique les migrations versionnées (non destructif) avant de démarrer l'API.
     command: sh -c "node_modules/.bin/prisma migrate deploy && node dist/server.js"

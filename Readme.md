@@ -167,7 +167,28 @@ npm run lint     # ESLint
 docker compose up --build   # PostgreSQL + MongoDB + seed automatique, puis l'API (port 3000)
 ```
 
+> ⚠️ Cette pile est un **outil de démonstration locale**, pas un modèle de déploiement : elle seede
+> des comptes à mot de passe public et ses secrets ont des valeurs de repli publiées dans ce dépôt.
+> L'image applicative déclare `NODE_ENV=production` (`Dockerfile`), mais le compose le renverse
+> explicitement en `development` pour toute la pile : une base peuplée de comptes connus ne doit pas
+> se présenter comme une production. Un test verrouille cette ligne
+> (`src/shared/configs/env.docker.test.ts`). Ne l'exposez pas hors de votre poste.
+>
+> Conséquence à connaître : hors production, `http://localhost:4173` (vite preview) est ajouté aux
+> origines de confiance CORS et Better-Auth (`trustedOrigins.config.ts`). Pratique pour exercer le
+> front buildé contre cette pile, mais c'est bien une origine de plus qu'en production.
+
 Les valeurs par défaut suffisent pour une démo locale (surchargées par votre `.env` s'il existe).
+
+Le volume `pgdata` **survit à `docker compose down`** : une base déjà seedée conserve ses comptes et
+ses données, y compris ceux d'une démonstration précédente. Les deux seeds étant rejouables, c'est
+sans conséquence au quotidien ; pour repartir d'une base réellement vierge (`-v` détruit aussi
+`mongodata`, donc la télémétrie) :
+
+```bash
+docker compose down -v && docker compose up --build
+```
+
 Un service `seed` one-shot applique les migrations puis les **deux** seeds (socle + démonstration)
 avant que l'API ne démarre : après `git clone`, `cp .env.example .env`, `docker compose up --build`,
 la connexion fonctionne avec les comptes ci-dessus, écrans peuplés.
