@@ -58,9 +58,32 @@ router.get(
         ])
       : [null, null];
 
+    // Projection EXPLICITE, et pas `req.auth.user` en bloc (#251).
+    //
+    // La réponse sérialisait `session` en entier — donc `token`, un CREDENTIAL. Le mettre dans un
+    // corps JSON annule la garantie `httpOnly` du cookie : ce que le cookie protégeait du
+    // JavaScript, la réponse le rendait lisible. Et cette route est appelée à chaque rendu SSR du
+    // front comme à chaque montage de l'application mobile, donc tout ce qui capture un corps de
+    // réponse — export HAR envoyé au support, rapport de crash, sonde APM — devenait un coffre à
+    // sessions utilisables jusqu'à `expiresAt`. `ipAddress` et `userAgent` sortaient au passage,
+    // alors que le DPIA ne déclare l'IP que pour les journaux applicatifs.
+    //
+    // Les quatre champs de `user` sont exactement ceux que les clients lisent : `id`, `name`,
+    // `email` (front et mobile) et `twoFactorEnabled` (front, `hooks.server.ts`). Ce dernier est
+    // présent à l'exécution alors qu'`AuthUser` ne le déclare pas : l'oublier ici afficherait
+    // « 2FA désactivée » à quelqu'un qui l'a activée — d'où le test qui le verrouille.
+    //
+    // Pas de `session: { expiresAt }` : aucun consommateur ne le lit aujourd'hui, et l'ajouter le
+    // jour où il servira coûte une ligne.
+    const utilisateur = req.auth?.user;
+
     sendSuccess(res, 200, 'Authentification réussie !', {
-      user: req.auth?.user,
-      session: req.auth?.session,
+      user: utilisateur && {
+        id: utilisateur.id,
+        name: utilisateur.name,
+        email: utilisateur.email,
+        twoFactorEnabled: utilisateur.twoFactorEnabled,
+      },
       activeOrgId: req.activeOrgId,
       role,
       isPlatformAdmin: platformAdmin !== null,
