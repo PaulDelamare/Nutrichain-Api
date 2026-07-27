@@ -23,7 +23,9 @@ x-app-env: &app-env
   # Cette ligne n'est pas un simple défaut : l'image applicative porte `ENV NODE_ENV=production`
   # (Dockerfile). La retirer ne rend pas la pile neutre, elle la remet en production.
   NODE_ENV: development
-  DATABASE_URL: postgresql://nutrichain:nutrichain@postgres:5432/nutrichain?schema=public
+  # Le mot de passe vient d'UNE variable, utilisée ici et par le service `postgres`. Deux littéraux
+  # à maintenir en phase, c'est un « ça marche chez moi » en préparation (#249).
+  DATABASE_URL: "postgresql://nutrichain:${POSTGRES_PASSWORD:-nutrichain-demo-local}@postgres:5432/nutrichain?schema=public"
   MONGO_URI: mongodb://mongo:27017/nutrichain-logs
   API_URL: ${API_URL:-http://localhost:3000}
   BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
@@ -61,12 +63,23 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: nutrichain
-      POSTGRES_PASSWORD: nutrichain
+      # ⚠️ `initdb` ne s'exécute qu'à la CRÉATION du volume : changer ce mot de passe sur un
+      # `pgdata` existant n'a aucun effet, la base continue d'attendre l'ancien — et c'est
+      # `DATABASE_URL` qui échoue alors, sur une erreur d'authentification qui ne dit pas pourquoi.
+      # Après un changement : `docker compose down -v`, ou un `ALTER USER nutrichain WITH PASSWORD`.
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-nutrichain-demo-local}"
       POSTGRES_DB: nutrichain
     ports:
       # 5433 côté hôte pour ne pas entrer en conflit avec un PostgreSQL local
-      # (utile pour lancer le seed depuis l'hôte : DATABASE_URL sur localhost:5433).
-      - '5433:5432'
+      # (utile pour lancer un seed ou un script e2e depuis l'hôte : DATABASE_URL sur localhost:5433).
+      #
+      # L'adresse `127.0.0.1` n'est pas décorative (#249). Une publication nue — `'5433:5432'` —
+      # écoute sur TOUTES les interfaces, et Docker insère ses règles DNAT EN AMONT du pare-feu de
+      # la machine : le port était donc joignable depuis tout le réseau local, mot de passe
+      # versionné à l'appui. C'est un accès SQL en écriture à la base multi-tenant, hors de tout
+      # contrôle applicatif — le cloisonnement par organisation, le RBAC et l'inviolabilité du
+      # journal WORM tombaient ensemble, et ce dernier est un livrable noté.
+      - '127.0.0.1:5433:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
