@@ -5,6 +5,7 @@ import helmet from 'helmet';
 import compression from 'compression';
 import * as dotenv from 'dotenv';
 import { requestLog, rotateLog } from '../utils/logFunction/logFunction';
+import { redactUrl } from '../utils/logFunction/redactUrl';
 import { logger } from '../utils/logger/logger';
 import createRateLimiter from '../middlewares/rateLimiter/rateLimiter.middleware';
 import { sanitizeRequestData } from '../middlewares/sanitizeData/sanitizeData.middleware';
@@ -91,7 +92,12 @@ const configureMiddleware = (app: express.Application) => {
     rotateLog();
     requestLog(req, res, next);
 
-    logger.info(`${req.method} - ${req.url} - IP: ${req.ip}`, { requestId: req.requestId });
+    // `redactUrl` masque les segments de chemin qui portent un secret (#253) : le jeton
+    // d'invitation partait sinon dans `logs/app-*.log`, sur la console, et jusqu'au SIEM — où il
+    // suffisait à devenir membre au rôle invité, sans aucune session.
+    logger.info(`${req.method} - ${redactUrl(req.url)} - IP: ${req.ip}`, {
+      requestId: req.requestId,
+    });
   });
 };
 
