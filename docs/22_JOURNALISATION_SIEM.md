@@ -49,6 +49,12 @@ optionnel entre `[req:…]`, puis le message. Le `requestId` est la clé de corr
 `requestId.middleware`, il accepte un `X-Request-ID` entrant et le renvoie en en-tête de réponse,
 ce qui permet de relier une trace client à ses lignes serveur.
 
+L'identifiant entrant n'est repris que s'il correspond à `^[A-Za-z0-9._-]{8,64}$` ; sinon un UUID
+est généré **sans erreur ni avertissement**. Un collecteur qui émet un format plus large (espaces,
+ponctuation, au-delà de 64 caractères) perdrait donc le chaînage sans rien voir. Cette valeur ne
+sert pas qu'aux journaux : elle est renvoyée dans le corps des réponses 5xx (« Référence : … »),
+ce qui interdit d'y laisser passer des caractères de balisage.
+
 ## Ce qui est réellement détectable aujourd'hui
 
 Vérifié dans le code, pas déduit.
