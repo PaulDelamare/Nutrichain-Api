@@ -83,6 +83,38 @@ describe('docker-compose fournit tout ce que le boot exige', () => {
   });
 
   /**
+   * #249 — `- '5433:5432'` ne publie pas « sur l'hôte » au sens intuitif : Docker insère ses propres
+   * règles DNAT, en amont du pare-feu de la machine. Le port était donc joignable depuis tout le
+   * réseau local, avec un couple identifiant/mot de passe versionné — soit un accès SQL en écriture
+   * à la base multi-tenant, hors de tout contrôle applicatif. Le cloisonnement par organisation, le
+   * RBAC et l'inviolabilité du journal WORM tombaient ensemble.
+   *
+   * L'accès depuis l'hôte reste utile (lancer un seed ou un script e2e contre la pile, cf. Readme) :
+   * on ne retire pas la publication, on la RESTREINT à la boucle locale.
+   */
+  describe('PostgreSQL n’est joignable que depuis la machine (#249)', () => {
+    it('publie le port sur 127.0.0.1, pas sur toutes les interfaces', () => {
+      expect(compose).toMatch(/['"]127\.0\.0\.1:5433:5432['"]/);
+      // Une publication nue rouvrirait le port au réseau local sans que rien ne le signale.
+      expect(compose).not.toMatch(/^\s*-\s*['"]5433:5432['"]/m);
+    });
+
+    it('ne porte plus de mot de passe de base en clair dans le fichier', () => {
+      // Le couple `nutrichain/nutrichain` — identifiant et mot de passe identiques — est le premier
+      // que quiconque essaie. Il est remplacé par une variable, surchargeable pour un vrai
+      // déploiement.
+      expect(compose).not.toMatch(/POSTGRES_PASSWORD:\s*"?nutrichain"?\s*$/m);
+      expect(compose).toMatch(/POSTGRES_PASSWORD:\s*"\$\{POSTGRES_PASSWORD/);
+    });
+
+    it('dérive DATABASE_URL du même mot de passe, pour qu’ils ne puissent pas diverger', () => {
+      // Deux littéraux à maintenir en phase, c'est un « ça marche chez moi » en préparation.
+      expect(compose).toMatch(/DATABASE_URL:.*\$\{POSTGRES_PASSWORD/);
+      expect(compose).not.toMatch(/DATABASE_URL:\s*postgresql:\/\/nutrichain:nutrichain@/);
+    });
+  });
+
+  /**
    * Le fichier de démonstration doit rester utilisable en une commande : s'il cesse de fournir un
    * secret que le compose exige, `docker compose --env-file .env.demo up` échoue — et c'est la
    * première commande que lit un jury.
@@ -98,6 +130,17 @@ describe('docker-compose fournit tout ce que le boot exige', () => {
 
     it('déclare explicitement qu’il s’agit de secrets de démonstration', () => {
       expect(demo).toMatch(/^ALLOW_DEMO_SECRETS=1$/m);
+    });
+
+    /**
+     * Contrairement aux trois secrets, celui-ci garde un défaut : le rendre obligatoire cassait
+     * `docker compose logs`, `ps` et `down` pour quiconque travaille avec un `.env` plutôt qu'avec
+     * `.env.demo` — de la friction sans gain, puisqu'un processus local capable d'atteindre le port
+     * peut de toute façon lire ce fichier. La vraie protection est la liaison à `127.0.0.1`.
+     * `.env.demo` le déclare quand même, pour que la valeur de la démo soit écrite quelque part.
+     */
+    it('fournit POSTGRES_PASSWORD (#249)', () => {
+      expect(demo).toMatch(/^POSTGRES_PASSWORD=.+/m);
     });
   });
 });

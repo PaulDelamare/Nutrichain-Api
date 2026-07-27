@@ -205,19 +205,24 @@ la connexion fonctionne avec les comptes ci-dessus, écrans peuplés.
 Ce service est bâti sur l'étape `builder` du Dockerfile — la seule à embarquer `tsx`, absent de
 l'image de production (`npm ci --omit=dev`), sans lequel `prisma db seed` échouait.
 
-Le seed depuis l'hôte reste possible si besoin (PostgreSQL est exposé sur le port 5433) :
+Le seed depuis l'hôte reste possible si besoin. PostgreSQL est publié sur le port 5433, mais
+**uniquement sur `127.0.0.1`** : joignable depuis votre machine, pas depuis le réseau local (#249).
+Le mot de passe est celui de `.env.demo` (`POSTGRES_PASSWORD`), et non plus une valeur en dur.
 
 ```bash
 # bash / zsh
-export DATABASE_URL="postgresql://nutrichain:nutrichain@localhost:5433/nutrichain?schema=public"
+export DATABASE_URL="postgresql://nutrichain:nutrichain-demo-local@localhost:5433/nutrichain?schema=public"
 npx prisma db seed && npm run seed:demo
 ```
 
 ```powershell
 # PowerShell (Windows) — la syntaxe VAR=... npx ne fonctionne pas ici
-$env:DATABASE_URL = "postgresql://nutrichain:nutrichain@localhost:5433/nutrichain?schema=public"
+$env:DATABASE_URL = "postgresql://nutrichain:nutrichain-demo-local@localhost:5433/nutrichain?schema=public"
 npx prisma db seed; npm run seed:demo
 ```
+
+> Si vous surchargez `POSTGRES_PASSWORD` (déploiement réel, ou simplement un `.env` à vous), reportez
+> la même valeur dans ces commandes : c'est la base du conteneur qu'elles visent.
 
 Si l'ingestion IoT doit fonctionner dans le conteneur, enregistrer aussi la passerelle :
 `npm run iot:gateway -- --org usine-laitiere-paris --cle "$IOT_API_KEY"`.
