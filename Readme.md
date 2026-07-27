@@ -164,11 +164,20 @@ npm run lint     # ESLint
 ### Ou tout lancer avec Docker
 
 ```bash
-docker compose up --build   # PostgreSQL + MongoDB + seed automatique, puis l'API (port 3000)
+docker compose --env-file .env.demo up --build   # PostgreSQL + MongoDB + seed, puis l'API (port 3000)
 ```
 
+`--env-file .env.demo` n'est pas une formalité : les trois secrets (`BETTER_AUTH_SECRET`, `API_KEY`,
+`IOT_API_KEY`) n'ont **aucune valeur de repli**. Sans ce fichier, `docker compose` refuse de démarrer
+et dit laquelle manque, au lieu de démarrer en silence avec un secret publié dans ce dépôt (#248).
+
+Pour un déploiement réel, fournissez vos propres valeurs — `openssl rand -base64 32` — dans un `.env`
+qui n'est pas versionné. L'API refuse de démarrer si elle détecte une valeur de démonstration sans le
+drapeau `ALLOW_DEMO_SECRETS=1` que pose `.env.demo` : un `cp .env.example .env` laissé en l'état
+échoue donc au boot avec un message explicite, au lieu de tourner avec des marqueurs.
+
 > ⚠️ Cette pile est un **outil de démonstration locale**, pas un modèle de déploiement : elle seede
-> des comptes à mot de passe public et ses secrets ont des valeurs de repli publiées dans ce dépôt.
+> des comptes à mot de passe public et ses secrets de démonstration sont publiés dans `.env.demo`.
 > L'image applicative déclare `NODE_ENV=production` (`Dockerfile`), mais le compose le renverse
 > explicitement en `development` pour toute la pile : une base peuplée de comptes connus ne doit pas
 > se présenter comme une production. Un test verrouille cette ligne

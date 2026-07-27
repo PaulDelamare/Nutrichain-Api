@@ -48,4 +48,56 @@ describe('docker-compose fournit tout ce que le boot exige', () => {
   it('ne déclare aucun service en production, quel que soit le style YAML', () => {
     expect(compose).not.toMatch(/NODE_ENV:\s*["']?production/);
   });
+
+  /**
+   * #248 — Les trois secrets avaient une valeur de repli littérale, versionnée ici. `docker compose
+   * up` démarrait donc, sans rien dire, avec des secrets que quiconque a lu le dépôt connaît :
+   * `BETTER_AUTH_SECRET` signe les cookies de session (donc des sessions forgeables),
+   * `IOT_API_KEY` ouvre l'ingestion capteurs (donc le déclenchement ou l'étouffement d'alertes
+   * froid), `API_KEY` ouvre les routes qui n'exigent que la clé.
+   *
+   * `:?` fait échouer le démarrage avec un message clair au lieu de réussir avec un secret public.
+   * Les valeurs de démonstration vivent désormais dans `.env.demo`, où elles sont un choix explicite
+   * et non un défaut invisible.
+   */
+  describe('les secrets n’ont aucune valeur de repli (#248)', () => {
+    const SECRETS = ['BETTER_AUTH_SECRET', 'API_KEY', 'IOT_API_KEY'];
+
+    for (const secret of SECRETS) {
+      it(`${secret} est exigé, pas replié sur une valeur publiée`, () => {
+        // `:-` = « prends cette valeur si la variable est absente » ; `:?` = « échoue si absente ».
+        expect(compose).not.toMatch(new RegExp(`\\$\\{${secret}:-`));
+        expect(compose).toMatch(new RegExp(`\\$\\{${secret}:\\?`));
+      });
+
+      /**
+       * Le message de `:?` contient de la ponctuation, et un `: ` non protégé transforme la ligne
+       * en mapping imbriqué : `docker compose config` sort alors sur « mapping values are not
+       * allowed in this context » — la pile ne démarre plus du tout. C'est arrivé en écrivant ce
+       * correctif, et aucune assertion textuelle ne l'avait vu. Les guillemets referment le cas.
+       */
+      it(`${secret} garde sa valeur entre guillemets, pour que le message ne casse pas le YAML`, () => {
+        expect(compose).toMatch(new RegExp(`${secret}: "\\$\\{${secret}:\\?[^"]*}"`));
+      });
+    }
+  });
+
+  /**
+   * Le fichier de démonstration doit rester utilisable en une commande : s'il cesse de fournir un
+   * secret que le compose exige, `docker compose --env-file .env.demo up` échoue — et c'est la
+   * première commande que lit un jury.
+   */
+  describe('.env.demo couvre ce que le compose exige (#248)', () => {
+    const demo = readFileSync(join(process.cwd(), '.env.demo'), 'utf8');
+
+    for (const secret of ['BETTER_AUTH_SECRET', 'API_KEY', 'IOT_API_KEY']) {
+      it(`fournit ${secret}`, () => {
+        expect(demo).toMatch(new RegExp(`^${secret}=.+`, 'm'));
+      });
+    }
+
+    it('déclare explicitement qu’il s’agit de secrets de démonstration', () => {
+      expect(demo).toMatch(/^ALLOW_DEMO_SECRETS=1$/m);
+    });
+  });
 });
