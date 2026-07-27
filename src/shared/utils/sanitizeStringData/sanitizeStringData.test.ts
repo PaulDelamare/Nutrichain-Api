@@ -55,4 +55,63 @@ describe('sanitizeDataWithHtml', () => {
     expect(result.age).toBe(30);
     expect(result.description).toBe('<p>Valid HTML</p>');
   });
+
+  /**
+   * #245 — Un mot de passe ne sort jamais en HTML : il va au hachage. L'assainir ne protège donc
+   * rien, et le faire avec `allowedTags: []` SUPPRIME le contenu de ce qui ressemble à une balise.
+   * Un mot de passe `abc<def123456` était haché comme `abc` : trois caractères, sans un mot à
+   * l'utilisateur. L'exemption est le comportement PAR DÉFAUT de la fonction — un appelant ne peut
+   * pas l'oublier.
+   */
+  describe('champs de secret (#245)', () => {
+    it('laisse intact un mot de passe contenant ce qui ressemble à une balise', () => {
+      const result = sanitizeDataWithHtml({ password: 'Pa$$w0rd<Secret>2026!' });
+
+      expect(result.password).toBe('Pa$$w0rd<Secret>2026!');
+    });
+
+    it('laisse intact un mot de passe tronqué par un chevron ouvrant seul', () => {
+      // Le cas le plus violent : `sanitizeHtml` supprimait tout ce qui suit le `<`.
+      const result = sanitizeDataWithHtml({ password: 'abc<def123456' });
+
+      expect(result.password).toBe('abc<def123456');
+    });
+
+    it("n'échappe pas l'esperluette d'un mot de passe", () => {
+      // `a&b` devenait `a&amp;b` : le secret stocké n'était plus celui saisi.
+      const result = sanitizeDataWithHtml({ password: 'a&b&c123456' });
+
+      expect(result.password).toBe('a&b&c123456');
+    });
+
+    it('couvre toute la famille des champs de mot de passe', () => {
+      const input = {
+        newPassword: 'a<b>1',
+        currentPassword: 'c<d>2',
+        confirmPassword: 'e&f3',
+      };
+
+      const result = sanitizeDataWithHtml(input);
+
+      expect(result.newPassword).toBe('a<b>1');
+      expect(result.currentPassword).toBe('c<d>2');
+      expect(result.confirmPassword).toBe('e&f3');
+    });
+
+    it('continue d assainir les champs métier, y compris ceux nommés « code »', () => {
+      // Garde-fou : l'exemption doit rester étroite. `code` est un champ MÉTIER de ce dépôt
+      // (code d'unité, `qr_code_id`), et il est affiché — il doit rester assaini.
+      const input = {
+        nom: '<script>alert(1)</script>Ferme Bio',
+        code: '<b>KG</b>',
+        note_technique: '<img src=x onerror=alert(1)>',
+      };
+
+      const result = sanitizeDataWithHtml(input);
+
+      expect(result.nom).toBe('Ferme Bio');
+      expect(result.code).toBe('KG');
+      expect(result.note_technique).toBe('');
+    });
+  });
 });
