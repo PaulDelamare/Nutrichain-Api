@@ -31,4 +31,21 @@ describe('docker-compose fournit tout ce que le boot exige', () => {
   it('déclare ADDITIONAL_TRUSTED_ORIGINS dans l’environnement partagé', () => {
     expect(compose).toContain('ADDITIONAL_TRUSTED_ORIGINS:');
   });
+
+  /**
+   * Cette pile seede des comptes à mot de passe public, dont un admin de plateforme, et ses secrets
+   * ont des valeurs de repli publiées ici. Elle ne doit donc jamais tourner en production (#246).
+   *
+   * L'assertion porte sur la PRÉSENCE de `development`, pas seulement sur l'absence de
+   * `production` : l'image, elle, déclare `ENV NODE_ENV=production` (`Dockerfile`). Retirer la
+   * ligne de l'ancre partagée ne laisse donc pas la pile « sans valeur » — elle la fait retomber
+   * en production, et une assertion en négatif resterait verte en réintroduisant le défaut.
+   */
+  it('déclare NODE_ENV: development dans l’environnement partagé', () => {
+    expect(compose).toContain('NODE_ENV: development');
+  });
+
+  it('ne déclare aucun service en production, quel que soit le style YAML', () => {
+    expect(compose).not.toMatch(/NODE_ENV:\s*["']?production/);
+  });
 });

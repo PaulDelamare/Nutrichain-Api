@@ -143,6 +143,17 @@ async function purgeE2EResidue(orgId: string) {
 }
 
 async function main() {
+  // Ce seed ne crée aucun compte : la garde ne ferme donc pas de faille, elle aligne le seed de
+  // démonstration sur celui de base (`seed.ts`), qui refuse déjà la production. Sans elle, la
+  // moitié « données » d'un jeu de démonstration reste injectable là où la moitié « comptes »
+  // est refusée — et c'est le genre d'écart qu'on ne remarque qu'une fois les données en place.
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      'Ce seed de démonstration ne doit jamais tourner en production : il injecte un jeu de ' +
+        `données fictif (lots, expéditions, alertes). NODE_ENV="${process.env.NODE_ENV}".`
+    );
+  }
+
   logger.info('🌱 Seed DÉMO — jeu de données riche…');
 
   const org = await prisma.organization.findUnique({ where: { slug: 'usine-laitiere-paris' } });
