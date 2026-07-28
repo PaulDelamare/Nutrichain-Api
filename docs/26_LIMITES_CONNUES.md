@@ -10,7 +10,9 @@ coûterait sa fermeture.
 ## Comment ce document a été établi
 
 Par lecture du code, pas par relecture des documents : requête dans les migrations, inventaire des
-81 routes déclarées, recherche dans les sources.
+~74 endpoints applicatifs, recherche dans les sources. *(77 déclarations `router.<verbe>`, dont
+trois sont des middlewares de validation greffés sur des chemins Better-Auth, plus quatre
+`router.all('/auth/*')` qui sont des couches de middleware et non des endpoints.)*
 
 **Cette méthode a produit trois affirmations fausses**, corrigées depuis et signalées comme telles
 dans le corps du document. Les trois venaient de la même faute : une recherche textuelle qui ne
@@ -93,8 +95,13 @@ l'intégration continue.
 **Conséquence** : une faille publiée sur une dépendance n'est signalée par rien. Personne ne
 l'apprend avant de la chercher.
 
-**Ce qu'a donné la première recherche** (28/07/2026, à la main) : **13 avis, dont un critique**. Les
-correctifs sans rupture ont été appliqués — il en reste **7**, et ils se ramènent à deux causes :
+**Ce qu'a donné la première recherche** (28/07/2026, à la main) : **13 avis, dont un critique sur la
+bibliothèque d'authentification**. C'est l'état de la branche de préproduction à la date de ce
+document.
+
+Les correctifs sans rupture sont réunis dans une PR **non encore intégrée** : une fois celle-ci
+mergée, il en restera **7**, se ramenant à deux causes. *(Tant qu'elle ne l'est pas, les 13 avis
+sont toujours là — ne pas lire les lignes qui suivent comme l'état courant.)*
 
 - **cinq** ne sont qu'une seule chaîne d'outillage de test (`@vitest/coverage-v8` → `test-exclude` →
   `glob` → `minimatch` → `brace-expansion`) : une seule montée majeure les ferme tous ;
@@ -184,11 +191,14 @@ traçabilité de la décision est ainsi structurelle.
 **Vérifié par exécution** (rôle `quality`, serveur réel) : un lot `EN_STOCK` passe à `BLOQUE` après
 `POST /organization/quality-controls` avec `resultat: NON_CONFORME`.
 
-Les chemins qui écrivent `BLOQUE` sont **trois**, et non deux :
+Les chemins qui écrivent `BLOQUE` sont **trois** :
 
-1. un contrôle qualité `NON_CONFORME`, à la réception **ou sur un lot déjà en stock** ;
-2. une excursion thermique détectée sur la télémétrie (`iotAlert.service.ts`) ;
-3. le rappel, lui, n'écrit **pas** `BLOQUE` mais `ALERTE`. La version précédente les confondait.
+1. un contrôle qualité `NON_CONFORME` **sur un lot déjà en stock** — le geste manuel ;
+2. un contrôle `NONCONFORME` ou `ALERTE` **à la réception**, qui fait naître le lot déjà bloqué ;
+3. une excursion thermique détectée sur la télémétrie (`iotAlert.service.ts`).
+
+Le rappel, lui, n'écrit **pas** `BLOQUE` mais `ALERTE`, un statut irréversible. La version
+précédente de ce document confondait les deux.
 
 ### 🟥 En revanche, une quarantaine qualité ne se lève pas
 
@@ -236,7 +246,7 @@ personne.
 
 | Ressource | Ce qui manque | Conséquence |
 |---|---|---|
-| Transformations | Aucune lecture (`POST` seul) | On en crée, on n'en relit jamais. Impossible de répondre à « qu'a-t-on produit mardi ? » — la généalogie est centrée sur le lot, pas sur l'opération. |
+| Transformations | Pas de ressource propre, et aucun filtre par date | Elles **se relisent** — chaque transformation écrit deux mouvements (`TRANSFORMATION_ENTREE` / `TRANSFORMATION_SORTIE`) que `GET /organization/movements` restitue. Mais ce journal ne se filtre que par lot : répondre à « qu'a-t-on produit mardi ? » impose de tout parcourir. *(Correction : une version antérieure les disait en écriture seule.)* |
 | Expéditions | Pas de détail par identifiant | On crée et on liste, on ne consulte jamais une expédition précise. |
 | Matériel | Ni modification, ni archivage | Une cuve mal nommée l'est définitivement ; une cuve retirée du service reste proposée dans les listes. Toutes les autres ressources ont leur bascule d'activité — le matériel a été oublié. |
 | Passerelles IoT | Pas de modification | Seule la révocation est possible. |
