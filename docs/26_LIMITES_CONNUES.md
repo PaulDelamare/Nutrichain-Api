@@ -205,12 +205,14 @@ structurante de cette liste.
 
 ## 3. Exploitation et livraison
 
-### 🟨 La branche de production a 632 commits de retard
+### 🟨 La branche de production a 635 commits de retard (au 28/07/2026)
 
 **C'est la dette la plus visible du projet.** L'image publiée ne correspond à rien de ce qui est
 décrit dans cette documentation : aucune des corrections récentes n'y figure.
 
 **Coût de fermeture** : ce n'est pas du code à écrire, c'est une décision de livraison à prendre.
+Ce chiffre est le seul de ce document qui **croît tout seul** : chaque intégration sur la branche de
+préproduction l'augmente tant que la promotion n'est pas faite.
 
 ### 🟨 L'arrêt propre ne s'exécute jamais en conteneur
 
