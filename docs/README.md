@@ -1,6 +1,6 @@
 # Index de la documentation
 
-Vingt-huit documents se sont accumulés au fil du projet. Certains décrivent le code d'aujourd'hui,
+Vingt-neuf documents se sont accumulés au fil du projet. Certains décrivent le code d'aujourd'hui,
 d'autres une intention passée. **Rien ne les distinguait** : il fallait ouvrir chaque fichier pour
 savoir lequel faisait foi — et deux d'entre eux enseignaient un modèle de sécurité supprimé depuis.
 
@@ -20,6 +20,7 @@ Cet index tranche. Trois statuts, un seul sens de lecture.
 |---|:--:|---|
 | [`20_PRESENTATION_PROJET.md`](20_PRESENTATION_PROJET.md) | ✅ | Problème → réponse → démonstration → preuves, déroulé chronométré et plan B. **Commencer ici.** |
 | [`19_architecture.md`](19_architecture.md) | ✅ | Cinq diagrammes : contexte, modules, anatomie d'un module, flux EPCIS, décisions. |
+| [`26_LIMITES_CONNUES.md`](26_LIMITES_CONNUES.md) | ✅ | **Ce que le projet n'a pas** : inventaire vérifié dans le code, chaque limite avec sa conséquence et son coût de fermeture. Y compris ce qui, contrairement à une idée reçue, ne manque pas. |
 | [`00_contexte_projet.md`](00_contexte_projet.md) | 📌 | Cadrage initial et besoins métier. |
 
 ## Le métier
