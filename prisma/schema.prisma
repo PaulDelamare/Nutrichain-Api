@@ -195,7 +195,12 @@ model TwoFactor {
   // par sa table : sans ces deux colonnes, l'enrôlement 2FA échoue en 500 dès la montée de version
   // (« Unknown argument `failedVerificationCount` »). Le complément logique du verrou par compte
   // qui protège déjà le mot de passe : le second facteur, lui, n'était pas freiné.
-  failedVerificationCount Int?      @default(0)
+  // NON NULLABLE à dessein. Better-Auth incrémente ce compteur (`increment: 1`) et relit le
+  // résultat avec `?? 0` pour décider du verrouillage. Or `NULL + 1` vaut `NULL` en SQL : une
+  // seule ligne à `NULL` désactiverait le verrou pour cet utilisateur, définitivement et sans
+  // bruit. La bibliothèque n'écrit jamais `NULL` ici — seulement `0` ou un incrément — donc rien
+  // ne justifie de laisser cette porte ouverte.
+  failedVerificationCount Int       @default(0)
   lockedUntil             DateTime?
 
   @@index([secret])
