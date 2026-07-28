@@ -1,6 +1,9 @@
 import path from 'path';
 import swaggerJsdoc from 'swagger-jsdoc';
 
+/** Un chemin système devient un motif `glob` : seule la barre oblique y sépare des segments. */
+const toGlob = (systemPath: string): string => systemPath.split(path.sep).join('/');
+
 const options: swaggerJsdoc.Options = {
   definition: {
     openapi: '3.0.0',
@@ -43,6 +46,12 @@ const options: swaggerJsdoc.Options = {
   /**
    * Les annotations sont lues dans les FICHIERS, pas dans le code chargé.
    *
+   * ⚠️ Le séparateur est normalisé en barre oblique : depuis `swagger-jsdoc` 6.3.0, la recherche
+   * passe par `glob` 11, qui traite l'antislash comme un caractère d'échappement et non comme un
+   * séparateur. Sur Windows, `path.join` en produit — la spécification tombait alors à ZÉRO chemin,
+   * et seulement là. La CI tourne sous Linux, où `path.sep` vaut déjà `/` : elle serait restée
+   * verte pendant que `/api-docs` servait une page vide sur les postes de développement.
+   *
    * Le glob est ancré sur `__dirname`, donc sur l'arbre RÉELLEMENT exécuté : `src/` sous `tsx`,
    * `dist/` en conteneur. Deux défauts sont évités d'un coup.
    *
@@ -55,8 +64,8 @@ const options: swaggerJsdoc.Options = {
    * une doc ancienne — voire une route supprimée depuis. Le même défaut, déplacé.
    */
   apis: [
-    path.join(__dirname, '../../modules/**/*.routes.{ts,js}'),
-    path.join(__dirname, '../../app.{ts,js}'),
+    toGlob(path.join(__dirname, '../../modules/**/*.routes.{ts,js}')),
+    toGlob(path.join(__dirname, '../../app.{ts,js}')),
   ],
 };
 
