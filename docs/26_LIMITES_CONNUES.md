@@ -80,11 +80,16 @@ chiffrement disque de la machine hôte, s'il est activé.
 Ni analyse des dépendances, ni analyse statique de sécurité, ni détection de secrets commités dans
 l'intégration continue.
 
-**Conséquence** : une faille publiée sur une dépendance ne serait signalée par rien. Personne ne
-l'apprendrait avant de la chercher.
+**Conséquence** : une faille publiée sur une dépendance n'est signalée par rien. Personne ne
+l'apprend avant de la chercher.
+
+**Ce qu'a donné la première recherche** (28/07/2026, à la main) : **13 avis, dont 12 sur des
+dépendances de production et un critique**. Les correctifs sans rupture ont été appliqués — il en
+reste **7**, qui exigent tous un changement de version majeure : `nodemailer` 8 → 9 (production) et
+la chaîne Vitest 3 → 4 (outillage). Ce sont des migrations à décider, pas des correctifs.
 
 **Coût de fermeture** : très faible — un fichier de configuration. C'est le contrôle le moins cher
-de tout ce document.
+de tout ce document, et le seul qui empêche la prochaine faille d'attendre qu'on la cherche.
 
 ### 🟧 Les journaux ne sortent pas de la machine
 
@@ -107,18 +112,32 @@ intervention en base le rétablit. Cette conséquence se cumule avec la suivante
 
 ## 2. Fonctionnel — ce que l'API ne permet pas
 
-### 🟥 Pas de réinitialisation de mot de passe
+### 🟥 La réinitialisation de mot de passe est implémentée, mais fermée
 
-Aucun endpoint de mot de passe oublié.
+**Correction d'une version antérieure de ce document**, qui affirmait qu'aucun endpoint n'existait.
+C'était faux, et l'erreur venait d'une recherche sensible à la casse qui ne pouvait pas trouver
+`sendResetPassword`.
 
-**Conséquence** : un utilisateur qui oublie son mot de passe est définitivement enfermé dehors.
-Seule une intervention directe en base le débloque. C'est le premier défaut qu'un nouvel
-utilisateur rencontre.
+Le service existe bel et bien : `auth.config.ts` configure `sendResetPassword`, et le courriel a son
+gabarit (`ResetPasswordEmail`). Ce sont les **routes** qui sont fermées : `allowAuthRoutes` est une
+allowlist de sept couples chemin + méthode, et ni `/auth/forget-password` ni `/auth/reset-password`
+n'y figurent. Vérifié en HTTP réel : les deux répondent **403**.
 
-**Effet de bord à connaître** : le verrouillage anti-bruteforce justifie son compromis par l'absence
-de cette fonctionnalité — un verrou temporaire de 15 minutes plutôt que définitif, précisément
-parce qu'aucune réinitialisation n'existe. Un manque fonctionnel est ainsi devenu un argument de
-conception : le combler impose de revoir ce raisonnement.
+C'est le même choix que pour les codes de secours de la double authentification — on n'ouvre du
+passthrough Better-Auth que ce qu'un client implémente réellement, parce que ces routes ne
+traversent ni le contrôle des rôles ni le journal d'audit.
+
+**Conséquence, inchangée** : un utilisateur qui oublie son mot de passe est enfermé dehors, et seule
+une intervention directe en base le débloque.
+
+**Ce qui change, c'est le coût** : il ne s'agit pas de construire un parcours, mais d'ouvrir deux
+entrées d'allowlist, de vérifier que l'envoi de courriel fonctionne, et de décider ce qu'on fait de
+l'absence de RBAC et d'audit sur ces deux routes — c'est précisément la raison pour laquelle elles
+ont été fermées.
+
+**Effet de bord à connaître** : le verrouillage anti-bruteforce justifie son compromis — un verrou
+de 15 minutes plutôt que définitif — par le fait que la réinitialisation « n'est pas exposée ». Ce
+commentaire est exact. Ouvrir ces routes impose donc de revoir ce raisonnement.
 
 ### 🟥 Pas de mise en quarantaine manuelle
 
