@@ -33,6 +33,14 @@ export interface AuthUser {
   emailVerified: boolean;
   createdAt: Date;
   updatedAt: Date;
+  /**
+   * Ajouté par le plugin `twoFactor` de Better-Auth : présent à l'exécution, il ne figurait pas
+   * dans ce type. L'écran 2FA du front en dépend, et il devait donc le récupérer par un cast — un
+   * champ que le contrat typé effaçait. Le déclarer ici supprime le cast des deux côtés (#251).
+   *
+   * Optionnel : un utilisateur créé avant l'activation du plugin ne le porte pas.
+   */
+  twoFactorEnabled?: boolean;
 }
 
 /**

@@ -63,6 +63,27 @@ describe('Logger', () => {
       expect(content).toContain('Method: GET, Path: /test');
       expect(mockNext).toHaveBeenCalled();
     });
+
+    /**
+     * #253 — `logs/request.log` n'est borné par aucune durée de conservation, et
+     * `docs/22_JOURNALISATION_SIEM.md` désigne `logs/` comme point d'ingestion du collecteur. Un
+     * jeton d'invitation écrit ici partait donc au SIEM et y restait : qui le lisait devenait
+     * membre au rôle invité, sans aucune session.
+     */
+    it("n'écrit pas le jeton d'invitation dans le journal des requêtes", async () => {
+      const jeton = '33333333-3333-4333-8333-333333333333';
+      const mockReq = {
+        method: 'GET',
+        originalUrl: `/api/identity/invitations/${jeton}/preview`,
+      };
+
+      await requestLog(mockReq as unknown, {} as unknown, vi.fn());
+
+      const content = await fs.readFile(getRequestFile(), 'utf-8');
+      expect(content).not.toContain(jeton);
+      // La ligne reste exploitable pour le diagnostic : on sait quelle route a été appelée.
+      expect(content).toContain('/api/identity/invitations/');
+    });
   });
 
   describe('rotateLog', () => {

@@ -3,6 +3,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { createFileIfDoesNotExist } from '../createFile/createFile';
 import { Request, Response } from 'express';
+import { redactUrl } from './redactUrl';
 
 const getLogDir = () => process.env.LOG_DIR || 'logs';
 const MAX_LOG_SIZE = 5 * 1024 * 1024;
@@ -30,7 +31,9 @@ export const writeLog = async (file: string, message: string): Promise<void> => 
  */
 export const requestLog = async (req: Request, res: Response, next: () => void): Promise<void> => {
   const method = req.method;
-  const url = req.originalUrl;
+  // Masqué AVANT écriture (#253) : `logs/request.log` n'a aucune borne de conservation et part au
+  // SIEM. Un jeton d'invitation écrit ici y restait, et suffisait à devenir membre.
+  const url = redactUrl(req.originalUrl);
   const requestFile = path.join(getLogDir(), 'request.log');
   await writeLog(requestFile, `Method: ${method}, Path: ${url}`);
   next();

@@ -48,4 +48,99 @@ describe('docker-compose fournit tout ce que le boot exige', () => {
   it('ne déclare aucun service en production, quel que soit le style YAML', () => {
     expect(compose).not.toMatch(/NODE_ENV:\s*["']?production/);
   });
+
+  /**
+   * #248 — Les trois secrets avaient une valeur de repli littérale, versionnée ici. `docker compose
+   * up` démarrait donc, sans rien dire, avec des secrets que quiconque a lu le dépôt connaît :
+   * `BETTER_AUTH_SECRET` signe les cookies de session (donc des sessions forgeables),
+   * `IOT_API_KEY` ouvre l'ingestion capteurs (donc le déclenchement ou l'étouffement d'alertes
+   * froid), `API_KEY` ouvre les routes qui n'exigent que la clé.
+   *
+   * `:?` fait échouer le démarrage avec un message clair au lieu de réussir avec un secret public.
+   * Les valeurs de démonstration vivent désormais dans `.env.demo`, où elles sont un choix explicite
+   * et non un défaut invisible.
+   */
+  describe('les secrets n’ont aucune valeur de repli (#248)', () => {
+    const SECRETS = ['BETTER_AUTH_SECRET', 'API_KEY', 'IOT_API_KEY'];
+
+    for (const secret of SECRETS) {
+      it(`${secret} est exigé, pas replié sur une valeur publiée`, () => {
+        // `:-` = « prends cette valeur si la variable est absente » ; `:?` = « échoue si absente ».
+        expect(compose).not.toMatch(new RegExp(`\\$\\{${secret}:-`));
+        expect(compose).toMatch(new RegExp(`\\$\\{${secret}:\\?`));
+      });
+
+      /**
+       * Le message de `:?` contient de la ponctuation, et un `: ` non protégé transforme la ligne
+       * en mapping imbriqué : `docker compose config` sort alors sur « mapping values are not
+       * allowed in this context » — la pile ne démarre plus du tout. C'est arrivé en écrivant ce
+       * correctif, et aucune assertion textuelle ne l'avait vu. Les guillemets referment le cas.
+       */
+      it(`${secret} garde sa valeur entre guillemets, pour que le message ne casse pas le YAML`, () => {
+        expect(compose).toMatch(new RegExp(`${secret}: "\\$\\{${secret}:\\?[^"]*}"`));
+      });
+    }
+  });
+
+  /**
+   * #249 — `- '5433:5432'` ne publie pas « sur l'hôte » au sens intuitif : Docker insère ses propres
+   * règles DNAT, en amont du pare-feu de la machine. Le port était donc joignable depuis tout le
+   * réseau local, avec un couple identifiant/mot de passe versionné — soit un accès SQL en écriture
+   * à la base multi-tenant, hors de tout contrôle applicatif. Le cloisonnement par organisation, le
+   * RBAC et l'inviolabilité du journal WORM tombaient ensemble.
+   *
+   * L'accès depuis l'hôte reste utile (lancer un seed ou un script e2e contre la pile, cf. Readme) :
+   * on ne retire pas la publication, on la RESTREINT à la boucle locale.
+   */
+  describe('PostgreSQL n’est joignable que depuis la machine (#249)', () => {
+    it('publie le port sur 127.0.0.1, pas sur toutes les interfaces', () => {
+      expect(compose).toMatch(/['"]127\.0\.0\.1:5433:5432['"]/);
+      // Une publication nue rouvrirait le port au réseau local sans que rien ne le signale.
+      expect(compose).not.toMatch(/^\s*-\s*['"]5433:5432['"]/m);
+    });
+
+    it('ne porte plus de mot de passe de base en clair dans le fichier', () => {
+      // Le couple `nutrichain/nutrichain` — identifiant et mot de passe identiques — est le premier
+      // que quiconque essaie. Il est remplacé par une variable, surchargeable pour un vrai
+      // déploiement.
+      expect(compose).not.toMatch(/POSTGRES_PASSWORD:\s*"?nutrichain"?\s*$/m);
+      expect(compose).toMatch(/POSTGRES_PASSWORD:\s*"\$\{POSTGRES_PASSWORD/);
+    });
+
+    it('dérive DATABASE_URL du même mot de passe, pour qu’ils ne puissent pas diverger', () => {
+      // Deux littéraux à maintenir en phase, c'est un « ça marche chez moi » en préparation.
+      expect(compose).toMatch(/DATABASE_URL:.*\$\{POSTGRES_PASSWORD/);
+      expect(compose).not.toMatch(/DATABASE_URL:\s*postgresql:\/\/nutrichain:nutrichain@/);
+    });
+  });
+
+  /**
+   * Le fichier de démonstration doit rester utilisable en une commande : s'il cesse de fournir un
+   * secret que le compose exige, `docker compose --env-file .env.demo up` échoue — et c'est la
+   * première commande que lit un jury.
+   */
+  describe('.env.demo couvre ce que le compose exige (#248)', () => {
+    const demo = readFileSync(join(process.cwd(), '.env.demo'), 'utf8');
+
+    for (const secret of ['BETTER_AUTH_SECRET', 'API_KEY', 'IOT_API_KEY']) {
+      it(`fournit ${secret}`, () => {
+        expect(demo).toMatch(new RegExp(`^${secret}=.+`, 'm'));
+      });
+    }
+
+    it('déclare explicitement qu’il s’agit de secrets de démonstration', () => {
+      expect(demo).toMatch(/^ALLOW_DEMO_SECRETS=1$/m);
+    });
+
+    /**
+     * Contrairement aux trois secrets, celui-ci garde un défaut : le rendre obligatoire cassait
+     * `docker compose logs`, `ps` et `down` pour quiconque travaille avec un `.env` plutôt qu'avec
+     * `.env.demo` — de la friction sans gain, puisqu'un processus local capable d'atteindre le port
+     * peut de toute façon lire ce fichier. La vraie protection est la liaison à `127.0.0.1`.
+     * `.env.demo` le déclare quand même, pour que la valeur de la démo soit écrite quelque part.
+     */
+    it('fournit POSTGRES_PASSWORD (#249)', () => {
+      expect(demo).toMatch(/^POSTGRES_PASSWORD=.+/m);
+    });
+  });
 });

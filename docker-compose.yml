@@ -1,11 +1,14 @@
 # Pile de DÉMONSTRATION LOCALE : PostgreSQL + MongoDB + seed, puis l'API.
-#   docker compose up --build
-# Les variables sont surchargées par un fichier .env à la racine s'il existe
-# (mêmes noms que .env.example) ; les valeurs par défaut suffisent pour une démo locale.
+#   docker compose --env-file .env.demo up --build
+#
+# `--env-file .env.demo` est nécessaire : les trois secrets n'ont AUCUNE valeur de repli (#248).
+# Sans lui, compose refuse de démarrer et nomme la variable manquante, au lieu de démarrer en
+# silence avec un secret publié dans ce dépôt. Les autres variables (URL, ports, SMTP de test)
+# gardent des défauts : le confort n'est perdu que là où il était dangereux.
 #
 # Ce n'est pas un modèle de déploiement : la base est peuplée de comptes à mot de passe
-# public, et les secrets ci-dessous ont des valeurs de repli connues. Aucun service ne
-# doit donc s'y déclarer en production.
+# public, et les secrets de `.env.demo` sont lisibles par tous. Aucun service ne doit donc
+# s'y déclarer en production. Pour un vrai déploiement, fournir un `.env` non versionné.
 
 # Environnement applicatif partagé par l'API et le service de seed. Source unique :
 # une origine ou un secret qui divergerait entre les deux ferait seeder une base que
@@ -20,7 +23,9 @@ x-app-env: &app-env
   # Cette ligne n'est pas un simple défaut : l'image applicative porte `ENV NODE_ENV=production`
   # (Dockerfile). La retirer ne rend pas la pile neutre, elle la remet en production.
   NODE_ENV: development
-  DATABASE_URL: postgresql://nutrichain:nutrichain@postgres:5432/nutrichain?schema=public
+  # Le mot de passe vient d'UNE variable, utilisée ici et par le service `postgres`. Deux littéraux
+  # à maintenir en phase, c'est un « ça marche chez moi » en préparation (#249).
+  DATABASE_URL: "postgresql://nutrichain:${POSTGRES_PASSWORD:-nutrichain-demo-local}@postgres:5432/nutrichain?schema=public"
   MONGO_URI: mongodb://mongo:27017/nutrichain-logs
   API_URL: ${API_URL:-http://localhost:3000}
   BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
@@ -28,12 +33,22 @@ x-app-env: &app-env
   # Origines navigateur de confiance additionnelles (CORS + Better-Auth), separees par des
   # virgules. Le mode web d'Expo (port 8081) y est declare par defaut pour la demo mobile.
   ADDITIONAL_TRUSTED_ORIGINS: ${ADDITIONAL_TRUSTED_ORIGINS:-http://localhost:8081}
-  BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-secret-de-demo-docker-32-caracteres-minimum}
-  API_KEY: ${API_KEY:-cle-api-de-demo-docker-a-remplacer-en-production}
+  # Les trois secrets n'ont AUCUNE valeur de repli : `:?` fait échouer `docker compose` avec un
+  # message clair plutôt que de démarrer, sans rien dire, avec un secret publié dans ce dépôt
+  # (#248). Un secret que tout le monde peut lire n'en est pas un — `BETTER_AUTH_SECRET` signe les
+  # cookies de session, `IOT_API_KEY` ouvre l'ingestion capteurs.
+  #
+  # La démonstration locale reste à une commande, mais elle se déclare :
+  #     docker compose --env-file .env.demo up --build
+  # `ALLOW_DEMO_SECRETS` (posé par ce fichier) autorise alors l'API à démarrer avec ces valeurs
+  # connues ; sans lui, `assertEnv()` refuse au boot.
+  ALLOW_DEMO_SECRETS: ${ALLOW_DEMO_SECRETS:-}
+  BETTER_AUTH_SECRET: "${BETTER_AUTH_SECRET:?requis - pour la demo, ajouter --env-file .env.demo ; sinon generer avec openssl rand -base64 32}"
+  API_KEY: "${API_KEY:?requis - pour la demo, ajouter --env-file .env.demo ; sinon generer avec openssl rand -base64 32}"
   # Secret des capteurs, DISTINCT d'API_KEY (qui, elle, est publique : compilée dans le bundle
   # mobile). Exigée au démarrage : sans elle le conteneur sortait en boucle de redémarrage.
   # Elle n'ouvre l'ingestion que si une passerelle la porte en base (`npm run iot:gateway`).
-  IOT_API_KEY: ${IOT_API_KEY:-cle-capteurs-de-demo-docker-a-remplacer-en-production}
+  IOT_API_KEY: "${IOT_API_KEY:?requis - pour la demo, ajouter --env-file .env.demo ; sinon generer avec openssl rand -base64 32}"
   # Doit correspondre à une organisation existante ; celle du seed par défaut.
   API_KEY_ORG_ID: ${API_KEY_ORG_ID:-usine-laitiere-paris}
   SMTP_HOST: ${SMTP_HOST:-smtp.ethereal.email}
@@ -48,12 +63,23 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: nutrichain
-      POSTGRES_PASSWORD: nutrichain
+      # ⚠️ `initdb` ne s'exécute qu'à la CRÉATION du volume : changer ce mot de passe sur un
+      # `pgdata` existant n'a aucun effet, la base continue d'attendre l'ancien — et c'est
+      # `DATABASE_URL` qui échoue alors, sur une erreur d'authentification qui ne dit pas pourquoi.
+      # Après un changement : `docker compose down -v`, ou un `ALTER USER nutrichain WITH PASSWORD`.
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-nutrichain-demo-local}"
       POSTGRES_DB: nutrichain
     ports:
       # 5433 côté hôte pour ne pas entrer en conflit avec un PostgreSQL local
-      # (utile pour lancer le seed depuis l'hôte : DATABASE_URL sur localhost:5433).
-      - '5433:5432'
+      # (utile pour lancer un seed ou un script e2e depuis l'hôte : DATABASE_URL sur localhost:5433).
+      #
+      # L'adresse `127.0.0.1` n'est pas décorative (#249). Une publication nue — `'5433:5432'` —
+      # écoute sur TOUTES les interfaces, et Docker insère ses règles DNAT EN AMONT du pare-feu de
+      # la machine : le port était donc joignable depuis tout le réseau local, mot de passe
+      # versionné à l'appui. C'est un accès SQL en écriture à la base multi-tenant, hors de tout
+      # contrôle applicatif — le cloisonnement par organisation, le RBAC et l'inviolabilité du
+      # journal WORM tombaient ensemble, et ce dernier est un livrable noté.
+      - '127.0.0.1:5433:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
