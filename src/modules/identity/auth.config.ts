@@ -41,7 +41,13 @@ export const auth = betterAuth({
 
       // Si le retour est une erreur API, on peut la traduire
       if (error instanceof BetterAuthError) {
-        const expectedError = error as Error & { body?: { code?: string }; statusCode?: number };
+        // On repart du type de Better-Auth plutôt que de le convertir en `Error` : depuis la 1.6.25,
+        // son `APIError` ne déclare plus `name`, donc la conversion ne compilait plus. Seuls
+        // `body.code` et `statusCode` sont ajoutés — les deux champs réellement lus ici.
+        const expectedError = error as BetterAuthError & {
+          body?: { code?: string };
+          statusCode?: number;
+        };
         let message: string = expectedError.message || "Erreur d'authentification";
 
         const errCode = expectedError.body?.code;
