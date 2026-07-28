@@ -9,9 +9,19 @@ coûterait sa fermeture.
 
 ## Comment ce document a été établi
 
-Par lecture du code, pas par relecture des documents. Chaque absence a été constatée : requête dans
-les migrations, inventaire des 81 routes déclarées, recherche dans les sources. Les affirmations qui
-proviendraient d'un autre document sans avoir été vérifiées n'y figurent pas.
+Par lecture du code, pas par relecture des documents : requête dans les migrations, inventaire des
+81 routes déclarées, recherche dans les sources.
+
+**Cette méthode a produit trois affirmations fausses**, corrigées depuis et signalées comme telles
+dans le corps du document. Les trois venaient de la même faute : une recherche textuelle qui ne
+trouve pas le mot cherché a été prise pour la preuve que la capacité n'existe pas. Une recherche
+sensible à la casse ne voit pas `sendResetPassword` ; chercher « quarantaine » ne trouve pas un
+blocage écrit par un service de contrôle qualité.
+
+**La règle qui en découle, et qui vaut pour toute mise à jour de ce document** : une absence ne
+s'établit pas par une recherche qui ne trouve rien. Elle s'établit en **exécutant** — un appel HTTP
+réel contre le serveur, une action dans l'application. Les entrées de ce document marquées comme
+vérifiées par exécution sont les seules sur lesquelles s'appuyer sans revérifier.
 
 **Périmètre : le dépôt de l'API.** Le front et le mobile ont leurs propres limites, hors de cette
 liste. Ce document est donc fermé sur son périmètre, pas sur le projet entier.
@@ -83,10 +93,14 @@ l'intégration continue.
 **Conséquence** : une faille publiée sur une dépendance n'est signalée par rien. Personne ne
 l'apprend avant de la chercher.
 
-**Ce qu'a donné la première recherche** (28/07/2026, à la main) : **13 avis, dont 12 sur des
-dépendances de production et un critique**. Les correctifs sans rupture ont été appliqués — il en
-reste **7**, qui exigent tous un changement de version majeure : `nodemailer` 8 → 9 (production) et
-la chaîne Vitest 3 → 4 (outillage). Ce sont des migrations à décider, pas des correctifs.
+**Ce qu'a donné la première recherche** (28/07/2026, à la main) : **13 avis, dont un critique**. Les
+correctifs sans rupture ont été appliqués — il en reste **7**, et ils se ramènent à deux causes :
+
+- **cinq** ne sont qu'une seule chaîne d'outillage de test (`@vitest/coverage-v8` → `test-exclude` →
+  `glob` → `minimatch` → `brace-expansion`) : une seule montée majeure les ferme tous ;
+- **un** touche la production, `nodemailer` 8 → 9. L'option incriminée (`raw`) n'est jamais utilisée
+  ici — les trois appelants ne passent que `to`, `subject` et `html` ;
+- le dernier, bas, concerne le serveur de développement d'`esbuild` et reste retenu par `vite`.
 
 **Coût de fermeture** : très faible — un fichier de configuration. C'est le contrôle le moins cher
 de tout ce document, et le seul qui empêche la prochaine faille d'attendre qu'on la cherche.
@@ -102,11 +116,20 @@ manuelle. Si la machine est perdue, les journaux le sont aussi.
 
 ### 🟧 Double authentification : partiellement ouverte
 
-L'enrôlement par application d'authentification fonctionne et est utilisé. En revanche, **il n'y a
-pas de codes de secours**, ni d'envoi de code par courriel ou SMS.
+L'enrôlement par application d'authentification fonctionne et est utilisé.
 
-**Conséquence** : un utilisateur qui perd son téléphone perd l'accès à son compte, et seule une
-intervention en base le rétablit. Cette conséquence se cumule avec la suivante.
+**Les codes de secours sont pires qu'absents : ils sont émis, affichés, et inutilisables.**
+Correction d'une version antérieure de ce document, qui les disait inexistants. `/two-factor/enable`
+est dans l'allowlist, et Better-Auth y **génère** les codes et les **retourne** dans la réponse ; le
+front les affiche à l'utilisateur (`mon-compte`). Mais l'endpoint qui les **consomme**
+(`/two-factor/verify-backup-code`) n'est pas dans l'allowlist.
+
+**Conséquence** : l'utilisateur note soigneusement des codes présentés comme son filet de sécurité,
+et découvre le jour où il perd son téléphone qu'aucun ne fonctionne. Une absence se contourne ; une
+promesse fausse se découvre au pire moment. Seule une intervention en base rétablit l'accès — et
+cette conséquence se cumule avec la réinitialisation de mot de passe, elle aussi fermée.
+
+L'envoi de code par courriel ou SMS, lui, est bien absent.
 
 ---
 
@@ -119,38 +142,75 @@ C'était faux, et l'erreur venait d'une recherche sensible à la casse qui ne po
 `sendResetPassword`.
 
 Le service existe bel et bien : `auth.config.ts` configure `sendResetPassword`, et le courriel a son
-gabarit (`ResetPasswordEmail`). Ce sont les **routes** qui sont fermées : `allowAuthRoutes` est une
-allowlist de sept couples chemin + méthode, et ni `/auth/forget-password` ni `/auth/reset-password`
-n'y figurent. Vérifié en HTTP réel : les deux répondent **403**.
+gabarit (`ResetPasswordEmail`). Ce sont les **routes** qui sont fermées : `allowAuthRoutes` n'ouvre
+que sept couples chemin + méthode, et le flux de réinitialisation n'en fait pas partie.
 
-C'est le même choix que pour les codes de secours de la double authentification — on n'ouvre du
-passthrough Better-Auth que ce qu'un client implémente réellement, parce que ces routes ne
-traversent ni le contrôle des rôles ni le journal d'audit.
+Les endpoints réels de Better-Auth 1.6.25 sont `POST /request-password-reset`,
+`POST /reset-password` et `GET /reset-password/:token`. *(Une version antérieure de ce document
+citait `/forget-password`, un nom abandonné depuis Better-Auth 1.2 : l'allowlist refusant tout ce
+qu'elle ne connaît pas, un `403` sur ce nom-là ne prouvait rien.)*
+
+**Ce n'est pas un choix documenté.** L'historique est net : `sendResetPassword` existe depuis avril
+et le flux a fonctionné trois mois ; l'allowlist du 14/07, qui échoue fermé, l'a refermé
+**collatéralement**, sans qu'aucun commit ni aucune issue ne le nomme — contrairement aux codes de
+secours de la double authentification, dont la fermeture est justifiée en commentaire et rattachée à
+une issue. Le commentaire du 22/07 qui constate que la réinitialisation « n'est pas exposée »
+entérine l'état de fait, il ne le décide pas.
 
 **Conséquence, inchangée** : un utilisateur qui oublie son mot de passe est enfermé dehors, et seule
 une intervention directe en base le débloque.
 
-**Ce qui change, c'est le coût** : il ne s'agit pas de construire un parcours, mais d'ouvrir deux
-entrées d'allowlist, de vérifier que l'envoi de courriel fonctionne, et de décider ce qu'on fait de
-l'absence de RBAC et d'audit sur ces deux routes — c'est précisément la raison pour laquelle elles
-ont été fermées.
+**Coût de fermeture — plus élevé qu'il n'y paraît.** Il faut ouvrir **trois** entrées, dont un `GET`
+à segment paramétré. Or `ALLOWED_AUTH_ROUTES` est un `Record<string, 'POST'>` comparé par égalité
+stricte : il ne peut exprimer ni une autre méthode, ni un chemin paramétré. **Ouvrir ce flux impose
+donc de changer la structure du middleware**, puis d'arbitrer l'absence de RBAC et d'audit sur ces
+routes. Et l'objet du courriel de réinitialisation contient aujourd'hui un caractère corrompu, à
+corriger au passage.
 
 **Effet de bord à connaître** : le verrouillage anti-bruteforce justifie son compromis — un verrou
 de 15 minutes plutôt que définitif — par le fait que la réinitialisation « n'est pas exposée ». Ce
 commentaire est exact. Ouvrir ces routes impose donc de revoir ce raisonnement.
 
-### 🟥 Pas de mise en quarantaine manuelle
+### ✅ La mise en quarantaine manuelle existe — correction d'une erreur de ce document
 
-Un lot ne devient `BLOQUE` que par deux chemins automatiques : un contrôle `NONCONFORME` ou
-`ALERTE` à la réception, ou la propagation d'un rappel. La **levée** de quarantaine existe
-(`POST /logistics/batches/:id/release`), la **pose** n'existe pas.
+Une version antérieure affirmait qu'un lot ne pouvait pas être bloqué à la main. **C'est faux.**
 
-**Conséquence** : un responsable qualité qui suspecte un lot déjà en stock — signalement client,
-défaut constaté en cours de journée — n'a aucun moyen de le bloquer. Il peut lever une quarantaine
-qu'il n'a pas le droit de créer.
+`POST /organization/quality-controls` avec un résultat `NON_CONFORME` place le lot en `BLOQUE`
+**quel que soit son état de départ** — voir `nextStatus()` dans `qualityControl.service.ts`, dont le
+commentaire le dit explicitement. C'est le geste métier attendu : on ne bloque pas un lot par un
+interrupteur, on enregistre le contrôle qui motive le blocage, et le blocage en découle. La
+traçabilité de la décision est ainsi structurelle.
 
-**Coût de fermeture** : faible. Le service, la machine à états et l'écriture d'audit existent déjà
-pour l'opération inverse.
+**Vérifié par exécution** (rôle `quality`, serveur réel) : un lot `EN_STOCK` passe à `BLOQUE` après
+`POST /organization/quality-controls` avec `resultat: NON_CONFORME`.
+
+Les chemins qui écrivent `BLOQUE` sont **trois**, et non deux :
+
+1. un contrôle qualité `NON_CONFORME`, à la réception **ou sur un lot déjà en stock** ;
+2. une excursion thermique détectée sur la télémétrie (`iotAlert.service.ts`) ;
+3. le rappel, lui, n'écrit **pas** `BLOQUE` mais `ALERTE`. La version précédente les confondait.
+
+### 🟥 En revanche, une quarantaine qualité ne se lève pas
+
+C'est la vraie limite, et elle était masquée par l'erreur précédente. Une fois un lot `BLOQUE` par
+un contrôle non conforme, **aucun chemin ne le ramène en stock** — vérifié par exécution, les deux
+tentatives échouent en `409` :
+
+| Tentative | Résultat |
+|---|---|
+| `POST /logistics/batches/:id/release` avec motif | `409` — « ne se libère pas par la levée de quarantaine froid » |
+| `POST /organization/quality-controls` avec `CONFORME` | `409` — « sa levée est une décision qualité tracée à part » |
+
+Les deux messages se renvoient l'un à l'autre : chacun désigne l'autre canal comme étant le bon.
+
+C'est un **choix assumé**, écrit dans `batch.service.ts` : « un tel lot n'a, à ce stade du modèle,
+pas d'autre issue que le rebut : on refuse de le remettre en circulation, on ne promet pas de
+retour. » La conséquence mérite d'être connue : une contre-analyse favorable ne rattrape rien, et
+un contrôle saisi par erreur condamne définitivement de la marchandise saine.
+
+**Et la seule issue prévue — le rebut — n'est appelable depuis aucune interface** (issue #254). Un
+lot bloqué par erreur est donc, en pratique, coincé sans aucune action possible depuis
+l'application.
 
 ### 🟥 Un rappel déclenché par erreur n'a aucune issue
 
@@ -224,7 +284,7 @@ structurante de cette liste.
 
 ## 3. Exploitation et livraison
 
-### 🟨 La branche de production a 635 commits de retard (au 28/07/2026)
+### 🟨 La branche de production a 639 commits de retard (au 28/07/2026)
 
 **C'est la dette la plus visible du projet.** L'image publiée ne correspond à rien de ce qui est
 décrit dans cette documentation : aucune des corrections récentes n'y figure.
