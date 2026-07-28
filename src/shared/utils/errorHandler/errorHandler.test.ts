@@ -33,7 +33,11 @@ describe('handleError middleware', () => {
     });
   });
 
-  it('should handle unknown Prisma error', () => {
+  /**
+   * Cet objet n'est pas une instance Prisma — il tombe dans la branche « valeur jetée non typée ».
+   * Le nom d'origine (« unknown Prisma error ») décrivait un chemin que le test n'empruntait pas.
+   */
+  it('renvoie un message générique pour une valeur jetée non typée', () => {
     const error = {
       code: 'P9999',
     } as unknown as Prisma.PrismaClientKnownRequestError;
@@ -46,24 +50,39 @@ describe('handleError middleware', () => {
       error: [
         {
           field: 'server',
-          message: 'Erreur serveur inconnue',
+          message: 'Une erreur interne est survenue. Référence : non disponible',
         },
       ],
     });
   });
 
-  it('should handle generic error', () => {
+  /**
+   * Le test qui vivait ici assertait `message: 'Generic error'` : il entérinait la divulgation
+   * que corrige #252. Il vérifie désormais l'inverse — et que la réponse reste exploitable pour
+   * signaler l'incident.
+   */
+  it('ne divulgue pas le message d’une erreur générique', () => {
     const error = new Error('Generic error');
 
     handleError(error, mockReq, mockRes);
 
     expect(mockRes.status).toHaveBeenCalledWith(500);
+    expect(JSON.stringify(vi.mocked(mockRes.json).mock.calls)).not.toContain('Generic error');
+  });
+
+  /**
+   * `req.requestId` est optionnel : sans le middleware, le message ne doit pas afficher
+   * « Référence : undefined » à l'utilisateur.
+   */
+  it('reste lisible quand aucun requestId n’a été posé', () => {
+    handleError(new Error('boom'), mockReq, mockRes);
+
     expect(mockRes.json).toHaveBeenCalledWith({
       status: 500,
       error: [
         {
           field: 'server',
-          message: 'Generic error',
+          message: 'Une erreur interne est survenue. Référence : non disponible',
         },
       ],
     });
