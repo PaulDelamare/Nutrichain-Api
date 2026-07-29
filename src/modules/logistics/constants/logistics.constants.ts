@@ -118,15 +118,26 @@ export const MOVEMENT_TYPES = {
 } as const;
 
 /**
- * Statuts d'un lot qu'on peut RANGER ailleurs. Un lot en quarantaine (`BLOQUE`) ou sous rappel
- * (`ALERTE`) est immobilisé : le déplacer casserait la surveillance de l'incident — un lot `BLOQUE`
- * déplacé n'est plus jamais re-mis en quarantaine froid (`COLD_QUARANTINABLE_STATUSES` ne le contient
- * pas) et ressortirait `EN_STOCK` dans un frigo en panne à la levée. `EXPEDIE`/`EPUISE` ne sont plus
- * là physiquement. Seul un lot librement disponible bouge.
+ * Statuts d'un lot qu'on peut RANGER ailleurs — la destination reste bornée aux emplacements de
+ * stockage (`STORAGE_EQUIPMENT_TYPES`), jamais une cuve : déplacer n'est pas engager en production.
+ *
+ * `BLOQUE` en fait partie, et c'est le cas qui compte : quand un groupe froid tombe en panne, la
+ * marchandise mise en quarantaine par l'incident est précisément celle qu'il faut évacuer. La
+ * refuser immobilisait le stock dans l'équipement défaillant, au moment exact où il fallait le
+ * vider. Le déplacement ne touche QUE la position : ni `statut`, ni `statut_avant_blocage`.
+ *
+ * `ALERTE` (rappel produit) reste immobilisé : la décision est irréversible et sa seule issue est
+ * le rebut ; on ne fait pas circuler de la marchandise rappelée.
+ *
+ * ⚠️ Limite connue, antérieure et indépendante du déplacement : un lot déjà `BLOQUE` n'est pas
+ * re-marqué par une SECONDE excursion, où qu'il soit — `COLD_QUARANTINABLE_STATUSES` ne le contient
+ * pas, et le `UPDATE` de `iotAlert.service` y écrit `statut_avant_blocage = statut`, ce qui
+ * écraserait la valeur de restauration. Le second incident reste donc sans trace sur ce lot.
  */
 export const MOVABLE_BATCH_STATUSES: readonly BatchStatus[] = [
   BATCH_STATUSES.IN_STOCK,
   BATCH_STATUSES.PENDING_QC,
+  BATCH_STATUSES.BLOCKED,
 ];
 
 /**

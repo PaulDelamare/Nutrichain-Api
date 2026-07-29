@@ -424,15 +424,59 @@ describe('BatchSharedService', () => {
       expect(result.id_materiel_actuel).toBe('frigo-A');
     });
 
-    it('refuse (409) le déplacement d’un lot en quarantaine (BLOQUE)', async () => {
+    it('évacue un lot en quarantaine (BLOQUE) vers un stockage, sans lever le blocage', async () => {
+      const bloqueDansA = { ...enStockDansA, statut: 'BLOQUE', statut_avant_blocage: 'EN_STOCK' };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(prisma.batch.findFirst).mockResolvedValueOnce(bloqueDansA as any);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(prisma.equipment.findFirst).mockResolvedValue(frigoB as any);
+      vi.mocked(prisma.batch.updateMany).mockResolvedValue({ count: 1 } as never);
+      vi.mocked(prisma.batch.findFirst).mockResolvedValueOnce({
+        ...bloqueDansA,
+        id_materiel_actuel: 'frigo-B',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+
+      const result = await batchService.moveBatch('batch-1', 'org-1', 'user-1', 'frigo-B');
+
+      // Le déplacement ne touche QUE la position : un lot évacué d'un frigo en panne reste bloqué,
+      // et `statut_avant_blocage` garde sa valeur d'origine — sinon la levée le rendrait
+      // disponible au seul motif qu'on l'a changé de place.
+      expect(prisma.batch.updateMany).toHaveBeenCalledWith({
+        where: { id: 'batch-1', organization_id: 'org-1', version: 3 },
+        data: { id_materiel_actuel: 'frigo-B', version: { increment: 1 } },
+      });
+      expect(result.statut).toBe('BLOQUE');
+      expect(result.statut_avant_blocage).toBe('EN_STOCK');
+    });
+
+    it('refuse (409) le déplacement d’un lot sous rappel (ALERTE)', async () => {
       vi.mocked(prisma.batch.findFirst).mockResolvedValue({
         ...enStockDansA,
-        statut: 'BLOQUE',
+        statut: 'ALERTE',
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any);
 
       const action = batchService.moveBatch('batch-1', 'org-1', 'user-1', 'frigo-B');
       await expect(action).rejects.toMatchObject({ status: 409 });
+      expect(prisma.batch.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('refuse (400) d’évacuer un lot BLOQUE vers une cuve de production', async () => {
+      vi.mocked(prisma.batch.findFirst).mockResolvedValue({
+        ...enStockDansA,
+        statut: 'BLOQUE',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+      vi.mocked(prisma.equipment.findFirst).mockResolvedValue({
+        id: 'cuve-1',
+        organization_id: 'org-1',
+        type: 'CUVE',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+
+      const action = batchService.moveBatch('batch-1', 'org-1', 'user-1', 'cuve-1');
+      await expect(action).rejects.toMatchObject({ status: 400 });
       expect(prisma.batch.updateMany).not.toHaveBeenCalled();
     });
 

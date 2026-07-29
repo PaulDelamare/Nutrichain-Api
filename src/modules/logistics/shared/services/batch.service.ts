@@ -255,9 +255,10 @@ export const batchService = {
    * quarantaine froid cible les lots par `id_materiel_actuel` — une position figée à la création
    * rendait la surveillance fausse dès le premier déplacement réel (faux négatifs ET faux positifs).
    *
-   * Seul un lot LIBRE bouge (cf. MOVABLE_BATCH_STATUSES) : un lot en quarantaine ou sous rappel est
-   * immobilisé. Le matériel cible doit être un emplacement de STOCKAGE (pas une cuve/mixeur). Tracé
-   * dans l'audit WORM, comme toute écriture à conséquence sanitaire.
+   * Un lot disponible ou en quarantaine bouge (cf. MOVABLE_BATCH_STATUSES) — évacuer un frigo en
+   * panne fait partie du geste ; un lot sous rappel reste immobilisé. Le matériel cible doit être un
+   * emplacement de STOCKAGE (pas une cuve/mixeur). Tracé dans l'audit WORM, comme toute écriture à
+   * conséquence sanitaire.
    */
   async moveBatch(id: string, activeOrgId: string, userId: string, equipmentId: string) {
     return retryableTransaction(
@@ -283,7 +284,7 @@ export const batchService = {
             error: [
               {
                 field: 'statut',
-                message: `Un lot dans l'état ${batch.statut} ne peut pas être déplacé. Seul un lot disponible (EN_STOCK ou EN_ATTENTE_QC) se range ailleurs.`,
+                message: `Un lot dans l'état ${batch.statut} ne peut pas être déplacé. Se rangent ailleurs : un lot disponible (EN_STOCK, EN_ATTENTE_QC) et un lot en quarantaine (BLOQUE), qu'il faut pouvoir évacuer.`,
               },
             ],
           });
