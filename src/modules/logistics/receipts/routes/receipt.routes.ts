@@ -193,6 +193,14 @@ router.get(
  *     description: |
  *       Renvoie un QR code encodant le GTIN du produit et le numéro de lot au format
  *       **GS1 Digital Link**, scannable par un lecteur du commerce comme par le consommateur.
+ *
+ *       Réponse `Cache-Control: private` : la ressource est authentifiée et cloisonnée par
+ *       organisation, aucun cache partagé ne doit la conserver.
+ *
+ *       **Impression : 180 px de côté au minimum** (≈ 16 mm à 300 ppp). Le symbole fait 66 modules
+ *       de côté ; en dessous, un module ne couvre plus assez de pixels et le décodage échoue dès
+ *       que s'ajoutent un angle, du flou ou une compression — les conditions normales d'une photo
+ *       prise en atelier.
  *     tags: [Logistique]
  *     security:
  *       - bearerAuth: []
@@ -211,8 +219,6 @@ router.get(
  *             schema:
  *               type: string
  *               format: binary
- *       400:
- *         description: Le produit du lot n'a pas de GTIN — aucune étiquette GS1 possible
  *       401:
  *         description: Aucune session
  *       404:

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterAll } from 'vitest';
 import jsQR from 'jsqr';
 import { PNG } from 'pngjs';
-import { labelService } from './label.service';
+import { labelService, MIN_LABEL_PX } from './label.service';
 import { APIError } from '../../../../shared/utils/errorHandler/APIError';
 
 // Signature PNG (magic bytes) : un vrai rendu bwip-js doit commencer par ces 8 octets.
@@ -80,6 +80,18 @@ describe('labelService', () => {
 
       expect(width).toBeGreaterThan(0);
       expect(height).toBe(width);
+    });
+
+    // Mesuré en dégradant l'étiquette réelle comme le ferait une photo d'atelier (réduction,
+    // rotation, flou, compression) : elle se décode jusqu'à 180 px, et échoue à 110. Le symbole
+    // fait 66 modules de côté — en dessous de ce seuil, un module ne couvre plus assez de pixels.
+    // Baisser `scale` est donc un geste à conséquence terrain, et ce test le rend visible.
+    it('rend au moins 180 px de cote — sous ce seuil le QR ne se decode plus une fois photographie', async () => {
+      const png = await labelService.generateQRCode(
+        labelService.generateDigitalLink('03400000000000', 'LOT-XYZ')
+      );
+
+      expect(png.readUInt32BE(16)).toBeGreaterThanOrEqual(MIN_LABEL_PX);
     });
 
     // Le seul test qui prouve qu'une etiquette est SCANNABLE : jsQR est le decodeur employe par

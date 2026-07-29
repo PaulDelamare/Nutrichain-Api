@@ -2,6 +2,16 @@ import bwipjs from 'bwip-js';
 import { APIError } from '../../../../shared/utils/errorHandler/APIError';
 
 /**
+ * Taille minimale d'une étiquette, en pixels de côté (≈ 16 mm à 300 ppp).
+ *
+ * Mesurée en dégradant l'étiquette réelle comme le ferait une photo prise en atelier (réduction,
+ * rotation, flou, compression) : elle se décode encore à 180 px et échoue à 110. Le symbole fait
+ * 66 modules de côté — en dessous, un module ne couvre plus assez de pixels pour survivre à un
+ * angle ou à un flou. `scale: 3` produit 222 px, marge comprise.
+ */
+export const MIN_LABEL_PX = 180;
+
+/**
  * Service dédié à la génération d'étiquettes GS1 Digital Link
  * Supporte la génération d'URI standards et le rendu en image (QR Code)
  */
