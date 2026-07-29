@@ -144,13 +144,17 @@ export const iotAlertService = {
           },
           select: { id: true },
         });
-        if (existing) {
-          return null; // anti-spam : on attend la résolution de l'alerte courante
-        }
 
         // Sûreté sanitaire : les lots EN_STOCK rangés dans l'équipement en excursion
         // sont placés en quarantaine (BLOQUE) — un incident matériel ne doit pas laisser
         // un produit potentiellement altéré partir en transformation ou en expédition.
+        //
+        // ⚠️ Rejouée à CHAQUE détection confirmée, y compris quand une alerte est déjà ouverte
+        // (#266). L'anti-spam sortait ici, AVANT cet UPDATE : tant qu'une alerte restait ouverte —
+        // et elle le reste jusqu'à ce qu'un humain la résolve — un lot rangé dans le frigo ENSUITE
+        // n'était plus jamais bloqué. Il restait EN_STOCK, donc expédiable, dans un équipement dont
+        // on savait la chaîne du froid rompue. L'anti-spam protège la boîte mail de l'exploitant,
+        // pas la barrière sanitaire.
         //
         // UPDATE ... RETURNING (et non SELECT puis UPDATE) : on obtient en UNE requête les
         // lots réellement bloqués, sans fenêtre TOCTOU, et avec leur quantité — nécessaire
@@ -168,23 +172,33 @@ export const iotAlertService = {
          RETURNING id, quantite_actuelle, unite_code
         `;
 
-        const created = await tx.alert.create({
-          data: {
-            organization_id: cached.equipmentOrgId,
-            type: 'TEMP_EXCURSION',
-            niveau_gravite: 'PANIC',
-            message: `Excursion thermique détectée sur ${sensorId} : pic ${result.peakTemp}°C (seuil ${threshold}°C, ratio ${(result.ratioOverThreshold * 100).toFixed(0)}% sur ${WINDOW_MINUTES}min). ${quarantined.length} lot(s) mis en quarantaine.`,
-            id_materiel: cached.equipmentId,
-            related_entity: 'Equipment',
-            related_id: cached.equipmentId,
-            statut: 'ACTIVE',
-            // ⚠️ La donnée sanitaire N°1 (de combien la chaîne du froid a rompu) en champs
-            // STRUCTURÉS, plus seulement dans le message. Le mobile la lisait sur
-            // `equipment.temp_actuelle` — jamais renseigné par l'ingestion IoT → « — » à l'écran.
-            peak_temp: result.peakTemp,
-            temp_seuil: threshold,
-          },
-        });
+        // Cas de loin le plus fréquent : le frigo est toujours en panne, le capteur continue de
+        // pinger, et il n'y a plus rien à bloquer. Rien à écrire — sinon le journal WORM se
+        // remplirait d'une entrée par ping.
+        if (existing && quarantined.length === 0) {
+          return null;
+        }
+
+        const alerte =
+          existing ??
+          (await tx.alert.create({
+            data: {
+              organization_id: cached.equipmentOrgId,
+              type: 'TEMP_EXCURSION',
+              niveau_gravite: 'PANIC',
+              message: `Excursion thermique détectée sur ${sensorId} : pic ${result.peakTemp}°C (seuil ${threshold}°C, ratio ${(result.ratioOverThreshold * 100).toFixed(0)}% sur ${WINDOW_MINUTES}min). ${quarantined.length} lot(s) mis en quarantaine.`,
+              id_materiel: cached.equipmentId,
+              related_entity: 'Equipment',
+              related_id: cached.equipmentId,
+              statut: 'ACTIVE',
+              // ⚠️ La donnée sanitaire N°1 (de combien la chaîne du froid a rompu) en champs
+              // STRUCTURÉS, plus seulement dans le message. Le mobile la lisait sur
+              // `equipment.temp_actuelle` — jamais renseigné par l'ingestion IoT → « — » à l'écran.
+              peak_temp: result.peakTemp,
+              temp_seuil: threshold,
+            },
+            select: { id: true },
+          }));
 
         // Chaque lot bloqué garde la trace de la CAUSE : sans ça, un lot passe en
         // quarantaine sans que personne ne puisse dire pourquoi ni quand.
@@ -197,7 +211,9 @@ export const iotAlertService = {
               quantite: b.quantite_actuelle,
               unite: b.unite_code,
               metadata: {
-                id_alerte: created.id,
+                // L'alerte OUVERTE quand une seconde vague de lots est bloquée : le lot pointe
+                // l'incident qui l'a mis en quarantaine, pas une alerte créée pour la forme.
+                id_alerte: alerte.id,
                 sensorId,
                 peakTemp: result.peakTemp,
                 threshold,
@@ -211,7 +227,7 @@ export const iotAlertService = {
             organizationId: cached.equipmentOrgId,
             action: 'TEMP_EXCURSION_DETECTED',
             entity: 'Alert',
-            entityId: created.id,
+            entityId: alerte.id,
             newValue: {
               sensorId,
               equipmentId: cached.equipmentId,
@@ -220,12 +236,15 @@ export const iotAlertService = {
               ratioOverThreshold: result.ratioOverThreshold,
               windowMinutes: WINDOW_MINUTES,
               quarantinedBatchesCount: quarantined.length,
+              // Distingue l'ouverture de l'incident d'une vague de lots bloqués sous un incident
+              // déjà ouvert : sans ce champ, le journal ne raconte pas la même histoire.
+              alerteDejaOuverte: Boolean(existing),
             },
           },
           tx
         );
 
-        return created;
+        return { id: alerte.id, estNouvelle: !existing };
       },
       {
         timeout: 10_000,
@@ -233,8 +252,10 @@ export const iotAlertService = {
       }
     );
 
-    // Verrou non obtenu ou alerte déjà active : rien n'a été créé, donc rien à notifier.
-    if (!alert) {
+    // Verrou non obtenu, ou rien de neuf sous une alerte déjà ouverte : rien à notifier.
+    // On ne prévient QUE sur l'ouverture d'un incident : des lots bloqués en seconde vague
+    // relèvent du même incident, déjà signalé (#266).
+    if (!alert || !alert.estNouvelle) {
       return 'MONITORED';
     }
 
