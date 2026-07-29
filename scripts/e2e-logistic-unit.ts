@@ -163,6 +163,23 @@ async function main(): Promise<void> {
     console.log('  — ignoré : un seul emplacement de stockage en base');
   }
 
+  console.log('\n[E2E] 5e — un lot ne se pose pas sur DEUX palettes (409, contrainte en base)');
+  let refuseDoublePalette = false;
+  let messageNommeLaPalette = false;
+  try {
+    await logisticUnitService.createLogisticUnit({
+      organizationId: ORG_ID,
+      userId: member.userId,
+      items: [{ id_lot: lotA.id, quantite: 5 }],
+    });
+  } catch (e) {
+    const err = e as { status?: number; body?: { error: { message: string }[] } };
+    refuseDoublePalette = err.status === 409;
+    messageNommeLaPalette = (err.body?.error?.[0]?.message ?? '').includes(pallet.sscc);
+  }
+  assert(refuseDoublePalette, 'palettiser un lot déjà sur une palette refusé en 409');
+  assert(messageNommeLaPalette, 'le message dit sur QUELLE palette le lot se trouve déjà');
+
   console.log('\n[E2E] 6 — un lot passé en RAPPEL après coup est signalé au scan');
   await prisma.batch.update({ where: { id: lotA.id }, data: { statut: 'ALERTE' } });
   const rescanned = await logisticUnitService.resolveBySscc(pallet.sscc, ORG_ID);

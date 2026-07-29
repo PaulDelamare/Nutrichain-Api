@@ -142,6 +142,29 @@ export const logisticUnitService = {
         }
       }
 
+      // Un lot est sur AU PLUS UNE palette : la contrainte est en base
+      // (`@@unique([id_lot])`), on la vérifie ici pour rendre un message exploitable plutôt qu'un
+      // 409 « ressource déjà existante » qui n'apprend rien à l'opérateur.
+      const dejaPalettises = await tx.logistic_Unit_Content.findMany({
+        where: {
+          id_lot: { in: items.map((item) => item.id_lot) },
+          unite_logistique: { organization_id: organizationId },
+        },
+        include: { unite_logistique: { select: { sscc: true } }, lot: { select: { lot_number: true } } },
+      });
+
+      if (dejaPalettises.length > 0) {
+        const premier = dejaPalettises[0];
+        throw new APIError(409, {
+          error: [
+            {
+              field: 'items',
+              message: `Le lot ${premier.lot.lot_number} est déjà sur la palette ${premier.unite_logistique.sscc}. Sortez-le d'abord, ou rangez cette palette-là.`,
+            },
+          ],
+        });
+      }
+
       const gs1Prefix = await resolveGs1Prefix(tx, organizationId);
       const sscc = gs1Utils.generateSSCC(await nextSsccSerial(tx), gs1Prefix);
 

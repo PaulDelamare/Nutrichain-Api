@@ -654,6 +654,18 @@ model Logistic_Unit_Content {
   unite               String
 
   @@id([id_unite_logistique, id_lot])
+  // Un lot est sur AU PLUS UNE palette, et la contrainte est en base.
+  //
+  // Sans elle, un lot pouvait figurer sur deux palettes — ce que la clé primaire composite
+  // autorisait. Or la position est portée par le lot, en une seule valeur : palette A rangée au
+  // frigo 1 puis palette B au frigo 2, et le lot déclarait être au frigo 2 alors qu'une partie
+  // était au frigo 1. Une excursion sur le frigo 1 ne l'aurait alors PAS mis en quarantaine.
+  // Un faux négatif sanitaire, silencieux.
+  //
+  // Répartir un lot sur deux palettes suppose donc de scinder le lot lui-même, ou de déplacer la
+  // position vers la palette — un autre modèle, qui casserait la surveillance du froid telle
+  // qu'elle est écrite. Limite assumée et documentée, pas un oubli.
+  @@unique([id_lot])
   @@index([id_lot])
 }
 

@@ -7,7 +7,7 @@ vi.mock('../../../../shared/configs/prismaClient.config', () => ({
   prisma: {
     batch: { findMany: vi.fn() },
     logistic_Unit: { create: vi.fn(), findFirst: vi.fn() },
-    logistic_Unit_Content: { createMany: vi.fn() },
+    logistic_Unit_Content: { createMany: vi.fn(), findMany: vi.fn() },
     ePCIS_Event: { create: vi.fn() },
     organization: { findUnique: vi.fn() },
     $queryRaw: vi.fn(),
@@ -50,6 +50,8 @@ describe('logisticUnitService', () => {
     vi.mocked(prisma.$queryRaw).mockResolvedValue([{ serial: 42n }] as never);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     vi.mocked(prisma.logistic_Unit.create).mockResolvedValue({ id: 'palette-1' } as any);
+    // Par défaut aucun lot n'est déjà sur une palette.
+    vi.mocked(prisma.logistic_Unit_Content.findMany).mockResolvedValue([] as never);
   });
 
   describe('createLogisticUnit — constituer une palette', () => {
@@ -173,6 +175,37 @@ describe('logisticUnitService', () => {
       });
 
       await expect(action).rejects.toMatchObject({ status: 400 });
+      expect(prisma.logistic_Unit.create).not.toHaveBeenCalled();
+    });
+
+    /**
+     * La position d'un lot est UNE valeur. Un lot présent sur deux palettes rangées dans deux
+     * frigos différents déclarerait la position de la dernière rangée, alors qu'une partie est
+     * ailleurs — et l'excursion sur l'autre frigo ne le mettrait pas en quarantaine. Faux négatif
+     * sanitaire silencieux, d'où la contrainte.
+     */
+    it('refuse (409) un lot déjà posé sur une autre palette, en nommant laquelle', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(prisma.batch.findMany).mockResolvedValue([lotBeurre] as any);
+      vi.mocked(prisma.logistic_Unit_Content.findMany).mockResolvedValue([
+        {
+          id_lot: 'lot-1',
+          unite_logistique: { sscc: '380123400000000411' },
+          lot: { lot_number: '260729-AAAAAA' },
+        },
+      ] as never);
+
+      const action = logisticUnitService.createLogisticUnit({
+        organizationId: ORG,
+        userId: USER,
+        items: [{ id_lot: 'lot-1', quantite: 10 }],
+      });
+
+      await expect(action).rejects.toMatchObject({
+        status: 409,
+        // Le message doit dire OÙ est le lot : un 409 nu n'aide pas l'opérateur.
+        body: { error: [{ message: expect.stringContaining('380123400000000411') }] },
+      });
       expect(prisma.logistic_Unit.create).not.toHaveBeenCalled();
     });
 
