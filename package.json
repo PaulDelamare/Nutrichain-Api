@@ -59,7 +59,8 @@
     "e2e:sscc": "tsx --env-file=.env scripts/e2e-sscc-concurrent.ts",
     "e2e:invitation": "tsx --env-file=.env scripts/e2e-invitation-tenant.ts",
     "e2e:label-scan": "tsx --env-file=.env scripts/e2e-label-scan.ts",
-    "e2e:logistic-unit": "tsx --env-file=.env scripts/e2e-logistic-unit.ts"
+    "e2e:logistic-unit": "tsx --env-file=.env scripts/e2e-logistic-unit.ts",
+    "e2e:palette-http": "tsx --env-file=.env scripts/e2e-palette-http.ts"
   },
   "lint-staged": {
     "src/**/*.{ts,js}": [
