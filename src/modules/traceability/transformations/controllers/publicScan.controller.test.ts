@@ -207,6 +207,55 @@ describe('publicScanDigitalLink controller (GS1 Digital Link — GTIN + lot, #13
     );
   });
 
+  // Le consommateur qui scanne recoit une PAGE ; l ERP qui interroge la meme URL recoit du JSON.
+  // Une seule adresse, deux publics : c est ce que prevoit GS1 Digital Link, et c est ce qui
+  // manquait — le scan renvoyait des accolades devant quelqu un qui tient un pot de yaourt (#285).
+  it('rend une PAGE quand un navigateur scanne (Accept: text/html)', async () => {
+    vi.mocked(prisma.batch.findMany).mockResolvedValue([buildBatch()]);
+
+    const res = await request(buildApp())
+      .get('/api/gs1/01/1234567890/10/260704-ABC123')
+      .set('Accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8');
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('text/html');
+    expect(res.text).toContain('Yaourt nature');
+    expect(res.text).not.toContain('"status":200');
+  });
+
+  it('rend du JSON a une machine (Accept: application/json), comportement inchange', async () => {
+    vi.mocked(prisma.batch.findMany).mockResolvedValue([buildBatch()]);
+
+    const res = await request(buildApp())
+      .get('/api/gs1/01/1234567890/10/260704-ABC123')
+      .set('Accept', 'application/json');
+
+    expect(res.headers['content-type']).toContain('application/json');
+    expect(res.body.data.lot.nom_produit).toBe('Yaourt nature');
+  });
+
+  // curl, une douchette, un client sans preference : ils envoient */*. Leur servir du HTML
+  // casserait des integrations existantes — le JSON reste le defaut.
+  it('rend du JSON quand le client n exprime aucune preference (*/*)', async () => {
+    vi.mocked(prisma.batch.findMany).mockResolvedValue([buildBatch()]);
+
+    const res = await request(buildApp())
+      .get('/api/gs1/01/1234567890/10/260704-ABC123')
+      .set('Accept', '*/*');
+
+    expect(res.headers['content-type']).toContain('application/json');
+  });
+
+  it('affiche l alerte de rappel dans la page quand le lot est en ALERTE', async () => {
+    vi.mocked(prisma.batch.findMany).mockResolvedValue([buildBatch({ statut: 'ALERTE' })]);
+
+    const res = await request(buildApp())
+      .get('/api/gs1/01/1234567890/10/260704-ABC123')
+      .set('Accept', 'text/html');
+
+    expect(res.text).toContain('Ne pas consommer');
+  });
+
   it('normalise le lot en MAJUSCULES avant la requête (comme au stockage, receipt.service.ts)', async () => {
     // `lot_number` est toujours stocké en majuscules. Un lot transmis en minuscule (tapé à la
     // main, ou une URL réécrite par un intermédiaire) doit quand même trouver le lot — sinon
