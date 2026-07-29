@@ -442,12 +442,17 @@ describe('BatchSharedService', () => {
       // Le déplacement ne touche QUE la position : un lot évacué d'un frigo en panne reste bloqué,
       // et `statut_avant_blocage` garde sa valeur d'origine — sinon la levée le rendrait
       // disponible au seul motif qu'on l'a changé de place.
-      expect(prisma.batch.updateMany).toHaveBeenCalledWith({
+      //
+      // On assied la preuve sur ce qui est ÉCRIT, pas sur l'objet relu : ce dernier vient du mock
+      // posé par ce test, il resterait donc vert même si le service écrivait un autre statut.
+      const written = vi.mocked(prisma.batch.updateMany).mock.calls[0][0];
+      expect(written).toEqual({
         where: { id: 'batch-1', organization_id: 'org-1', version: 3 },
         data: { id_materiel_actuel: 'frigo-B', version: { increment: 1 } },
       });
-      expect(result.statut).toBe('BLOQUE');
-      expect(result.statut_avant_blocage).toBe('EN_STOCK');
+      expect(written.data).not.toHaveProperty('statut');
+      expect(written.data).not.toHaveProperty('statut_avant_blocage');
+      expect(result.id_materiel_actuel).toBe('frigo-B');
     });
 
     it('refuse (409) le déplacement d’un lot sous rappel (ALERTE)', async () => {

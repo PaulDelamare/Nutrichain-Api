@@ -294,9 +294,12 @@ router.post(
  *   patch:
  *     summary: Déplace un lot vers un autre emplacement de stockage
  *     description: >
- *       Met à jour la position physique du lot (matériel). Seul un lot disponible (EN_STOCK ou
- *       EN_ATTENTE_QC) est déplaçable ; le matériel cible doit être un emplacement de stockage
- *       (FRIGO, CONGELATEUR, ETAGERE). Réservé à owner/admin/operator.
+ *       Met à jour la position physique du lot (matériel). Sont déplaçables un lot disponible
+ *       (EN_STOCK, EN_ATTENTE_QC) et un lot en quarantaine (BLOQUE) — évacuer un frigo en panne
+ *       fait partie du geste, et le déplacement ne lève jamais la quarantaine. Un lot sous rappel
+ *       (ALERTE) reste immobilisé. Le matériel cible doit être un emplacement de stockage
+ *       (FRIGO, CONGELATEUR, ETAGERE). Réservé à owner/admin/operator : `quality` décide de la
+ *       levée, pas de la manutention.
  *     tags: [Logistics - Batches]
  *     security: [{ sessionAuth: [] }]
  *     parameters:
@@ -319,7 +322,7 @@ router.post(
  *       401: { description: Aucune session }
  *       403: { description: Rôle insuffisant }
  *       404: { description: Lot ou matériel introuvable dans l'organisation active }
- *       409: { description: Lot non déplaçable (quarantaine, rappel, expédié) ou état modifié }
+ *       409: { description: Lot non déplaçable (rappel, expédié, épuisé, rebut) ou état modifié }
  */
 router.patch(
   '/logistics/batches/:id/location',

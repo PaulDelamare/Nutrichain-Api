@@ -160,6 +160,16 @@ describe('RBAC des routes logistiques (session réelle)', () => {
       const res = await request(app).patch('/api/logistics/batches/lot-1/location').send(body);
       expect(res.status).toBe(403);
     });
+
+    // Choix explicite, pas un oubli : déplacer est un geste de manutention, pas une décision
+    // sanitaire. `quality` tranche la levée de quarantaine, il ne range pas la marchandise.
+    // Le verrouiller par un test évite qu'on l'élargisse sans en mesurer la portée — depuis
+    // qu'un lot BLOQUE est évacuable, cette garde décide qui manipule du stock consigné.
+    it('refuse quality : la manutention n’est pas une décision qualité', async () => {
+      signedInAs('quality');
+      const res = await request(app).patch('/api/logistics/batches/lot-1/location').send(body);
+      expect(res.status).toBe(403);
+    });
   });
 
   describe('GET /logistics/batches/resolve (le lot qu’on vient de scanner)', () => {

@@ -311,9 +311,13 @@ export const batchService = {
           });
         }
 
-        // Verrou optimiste : la version lue est dans le where. Si une excursion froid concurrente a
-        // fait passer le lot BLOQUE entre-temps, l'écriture ne mord pas (count 0) → 409, on ne
-        // déplace pas un lot dont l'état a changé sous nos yeux.
+        // Verrou optimiste : la version lue est dans le where. Le cas qui le justifie est le
+        // passage concurrent sous RAPPEL (`recall.service` incrémente `version`) — on ne déplace
+        // pas un lot devenu immobilisé entre la lecture et l'écriture.
+        // ⚠️ Effet de bord connu : une excursion froid concurrente incrémente elle aussi `version`,
+        // et rend donc un 409 « rechargez la fiche » à l'opérateur qui évacue au moment même de la
+        // détection — alors que le lot, devenu BLOQUE, est justement déplaçable. Il lui suffit de
+        // réessayer ; refuser à tort coûte moins cher que déplacer un lot dont l'état a changé.
         const updated = await tx.batch.updateMany({
           where: { id, organization_id: activeOrgId, version: batch.version },
           data: { id_materiel_actuel: equipmentId, version: { increment: 1 } },
