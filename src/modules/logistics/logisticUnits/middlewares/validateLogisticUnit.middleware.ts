@@ -2,7 +2,11 @@ import { Response, NextFunction } from 'express';
 import { validateData } from '../../../../shared/utils/validateData/validateData';
 import { catchAsync } from '../../../../shared/utils/errorHandler/catchAsync';
 import { AuthenticatedRequest } from '../../../identity/types/auth.types';
-import { createLogisticUnitSchema, scanLogisticUnitSchema } from './logisticUnit.schema';
+import {
+  createLogisticUnitSchema,
+  moveLogisticUnitSchema,
+  scanLogisticUnitSchema,
+} from './logisticUnit.schema';
 
 export const validateCreateLogisticUnit = catchAsync(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
@@ -14,6 +18,13 @@ export const validateCreateLogisticUnit = catchAsync(
 export const validateScanLogisticUnit = catchAsync(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     req.validatedLogisticUnitScan = await validateData(scanLogisticUnitSchema, req.params);
+    next();
+  }
+);
+
+export const validateMoveLogisticUnit = catchAsync(
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+    req.validatedLogisticUnitMove = await validateData(moveLogisticUnitSchema, req.body);
     next();
   }
 );

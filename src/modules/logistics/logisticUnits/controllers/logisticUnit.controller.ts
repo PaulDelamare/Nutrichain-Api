@@ -33,6 +33,33 @@ export const createLogisticUnitController = catchAsync(
   }
 );
 
+export const moveLogisticUnitController = catchAsync(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const equipmentId = req.validatedLogisticUnitMove?.id_materiel;
+    if (!equipmentId) {
+      throw new APIError(400, {
+        error: [{ field: 'id_materiel', message: 'Emplacement de destination manquant.' }],
+      });
+    }
+
+    const userId = req.auth?.user?.id;
+    if (!userId) {
+      throw new APIError(401, {
+        error: [{ field: 'auth', message: 'Auteur du rangement non identifié.' }],
+      });
+    }
+
+    const unit = await logisticUnitService.moveLogisticUnit(
+      req.params.id as string,
+      req.activeOrgId as string,
+      userId,
+      equipmentId
+    );
+
+    sendSuccess(res, 200, 'Palette rangée.', unit);
+  }
+);
+
 export const resolveLogisticUnitController = catchAsync(
   async (req: AuthenticatedRequest, res: Response) => {
     const scan = req.validatedLogisticUnitScan;

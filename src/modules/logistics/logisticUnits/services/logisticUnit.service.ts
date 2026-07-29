@@ -10,7 +10,13 @@ import {
   EPCIS_BIZSTEP,
   EPCIS_EVENT_TYPE,
 } from '../../../../shared/constants/epcis.constants';
-import { BATCH_STATUSES, PALLETIZABLE_BATCH_STATUSES } from '../../constants/logistics.constants';
+import {
+  BATCH_STATUSES,
+  MOVABLE_BATCH_STATUSES,
+  MOVEMENT_TYPES,
+  PALLETIZABLE_BATCH_STATUSES,
+} from '../../constants/logistics.constants';
+import { STORAGE_EQUIPMENT_TYPES } from '../../../organization/middlewares/equipment.schema';
 
 /** Source d'un SSCC : celui que nous avons émis, ou celui lu sur une palette reçue. */
 export const LOGISTIC_UNIT_SOURCES = {
@@ -196,6 +202,169 @@ export const logisticUnitService = {
       );
 
       return { id: unit.id, sscc, lots: items.length };
+    });
+  },
+
+  /**
+   * Range une palette : un scan de la palette, un scan de l'emplacement, et ses lots suivent.
+   *
+   * C'est le geste que le modèle existe pour rendre possible. Ranger douze lots un par un devant un
+   * frigo ouvert, gants aux mains, était le geste le plus répétitif du terrain et le plus mal servi.
+   *
+   * Ce n'est PAS obligatoire : une palette peut n'avoir aucun emplacement — elle attend sur le quai.
+   * Et un lot posé dessus reste déplaçable seul ; il quitte alors la palette (cf. `moveBatch`),
+   * parce que physiquement il n'est plus dessus.
+   *
+   * La position vit sur le LOT, jamais sur la palette : c'est exactement ce que filtre la mise en
+   * quarantaine froid. Ranger la palette met donc à jour ses lots, et l'excursion suivante les
+   * bloque tous sans qu'on ait à reconstituer la liste — le gain réel de cette fonctionnalité.
+   *
+   * Tout ou rien : si un seul lot ne peut pas suivre, rien ne bouge. Une demi-palette rangée est un
+   * mensonge sur l'emplacement de la moitié restante.
+   */
+  async moveLogisticUnit(
+    unitId: string,
+    activeOrgId: string,
+    userId: string,
+    equipmentId: string
+  ) {
+    return retryableTransaction(async (tx) => {
+      const unit = await tx.logistic_Unit.findFirst({
+        where: { id: unitId, organization_id: activeOrgId },
+        include: {
+          contenu: {
+            include: {
+              lot: {
+                select: {
+                  id: true,
+                  lot_number: true,
+                  statut: true,
+                  version: true,
+                  id_materiel_actuel: true,
+                  quantite_actuelle: true,
+                  unite_code: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!unit) {
+        throw new APIError(404, {
+          error: [{ field: 'id', message: 'Palette introuvable dans cette organisation' }],
+        });
+      }
+
+      // Idempotent : un retry réseau d'un rangement réussi ne doit ni rejouer les mouvements ni
+      // ajouter un maillon d'audit. Les lots déjà en place ne sont simplement pas retouchés.
+      const aDeplacer = unit.contenu.filter((c) => c.lot.id_materiel_actuel !== equipmentId);
+
+      if (aDeplacer.length === 0) {
+        return { id: unit.id, sscc: unit.sscc, lots_deplaces: 0, id_materiel: equipmentId };
+      }
+
+      // Toutes les gardes AVANT la première écriture : le refus doit être total, pas partiel.
+      for (const contenu of aDeplacer) {
+        if (!(MOVABLE_BATCH_STATUSES as readonly string[]).includes(contenu.lot.statut)) {
+          throw new APIError(409, {
+            error: [
+              {
+                field: 'contenu',
+                message: `Le lot ${contenu.lot.lot_number} est dans l'état ${contenu.lot.statut} : la palette ne peut pas être rangée tant qu'il la porte. Sortez-le d'abord.`,
+              },
+            ],
+          });
+        }
+      }
+
+      const equipment = await tx.equipment.findFirst({
+        where: { id: equipmentId, organization_id: activeOrgId },
+      });
+
+      if (!equipment) {
+        throw new APIError(404, {
+          error: [{ field: 'id_materiel', message: 'Matériel introuvable dans cette organisation' }],
+        });
+      }
+
+      if (!(STORAGE_EQUIPMENT_TYPES as readonly string[]).includes(equipment.type)) {
+        throw new APIError(400, {
+          error: [
+            {
+              field: 'id_materiel',
+              message: `Une palette se range dans un emplacement de stockage (frigo, congélateur, étagère), pas dans un équipement de type ${equipment.type}.`,
+            },
+          ],
+        });
+      }
+
+      for (const contenu of aDeplacer) {
+        // Verrou optimiste par lot : si l'état de l'un a changé depuis la lecture, on annule TOUT.
+        const updated = await tx.batch.updateMany({
+          where: {
+            id: contenu.lot.id,
+            organization_id: activeOrgId,
+            version: contenu.lot.version,
+          },
+          data: { id_materiel_actuel: equipmentId, version: { increment: 1 } },
+        });
+
+        if (updated.count === 0) {
+          throw new APIError(409, {
+            error: [
+              {
+                field: 'contenu',
+                message: `L'état du lot ${contenu.lot.lot_number} a changé pendant le rangement. Rechargez la palette avant de réessayer.`,
+              },
+            ],
+          });
+        }
+
+        await tx.batch_Mouvement.create({
+          data: {
+            id_lot: contenu.lot.id,
+            type_action: MOVEMENT_TYPES.MOVE,
+            quantite: contenu.lot.quantite_actuelle,
+            unite: contenu.lot.unite_code,
+            id_user: userId,
+            // Le SSCC dans le mouvement : la frise du lot doit dire qu'il a bougé PARCE QUE sa
+            // palette a été rangée, et non par un geste individuel.
+            metadata: {
+              from: contenu.lot.id_materiel_actuel,
+              to: equipmentId,
+              sscc: unit.sscc,
+            },
+          },
+        });
+      }
+
+      // UN maillon d'audit pour le geste, pas un par lot : ranger une palette est une seule
+      // décision, et les écritures d'audit d'une organisation se sérialisent sur une chaîne
+      // unique — douze maillons pour un scan renchériraient la contention sans rien prouver de
+      // plus. La trace par lot existe, c'est le mouvement.
+      await auditService.logAction(
+        {
+          organizationId: activeOrgId,
+          userId,
+          action: 'MOVE_LOGISTIC_UNIT',
+          entity: 'Logistic_Unit',
+          entityId: unit.id,
+          newValue: {
+            sscc: unit.sscc,
+            id_materiel: equipmentId,
+            lots: aDeplacer.map((c) => c.lot.id),
+          },
+        },
+        tx
+      );
+
+      return {
+        id: unit.id,
+        sscc: unit.sscc,
+        lots_deplaces: aDeplacer.length,
+        id_materiel: equipmentId,
+      };
     });
   },
 

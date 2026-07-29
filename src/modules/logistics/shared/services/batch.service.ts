@@ -335,6 +335,18 @@ export const batchService = {
           });
         }
 
+        // Déplacé seul, le lot QUITTE sa palette. On n'interdit pas le geste — l'organisation reste
+        // libre de sa manière de travailler — mais on garde une seule vérité sur la position :
+        // physiquement, un carton sorti de la palette n'est plus dessus, et laisser le lien
+        // ferait annoncer à la palette un contenu qu'elle n'a plus.
+        // Le filtre d'organisation est redondant — le lot vient d'être vérifié par `findFirst`
+        // avec l'organisation de la session — et il reste là par principe : le cloisonnement se
+        // vérifie sur CHAQUE objet d'une requête, y compris quand un appelant en amont l'a déjà
+        // fait. C'est la garde qu'on oublie le jour où le chemin d'appel change.
+        const removedFromUnit = await tx.logistic_Unit_Content.deleteMany({
+          where: { id_lot: id, unite_logistique: { organization_id: activeOrgId } },
+        });
+
         // `quantite`/`unite` portent la quantité concernée par le geste, pas un mouvement de matière.
         await tx.batch_Mouvement.create({
           data: {
@@ -343,7 +355,11 @@ export const batchService = {
             quantite: batch.quantite_actuelle,
             unite: batch.unite_code,
             id_user: userId,
-            metadata: { from: batch.id_materiel_actuel, to: equipmentId },
+            metadata: {
+              from: batch.id_materiel_actuel,
+              to: equipmentId,
+              ...(removedFromUnit.count > 0 ? { sorti_de_palette: true } : {}),
+            },
           },
         });
 

@@ -13,6 +13,8 @@ vi.mock('../../../../shared/configs/prismaClient.config', () => ({
       updateMany: vi.fn(),
     },
     batch_Mouvement: { create: vi.fn() },
+    // Un lot déplacé seul quitte sa palette : le service retire son lien de contenu.
+    logistic_Unit_Content: { deleteMany: vi.fn() },
     equipment: { findFirst: vi.fn() },
     qualityControl: { findFirst: vi.fn() },
     scrapRecord: { create: vi.fn() },
@@ -36,6 +38,8 @@ describe('BatchSharedService', () => {
     // `clearAllMocks` n'efface pas les implémentations — sans ce défaut, un mock NON_CONFORME
     // fuirait d'un test à l'autre. Chaque test part donc d'un lot non condamné.
     vi.mocked(prisma.qualityControl.findFirst).mockResolvedValue(null);
+    // Par défaut le lot n'est sur aucune palette : le retrait de contenu ne mord sur rien.
+    vi.mocked(prisma.logistic_Unit_Content.deleteMany).mockResolvedValue({ count: 0 } as never);
   });
 
   describe('createBatch', () => {

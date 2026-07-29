@@ -22,6 +22,8 @@ vi.mock('../controllers/logisticUnit.controller', () => ({
     res.status(201).end(),
   resolveLogisticUnitController: (_req: express.Request, res: express.Response) =>
     res.status(200).end(),
+  moveLogisticUnitController: (_req: express.Request, res: express.Response) =>
+    res.status(200).end(),
 }));
 
 const { default: logisticUnitRoutes } = await import('./logisticUnit.routes');
@@ -86,6 +88,43 @@ describe('RBAC et câblage des routes de palette', () => {
         quantite: 1,
       }));
       const res = await request(app).post('/api/logistics/logistic-units').send({ items });
+      expect(res.status).toBe(400);
+    });
+  });
+
+  describe('PATCH /logistics/logistic-units/:id/location (ranger — geste terrain)', () => {
+    const body = { id_materiel: '22222222-2222-4222-8222-222222222222' };
+
+    it.each(['owner', 'admin', 'operator'])('autorise %s', async (role) => {
+      signedInAs(role);
+      const res = await request(app)
+        .patch('/api/logistics/logistic-units/palette-1/location')
+        .send(body);
+      expect(res.status).toBe(200);
+    });
+
+    it('refuse viewer (lecture seule)', async () => {
+      signedInAs('viewer');
+      const res = await request(app)
+        .patch('/api/logistics/logistic-units/palette-1/location')
+        .send(body);
+      expect(res.status).toBe(403);
+    });
+
+    it('refuse (401) sans session', async () => {
+      getSession.mockResolvedValue(null);
+      const res = await request(app)
+        .patch('/api/logistics/logistic-units/palette-1/location')
+        .send(body);
+      expect(res.status).toBe(401);
+    });
+
+    // Preuve que la validation est MONTÉE : sans elle, un emplacement absent atteindrait le service.
+    it('refuse (400) sans emplacement de destination', async () => {
+      signedInAs('operator');
+      const res = await request(app)
+        .patch('/api/logistics/logistic-units/palette-1/location')
+        .send({});
       expect(res.status).toBe(400);
     });
   });

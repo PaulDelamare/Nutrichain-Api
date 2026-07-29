@@ -39,5 +39,11 @@ export const scanLogisticUnitSchema = vine.object({
     .regex(/^(00)?\d{18}$/),
 });
 
+/** Rangement d'une palette : seul l'emplacement de destination est fourni. */
+export const moveLogisticUnitSchema = vine.object({
+  id_materiel: vine.string().trim().uuid(),
+});
+
 export type CreateLogisticUnitPayload = Infer<typeof createLogisticUnitSchema>;
 export type ScanLogisticUnitParams = Infer<typeof scanLogisticUnitSchema>;
+export type MoveLogisticUnitPayload = Infer<typeof moveLogisticUnitSchema>;
