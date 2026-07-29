@@ -53,7 +53,7 @@ async function ingestExcursion(sensorId: string, threshold: number) {
   try {
     await TelemetryModel.insertMany(docs, { session });
     _clearThresholdCacheForTests();
-    await iotAlertService.checkAndAlert({
+    return await iotAlertService.checkAndAlert({
       sensorId,
       organizationId: ORG_ID!,
       currentTemp: threshold + 4,
@@ -63,6 +63,33 @@ async function ingestExcursion(sensorId: string, threshold: number) {
   } finally {
     await session.endSession();
   }
+}
+
+/**
+ * Ce que la tentative a RÉELLEMENT produit, en une ligne de log (#266).
+ *
+ * Sans elle, un échec en CI se lit « ❌ excursion → lot BLOQUE » et s'arrête là : impossible de
+ * savoir laquelle des branches de `checkAndAlert` a été prise (capteur non rattaché, seuil absent,
+ * fenêtre insuffisante, verrou non obtenu, alerte déjà ouverte). Le diagnostic repartait de zéro.
+ */
+async function tracerTentative(
+  etiquette: string,
+  outcome: string,
+  equipmentId: string,
+  batchId: string
+) {
+  const [alertesActives, lotsBloques, lot] = await Promise.all([
+    prisma.alert.count({
+      where: { id_materiel: equipmentId, type: 'TEMP_EXCURSION', statut: 'ACTIVE' },
+    }),
+    prisma.batch.count({ where: { id_materiel_actuel: equipmentId, statut: 'BLOQUE' } }),
+    prisma.batch.findUniqueOrThrow({ where: { id: batchId }, select: { statut: true } }),
+  ]);
+
+  console.log(
+    `  · ${etiquette} — détection=${outcome}, alertes ACTIVE=${alertesActives}, ` +
+      `lots bloqués sur le matériel=${lotsBloques}, statut du lot=${lot.statut}`
+  );
 }
 
 async function main() {
@@ -116,14 +143,21 @@ async function main() {
   // ---- Scénario 1 : restauration du statut ----
   console.log('\n[E2E] Scénario 1 — un lot EN_ATTENTE_QC revient EN_ATTENTE_QC à la levée');
   const batch1 = await makeBatch('RESTORE');
-  await ingestExcursion(fridge.sensor_id!, 4);
+  const premiere = await ingestExcursion(fridge.sensor_id!, 4);
+  await tracerTentative('tentative 1', premiere, fridge.id, batch1.id);
 
   let afterExcursion = await prisma.batch.findUniqueOrThrow({ where: { id: batch1.id } });
   // Filet de sécurité, pas un pari sur un délai Mongo : si la détection n'a pas suivi (rare, sous
   // charge CI), on renvoie une vraie excursion supplémentaire — le comportement observable (le lot
   // finit-il par être bloqué ?), pas une durée devinée en interne à Mongo (#226).
+  //
+  // Ce filet était INOPÉRANT jusqu'à #266 : l'anti-spam de `checkAndAlert` sortait avant la mise en
+  // quarantaine, donc dès que la première détection avait créé l'alerte, les cinq tentatives
+  // suivantes ne pouvaient plus rien bloquer. Six essais et un lot toujours EN_ATTENTE_QC. La
+  // quarantaine étant désormais rejouée à chaque détection confirmée, le filet retient vraiment.
   for (let retry = 0; retry < 5 && afterExcursion.statut !== 'BLOQUE'; retry++) {
-    await ingestExcursion(fridge.sensor_id!, 4);
+    const outcome = await ingestExcursion(fridge.sensor_id!, 4);
+    await tracerTentative(`tentative ${retry + 2}`, outcome, fridge.id, batch1.id);
     afterExcursion = await prisma.batch.findUniqueOrThrow({ where: { id: batch1.id } });
   }
   assert(afterExcursion.statut === 'BLOQUE', 'excursion → lot BLOQUE');
@@ -143,8 +177,17 @@ async function main() {
 
   // ---- Scénario 2 : lot condamné, levée refusée ----
   console.log('\n[E2E] Scénario 2 — un lot condamné par un contrôle non conforme ne se lève pas');
+  // Ce lot est créé APRÈS l'alerte du scénario 1, qui est toujours ACTIVE : c'est exactement le
+  // cas que l'anti-spam laissait passer (#266). Avant le correctif, cette excursion ne bloquait
+  // rien, et le scénario ne tenait que parce que le contrôle non conforme bloque le lot à son tour.
   const batch2 = await makeBatch('CONDAMNE');
-  await ingestExcursion(fridge.sensor_id!, 4);
+  const excursion2 = await ingestExcursion(fridge.sensor_id!, 4);
+  await tracerTentative('scénario 2 — excursion', excursion2, fridge.id, batch2.id);
+  assert(
+    (await prisma.batch.findUniqueOrThrow({ where: { id: batch2.id } })).statut === 'BLOQUE',
+    'lot rangé après l ouverture de l alerte → bloqué quand même (#266)'
+  );
+
   await qualityControlService.createQualityControl({
     organization_id: ORG_ID!,
     id_lot: batch2.id,

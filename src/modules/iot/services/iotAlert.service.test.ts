@@ -287,6 +287,66 @@ describe('iotAlertService.checkAndAlert', () => {
     expect(sendEmail).not.toHaveBeenCalled();
   });
 
+  /**
+   * #266 — L'anti-spam sortait de la transaction AVANT la mise en quarantaine. Conséquence : tant
+   * qu'une alerte reste ouverte sur un frigo en excursion, un lot rangé dedans ENSUITE n'est plus
+   * jamais bloqué. Il reste EN_STOCK, donc expédiable, dans un équipement dont on sait la chaîne du
+   * froid rompue.
+   *
+   * L'anti-spam protège la boîte mail de l'exploitant. Il n'a pas à protéger un lot de sa mise en
+   * quarantaine : c'est une barrière sanitaire, pas une notification.
+   */
+  it('alerte déjà ouverte : un lot arrivé APRÈS est quand même mis en quarantaine (#266)', async () => {
+    vi.mocked(txClient.alert.findFirst).mockResolvedValue({ id: 'existing-active' } as never);
+    vi.mocked(txClient.$queryRaw).mockResolvedValue([
+      { id: 'lot-arrive-apres', quantite_actuelle: 10, unite_code: 'KG' },
+    ] as never);
+
+    await iotAlertService.checkAndAlert(baseParams);
+
+    // L'UPDATE ... RETURNING de mise en quarantaine doit avoir été joué.
+    expect(txClient.$queryRaw).toHaveBeenCalled();
+    // Et le lot garde la trace de sa cause, rattachée à l'alerte DÉJÀ ouverte.
+    expect(txClient.batch_Mouvement.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          id_lot: 'lot-arrive-apres',
+          type_action: 'QUARANTAINE_FROID',
+          metadata: expect.objectContaining({ id_alerte: 'existing-active' }),
+        }),
+      ],
+    });
+  });
+
+  it('alerte déjà ouverte : bloquer un lot ne crée ni seconde alerte ni second e-mail (#266)', async () => {
+    vi.mocked(txClient.alert.findFirst).mockResolvedValue({ id: 'existing-active' } as never);
+    vi.mocked(txClient.$queryRaw).mockResolvedValue([
+      { id: 'lot-arrive-apres', quantite_actuelle: 10, unite_code: 'KG' },
+    ] as never);
+
+    await iotAlertService.checkAndAlert(baseParams);
+
+    expect(txClient.alert.create).not.toHaveBeenCalled();
+    expect(sendEmail).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Le pendant du précédent : c'est le cas de LOIN le plus fréquent (un frigo reste en panne, le
+   * capteur continue de pinger, il n'y a plus rien à bloquer). Il ne doit produire ni mouvement,
+   * ni entrée d'audit — sinon le journal WORM se remplit d'un ping toutes les minutes.
+   */
+  it('alerte déjà ouverte et plus aucun lot à bloquer → aucune écriture (#266)', async () => {
+    vi.mocked(txClient.alert.findFirst).mockResolvedValue({ id: 'existing-active' } as never);
+    vi.mocked(txClient.$queryRaw).mockResolvedValue([] as never);
+
+    await iotAlertService.checkAndAlert(baseParams);
+
+    expect(txClient.alert.create).not.toHaveBeenCalled();
+    expect(txClient.batch_Mouvement.createMany).not.toHaveBeenCalled();
+    expect(auditService.logAction).not.toHaveBeenCalled();
+    expect(sendEmail).not.toHaveBeenCalled();
+  });
+
   it('cache hit : 2 appels sur même sensor → 1 seul findFirst Equipment', async () => {
     await iotAlertService.checkAndAlert(baseParams);
     await iotAlertService.checkAndAlert(baseParams);
