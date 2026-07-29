@@ -319,7 +319,8 @@ Deux gardes non évidentes, chacune née d'un défaut réel :
 | Unicité SSCC sous concurrence | `npm run e2e:sscc` | Base réelle, expéditions simultanées |
 | Conformité des événements émis | `npm run e2e:epcis` — 24/24 | Base réelle, chaîne complète |
 | Résolution du scan public (404, 409, rappel prioritaire, casse) | `publicScan.controller.test.ts` | Unitaire |
-| Digital Link et rendu PNG | `label.service.test.ts` — 7 cas | Unitaire ; le PNG est vérifié comme **image valide et carrée**, son contenu optique ne l'est pas (cf. §7) |
+| Digital Link, rendu PNG, **décodage optique du QR** | `label.service.test.ts` — 8 cas | Unitaire ; jsQR décode réellement le motif et son contenu est comparé au Digital Link |
+| **Chaîne étiquette → scan, de bout en bout** | `npm run e2e:label-scan` — 20 vérifications | Serveur et base réels, rôle `operator` (cf. §7) |
 | Export EPCIS vers l'ERP | `npm run e2e:connectors` | Base réelle |
 
 ---
@@ -368,37 +369,52 @@ traçabilité de l'agroalimentaire de volume s'exerce au lot.
 
 ---
 
-## 7. Ce qui n'a **pas** été vérifié : le scan par une caméra réelle
+## 7. Le scan, vérifié — et le seul pas qui reste
 
-Aucune preuve, dans ce dépôt, qu'un QR code produit par `GET /api/logistics/batches/:id/label` ait
-été scanné par l'appareil photo d'un téléphone jusqu'à l'affichage de la page de traçabilité.
+La chaîne étiquette → scan est désormais couverte par `npm run e2e:label-scan`, contre un serveur
+et une base réels, en rôle `operator` (le plus faible). Vingt vérifications, en trois temps :
 
-Ce qui est prouvé, et qui n'est pas la même chose : le Digital Link est bien formé et pointe vers une
-route montée ; l'endpoint d'étiquette renvoie **une image PNG valide** ; la route de résolution
-renvoie les bonnes données (tests unitaires + capture réelle d'un écran « rappel en cours » côté
-front, obtenu par saisie et non par caméra).
+1. **La route rend une étiquette imprimable.** `GET /api/logistics/batches/:id/label` → 200,
+   `Content-Type: image/png`, vrai PNG, image **carrée**.
+2. **L'image est décodée optiquement**, par jsQR — le décodeur employé par les lecteurs QR en
+   JavaScript, qui travaille sur les pixels comme une caméra. Le contenu décodé doit être exactement
+   le Digital Link attendu.
+3. **L'URL extraite de l'image est appelée telle quelle.** C'est le point décisif : reconstruire
+   l'URL à la main testerait notre idée de l'étiquette, pas l'étiquette. C'est exactement ce qui a
+   laissé passer #139 (lien vers une route non montée) et #146 (domaine de repli inexistant).
 
-À noter : **aucun test ne décode le QR code**. `label.service.test.ts` vérifie la signature PNG et,
-depuis #272, les dimensions du tampon produit — mais pas ce que le motif encode. Rien dans la suite
-ne rougirait si `bwip-js` recevait le mauvais texte.
+S'y ajoutent le lot sous rappel qui doit rester scannable et annoncer `RAPPEL_CONSOMMATEUR`, la
+casse du numéro de lot, le lot encore en usine invisible du canal B2C, le 401 sans session, le 404
+sur un lot d'une autre organisation, et l'absence d'identifiant ou d'adresse fournisseur dans la
+réponse publique.
 
-**Ce que cette absence de vérification a déjà coûté (#272).** En produisant les valeurs de ce
-document, le rendu s'est révélé **étiré : 198×66 au lieu de 198×198**. `bwip-js` interprétait
-l'option `height: 10` en millimètres pour un symbole 2D. Un QR étiré n'est pas décodable — ses
-motifs de repérage supposent le même pas en X et en Y : **chaque étiquette imprimée était un
-rectangle noir qu'aucune caméra n'aurait lu**. Trois défauts successifs sur ce même maillon (#139,
-#146, #272), tous invisibles à une suite verte, tous visibles au premier scan réel. C'est l'argument
-le plus net en faveur du protocole ci-dessus.
+### Ce que cette vérification a coûté à découvrir
 
-La chaîne non vérifiée est donc précisément : **caméra → décodage optique → ouverture du navigateur →
-appel HTTP → page**. C'est le maillon où sont apparus les deux défauts déjà rencontrés (#139, #146),
-et aucun test unitaire ne pouvait les voir. Le protocole de vérification est court :
+Deux défauts, l'un après l'autre, sur la même image :
 
-1. démarrer l'API avec `API_URL` renseignée à une adresse **joignable depuis le téléphone** (l'IP de
-   la machine sur le réseau local, pas `localhost`) ;
-2. `GET /api/logistics/batches/:id/label`, afficher le PNG à l'écran ;
+- **#272 — image étirée.** `bwip-js` interprète `height` en millimètres pour un symbole 2D :
+  le rendu sortait en **198×66**. Un QR étiré n'est pas décodable, ses motifs de repérage supposant
+  le même pas en X et en Y.
+- **#277 — fond transparent.** Le symbole redevenu carré restait illisible : sans
+  `backgroundcolor`, le fond est transparent, donc aplati en **noir** à l'impression, à l'export
+  PDF, dans une visionneuse, ou pour tout décodeur travaillant sur les pixels bruts. jsQR renvoyait
+  `null`. Il manquait aussi la zone calme normative de quatre modules.
+
+Les deux ont survécu à une suite verte parce que **rien ne décodait l'image** : on vérifiait la
+signature PNG du tampon. Quatre défauts au total sur ce seul maillon (#139, #146, #272, #277).
+
+### Le pas qui reste : l'optique physique
+
+Ce qui n'est toujours pas prouvé, et ne peut pas l'être sans matériel : **impression, éclairage,
+angle, autofocus**. jsQR lit une image parfaite en mémoire ; une caméra lit un support réel. Le
+protocole, court :
+
+1. démarrer l'API avec `API_URL` renseignée à une adresse **joignable depuis le téléphone** (l'IP
+   de la machine sur le réseau local, pas `localhost`) ;
+2. `GET /api/logistics/batches/:id/label`, afficher ou imprimer le PNG ;
 3. le scanner avec l'appareil photo, sans application dédiée ;
 4. vérifier que le navigateur du téléphone affiche bien la réponse de traçabilité.
 
-Tant que ces quatre étapes n'ont pas été faites, la formule exacte est : « le lien encodé est
-vérifié, le scan optique de bout en bout ne l'est pas ».
+Formule exacte tant que ces quatre étapes n'ont pas été faites : « le décodage optique et la
+résolution du lien sont prouvés en automatisé ; la lecture par une caméra sur un support physique
+ne l'est pas ».
