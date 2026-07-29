@@ -37,6 +37,9 @@ export const EPCIS_BIZSTEP = {
   receiving: 'urn:epcglobal:cbv:bizstep:receiving',
   shipping: 'urn:epcglobal:cbv:bizstep:shipping',
   transforming: 'urn:epcglobal:cbv:bizstep:transforming',
+  // Constitution d'une palette : c'est là que le SSCC est attribué et l'agrégation déclarée, et
+  // non au départ du camion — une palette existe et se stocke avant d'être expédiée.
+  packing: 'urn:epcglobal:cbv:bizstep:packing',
 } as const;
 
 export const EPCIS_DISPOSITION = {
