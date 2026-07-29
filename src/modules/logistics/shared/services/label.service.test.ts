@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach, afterAll } from 'vitest';
+import jsQR from 'jsqr';
+import { PNG } from 'pngjs';
 import { labelService } from './label.service';
 import { APIError } from '../../../../shared/utils/errorHandler/APIError';
 
@@ -78,6 +80,22 @@ describe('labelService', () => {
 
       expect(width).toBeGreaterThan(0);
       expect(height).toBe(width);
+    });
+
+    // Le seul test qui prouve qu'une etiquette est SCANNABLE : jsQR est le decodeur employe par
+    // les lecteurs QR en JavaScript, il travaille sur les pixels, comme une camera. Verifier la
+    // signature PNG ne disait rien du motif — le rendu est sorti successivement etire (#272) puis
+    // sur fond transparent, donc aplati en noir sur noir et indecodable (#277), sans qu'aucun test
+    // ne rougisse.
+    it('produit un QR REELLEMENT DECODABLE, portant exactement le Digital Link', async () => {
+      const link = labelService.generateDigitalLink('03400000000000', 'LOT-XYZ');
+
+      const png = await labelService.generateQRCode(link);
+      const image = PNG.sync.read(png);
+      const decoded = jsQR(new Uint8ClampedArray(image.data), image.width, image.height);
+
+      expect(decoded).not.toBeNull();
+      expect(decoded?.data).toBe(link);
     });
 
     it('rejette avec une APIError 500 orientee champ "qrcode" quand bwip-js echoue', async () => {

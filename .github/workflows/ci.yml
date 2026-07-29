@@ -248,6 +248,8 @@ jobs:
         run: npm run e2e:sscc
       - name: 🏷️ Événements EPCIS (Object/Transformation/Aggregation)
         run: npm run e2e:epcis
+      - name: 📷 Étiquette GS1 — décodage optique et résolution du scan
+        run: npm run e2e:label-scan
       - name: 📱 Sync mobile hors-ligne (idempotence)
         run: npm run e2e:sync
       - name: 🌐 Passerelle IoT liée à son tenant

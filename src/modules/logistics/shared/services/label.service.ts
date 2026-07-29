@@ -36,6 +36,14 @@ export const labelService = {
    * motifs de repérage supposent le même pas en X et en Y), donc chaque étiquette imprimée était
    * un rectangle noir qu'aucune caméra ne lisait. Sans ces options, `scale` seul fixe la taille du
    * module et le symbole reste carré.
+   *
+   * `backgroundcolor` : sans lui, bwip-js rend le fond TRANSPARENT. Le symbole reste correct sur
+   * une page blanche, mais dès qu'il est aplati sur du noir — impression, PDF, visionneuse, ou
+   * simplement un décodeur travaillant sur les pixels bruts — il devient noir sur noir, donc
+   * illisible (#277). Une étiquette doit porter son propre contraste, pas l'emprunter à son support.
+   *
+   * `padding: 4` : la zone calme exigée par la norme, quatre modules de blanc tout autour. Un
+   * décodeur a besoin de cette bordure pour isoler le symbole de ce qui l'entoure.
    */
   async generateQRCode(text: string): Promise<Buffer> {
     return new Promise((resolve, reject) => {
@@ -44,6 +52,10 @@ export const labelService = {
           bcid: 'qrcode', // Type de code
           text: text, // Contenu
           scale: 3, // Taille d'un module, en pixels
+          backgroundcolor: 'FFFFFF',
+          // 12 px = 4 modules à cette échelle, la zone calme normative.
+          paddingwidth: 12,
+          paddingheight: 12,
         },
         (err, png) => {
           if (err) {

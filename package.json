@@ -57,7 +57,8 @@
     "e2e:iot-gateway": "tsx --env-file=.env scripts/e2e-iot-gateway-tenant.ts",
     "iot:gateway": "tsx --env-file=.env scripts/provision-iot-gateway.ts",
     "e2e:sscc": "tsx --env-file=.env scripts/e2e-sscc-concurrent.ts",
-    "e2e:invitation": "tsx --env-file=.env scripts/e2e-invitation-tenant.ts"
+    "e2e:invitation": "tsx --env-file=.env scripts/e2e-invitation-tenant.ts",
+    "e2e:label-scan": "tsx --env-file=.env scripts/e2e-label-scan.ts"
   },
   "lint-staged": {
     "src/**/*.{ts,js}": [
@@ -79,6 +80,7 @@
     "@types/node-cron": "^3.0.11",
     "@types/nodemailer": "^8.0.0",
     "@types/papaparse": "^5.5.2",
+    "@types/pngjs": "^6.0.5",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@types/sanitize-html": "^2.13.0",
@@ -90,7 +92,9 @@
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.5",
     "husky": "^9.1.7",
+    "jsqr": "^1.4.0",
     "lint-staged": "^16.4.0",
+    "pngjs": "^7.0.0",
     "prettier": "^3.8.3",
     "supertest": "^7.0.0",
     "tsx": "^4.21.0",
