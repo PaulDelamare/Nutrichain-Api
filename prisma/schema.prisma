@@ -8,28 +8,29 @@ datasource db {
 }
 
 model User {
-  id               String            @id @unique @default(uuid())
-  email            String            @unique
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  name             String
-  emailVerified    Boolean           @default(false)
-  image            String?
-  twoFactorEnabled Boolean?          @default(false)
-  sessions         Session[]
-  accounts         Account[]
-  members          Member[]
-  invitations      Invitation[]
-  twofactors       TwoFactor[]
-  lots             Batch[]
-  transformations  Transformation[]
-  tests_qualite    QualityControl[]
-  receptions       Receipt[]
-  expeditions      Shipment[]
-  mouvements       Batch_Mouvement[]
-  idempotencyKeys  IdempotencyKey[]
-  platformAdmin    PlatformAdmin?
-  rebuts           ScrapRecord[]
+  id                 String            @id @unique @default(uuid())
+  email              String            @unique
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  name               String
+  emailVerified      Boolean           @default(false)
+  image              String?
+  twoFactorEnabled   Boolean?          @default(false)
+  sessions           Session[]
+  accounts           Account[]
+  members            Member[]
+  invitations        Invitation[]
+  twofactors         TwoFactor[]
+  lots               Batch[]
+  transformations    Transformation[]
+  tests_qualite      QualityControl[]
+  receptions         Receipt[]
+  expeditions        Shipment[]
+  mouvements         Batch_Mouvement[]
+  idempotencyKeys    IdempotencyKey[]
+  platformAdmin      PlatformAdmin?
+  rebuts             ScrapRecord[]
+  unites_logistiques Logistic_Unit[]
 
   @@map("user")
 }
@@ -94,13 +95,13 @@ model Account {
 /// donnée personnelle : c'est le job de purge quotidien qui la borne dans le temps.
 model LoginAttempt {
   /// HMAC-SHA-256 de l'e-mail normalisé (minuscules, sans espaces).
-  email_hash   String    @id
+  email_hash      String    @id
   /// Échecs consécutifs depuis `first_failed_at`. Remis à zéro par une connexion réussie.
-  failed_count Int       @default(0)
-  first_failed_at DateTime @default(now())
+  failed_count    Int       @default(0)
+  first_failed_at DateTime  @default(now())
   /// Tant que cette date est future, toute tentative est refusée, mot de passe correct compris.
-  locked_until DateTime?
-  updated_at   DateTime  @updatedAt
+  locked_until    DateTime?
+  updated_at      DateTime  @updatedAt
 
   @@index([locked_until])
   @@map("login_attempt")
@@ -144,6 +145,7 @@ model Organization {
   EPCIS_Event        EPCIS_Event[]
   IotGateway         IotGateway[]
   ScrapRecord        ScrapRecord[]
+  Logistic_Unit      Logistic_Unit[]
 
   @@unique([slug])
   @@map("organization")
@@ -158,11 +160,11 @@ model Member {
   role           String       @default("member")
   createdAt      DateTime
 
-  @@index([organizationId])
   // Un utilisateur appartient à UNE seule organisation (décision produit). Rend déterministe le
   // choix de l'org active à la connexion (le hook prenait `findFirst` sans ordre) et empêche
   // qu'accepter une invitation vers une 2e org crée un membre fantôme.
   @@unique([userId])
+  @@index([organizationId])
   @@map("member")
 }
 
@@ -297,9 +299,9 @@ model IotGateway {
 
 // --- REFERENTIEL CATALOGUE ---
 model Product {
-  id                        String              @id @default(uuid())
+  id                        String           @id @default(uuid())
   organization_id           String
-  organization              Organization        @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  organization              Organization     @relation(fields: [organization_id], references: [id], onDelete: Cascade)
   nom                       String
   code_gtin                 String
   categorie                 String
@@ -308,7 +310,7 @@ model Product {
   unite_reference           String
   // Désactivation douce : un produit référencé par des lots/transformations ne peut être supprimé
   // (FK Restrict). Archivé, il disparaît des sélections et n'accepte plus ni réception ni production.
-  is_active                 Boolean             @default(true)
+  is_active                 Boolean          @default(true)
   lots                      Batch[]
   transformations           Transformation[]
 
@@ -322,35 +324,35 @@ model Product {
 
 // --- TRACKING LOTS & TRANSFORMATION ---
 model Batch {
-  id                 String       @id @default(uuid())
-  organization_id    String
-  organization       Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  id                   String       @id @default(uuid())
+  organization_id      String
+  organization         Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
   /// Numéro de lot court GS1 (AI 10, max 20 caractères) — porté par les URN LGTIN et le Digital Link.
-  lot_number         String
-  id_produit         String
-  produit            Product      @relation(fields: [id_produit], references: [id])
-  quantite_actuelle  Decimal
-  unite_code         String
-  unite              Unit         @relation(fields: [unite_code], references: [code])
-  quantite_base      Decimal
-  date_peremption    DateTime?
-  statut             String       @default("EN_STOCK")
+  lot_number           String
+  id_produit           String
+  produit              Product      @relation(fields: [id_produit], references: [id])
+  quantite_actuelle    Decimal
+  unite_code           String
+  unite                Unit         @relation(fields: [unite_code], references: [code])
+  quantite_base        Decimal
+  date_peremption      DateTime?
+  statut               String       @default("EN_STOCK")
   // Statut d'avant la mise en quarantaine FROID, pour y revenir à la levée plutôt que de forcer
   // EN_STOCK : un produit fini qui attendait son contrôle de sortie (EN_ATTENTE_QC) doit y
   // retourner, jamais devenir expédiable au seul motif que l'incident frigo est résolu.
   // Non-null uniquement tant que statut = BLOQUE ; remis à null à la levée ou au rappel.
   statut_avant_blocage String?
-  id_materiel_actuel String?
-  materiel           Equipment?   @relation(fields: [id_materiel_actuel], references: [id])
+  id_materiel_actuel   String?
+  materiel             Equipment?   @relation(fields: [id_materiel_actuel], references: [id])
   // Réception d'origine (matière première). Nul pour un produit fini issu de transformation.
   // Restrict : une réception qui a produit des lots ne doit pas pouvoir être supprimée en effaçant
   // le lien amont en silence — la traçabilité vers la ferme resterait alors introuvable.
-  id_receipt         String?
-  receipt            Receipt?     @relation(fields: [id_receipt], references: [id], onDelete: Restrict)
-  date_creation      DateTime     @default(now())
-  created_by         String
-  user               User         @relation(fields: [created_by], references: [id])
-  version            Int          @default(1)
+  id_receipt           String?
+  receipt              Receipt?     @relation(fields: [id_receipt], references: [id], onDelete: Restrict)
+  date_creation        DateTime     @default(now())
+  created_by           String
+  user                 User         @relation(fields: [created_by], references: [id])
+  version              Int          @default(1)
 
   transformations_enfants Transformation[]            @relation("TransformationEnfant")
   transformations_parents TransformationComposition[]
@@ -358,6 +360,7 @@ model Batch {
   liaisons                Liaison_Shipment[]
   mouvements              Batch_Mouvement[]
   rebut                   ScrapRecord?
+  contenus_palette        Logistic_Unit_Content[]
 
   @@unique([organization_id, lot_number])
   @@index([organization_id])
@@ -500,8 +503,6 @@ model QualityControl {
   @@index([organization_id])
 }
 
-
-
 // --- RECEPTION & FOURNISSEUR ---
 model Supplier {
   id              String       @id @default(uuid())
@@ -557,18 +558,18 @@ model Customer {
 }
 
 model Shipment {
-  id               String       @id @default(uuid())
-  organization_id  String
-  organization     Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
-  id_client        String
-  client           Customer     @relation(fields: [id_client], references: [id])
-  shipment_id        String
-  date_envoi         DateTime
-  transporteur       String
+  id                  String       @id @default(uuid())
+  organization_id     String
+  organization        Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  id_client           String
+  client              Customer     @relation(fields: [id_client], references: [id])
+  shipment_id         String
+  date_envoi          DateTime
+  transporteur        String
   destination_adresse String?
-  statut_livraison   String
-  created_by         String
-  user             User         @relation(fields: [created_by], references: [id])
+  statut_livraison    String
+  created_by          String
+  user                User         @relation(fields: [created_by], references: [id])
 
   liaisons   Liaison_Shipment[]
   mouvements Batch_Mouvement[]
@@ -578,19 +579,82 @@ model Shipment {
 }
 
 model Liaison_Shipment {
-  id                String   @id @default(uuid())
-  id_expedition     String
-  expedition        Shipment @relation(fields: [id_expedition], references: [id])
-  id_lot            String
-  lot               Batch    @relation(fields: [id_lot], references: [id])
-  quantite_expediee Decimal
-  unite             String
-  pallet_id         String?
+  id                  String         @id @default(uuid())
+  id_expedition       String
+  expedition          Shipment       @relation(fields: [id_expedition], references: [id])
+  id_lot              String
+  lot                 Batch          @relation(fields: [id_lot], references: [id])
+  quantite_expediee   Decimal
+  unite               String
+  // Palette sur laquelle ce lot a voyagé. Remplace `pallet_id`, déclaré à l'origine et jamais
+  // écrit : l'intention était juste, il n'existait aucune entité à référencer.
+  // Nullable — une expédition antérieure au modèle de palette n'en a aucune.
+  // ⚠️ `id_lot` reste porté ici : le rappel produit interroge `id_lot IN (...)` avec son double
+  // filtre de cloisonnement. Le remplacer par la seule palette ferait échouer un rappel en
+  // silence, sans erreur et avec zéro expédition impactée.
+  id_unite_logistique String?
+  unite_logistique    Logistic_Unit? @relation(fields: [id_unite_logistique], references: [id], onDelete: Restrict)
 
   // Le rappel produit interroge cette table par `id_lot IN (...)` (recall.service.ts) : sans
   // index, chaque rappel fait un seq scan. `id_expedition` couvre la jointure vers Shipment.
   @@index([id_lot])
   @@index([id_expedition])
+  @@index([id_unite_logistique])
+}
+
+/// Unité logistique GS1 — la palette, le contenant qu'on manipule physiquement.
+///
+/// Le SSCC identifie CE contenant-ci, et il lui est attribué à la **palettisation**, pas au départ
+/// du camion : une palette existe avant d'être expédiée (elle attend sur un quai), et elle survit à
+/// la réception (le destinataire la range telle quelle). Avant ce modèle, le SSCC était écrit dans
+/// `Shipment.shipment_id` — un même champ portait la référence commerciale du bon de livraison et
+/// l'identifiant GS1 d'un contenant physique, si bien que douze palettes d'un même camion
+/// partageaient un seul numéro.
+///
+/// Elle ne porte NI statut NI position. La position reste sur le lot (`Batch.id_materiel_actuel`),
+/// parce que c'est exactement ce que filtre la mise en quarantaine froid : déplacer la source de
+/// vérité ici ferait bloquer zéro lot à la prochaine excursion, sans aucun bruit. Ranger une
+/// palette met donc à jour la position de ses lots ; sa position, elle, se déduit d'eux.
+model Logistic_Unit {
+  id              String       @id @default(uuid())
+  organization_id String
+  organization    Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  /// 18 chiffres, clé de contrôle GS1 comprise.
+  sscc            String
+  /// `INTERNE` (palette que nous avons montée) ou `FOURNISSEUR` (SSCC lu sur une palette reçue).
+  /// Distinction nécessaire : nous garantissons l'unicité des nôtres, pas celle des leurs.
+  source          String       @default("INTERNE")
+  created_at      DateTime     @default(now())
+  created_by      String
+  user            User         @relation(fields: [created_by], references: [id])
+
+  contenu  Logistic_Unit_Content[]
+  liaisons Liaison_Shipment[]
+
+  // Un SSCC ne se réutilise pas : deux palettes d'une même organisation ne peuvent pas le partager.
+  // La contrainte est en base et pas seulement applicative — deux palettisations simultanées
+  // passaient toutes les deux la vérification applicative et fabriquaient le doublon.
+  @@unique([organization_id, sscc])
+  @@index([organization_id])
+}
+
+/// Contenu d'une palette : quel lot, en quelle quantité.
+///
+/// La quantité est portée ici parce qu'un lot se répartit sur plusieurs palettes — 800 kg de beurre
+/// tiennent rarement sur une seule. Constituer une palette ne DÉDUIT PAS le stock : la déduction
+/// reste à l'expédition, là où vit le verrou optimiste. Conséquence assumée : rien n'empêche de
+/// monter deux palettes sur le même stock la veille, l'incohérence se découvre au départ.
+model Logistic_Unit_Content {
+  id_unite_logistique String
+  unite_logistique    Logistic_Unit @relation(fields: [id_unite_logistique], references: [id], onDelete: Cascade)
+  id_lot              String
+  lot                 Batch         @relation(fields: [id_lot], references: [id], onDelete: Restrict)
+  quantite            Decimal
+  /// Unité de mesure du lot, dénormalisée comme dans `Liaison_Shipment`.
+  unite               String
+
+  @@id([id_unite_logistique, id_lot])
+  @@index([id_lot])
 }
 
 // --- MOUVEMENTS (APPEND ONLY) ---
@@ -614,7 +678,6 @@ model Batch_Mouvement {
   // Sans cet index, la fiche lot fait un seq scan sur une table append-only.
   @@index([id_lot, created_at])
 }
-
 
 // --- SYNC MOBILE OFFLINE-FIRST ---
 // Stocke les clés d'idempotency pour POST /api/sync/scans.

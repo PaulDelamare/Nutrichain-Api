@@ -141,6 +141,22 @@ export const MOVABLE_BATCH_STATUSES: readonly BatchStatus[] = [
 ];
 
 /**
+ * Statuts d'un lot qu'on peut poser sur une palette.
+ *
+ * `EN_ATTENTE_QC` en fait partie, et ce n'est pas un oubli : une palette se monte en fin de ligne,
+ * avant le contrôle de sortie d'usine. L'interdire obligerait à palettiser après coup, c'est-à-dire
+ * jamais.
+ *
+ * `BLOQUE` en est exclu, contrairement au déplacement : évacuer un lot consigné d'un frigo en panne
+ * est légitime, l'agréger à une palette de marchandise saine ne l'est pas — la palette voyage comme
+ * un tout, et rien ne distinguerait plus le lot consigné des autres au moment de l'expédition.
+ */
+export const PALLETIZABLE_BATCH_STATUSES: readonly BatchStatus[] = [
+  BATCH_STATUSES.IN_STOCK,
+  BATCH_STATUSES.PENDING_QC,
+];
+
+/**
  * Statuts sans autre issue que la destruction : un lot sous rappel (`ALERTE`, décision
  * irréversible) ou en quarantaine (`BLOQUE`) qu'un contrôle qualité a condamné n'a aucun canal
  * de sortie normal (transformation, expédition, levée). Sans ce canal, sa quantité reste aux

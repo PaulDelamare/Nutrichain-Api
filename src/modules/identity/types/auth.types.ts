@@ -15,6 +15,10 @@ import type { MoveBatchPayload } from '../../logistics/receipts/middlewares/move
 import type { ScrapPayload } from '../../logistics/receipts/middlewares/scrap.schema';
 import type { BatchResolveQuery } from '../../logistics/receipts/middlewares/validateBatchResolve.middleware';
 import type { ShipmentPayload } from '../../logistics/shipments/middlewares/shipmentPayload.schema';
+import type {
+  CreateLogisticUnitPayload,
+  ScanLogisticUnitParams,
+} from '../../logistics/logisticUnits/middlewares/logisticUnit.schema';
 import type { TransformationPayload } from '../../traceability/transformations/middlewares/transformationPayload.schema';
 import type { RecallPayload } from '../../traceability/transformations/middlewares/recallPayload.schema';
 import type {
@@ -92,6 +96,9 @@ export interface AuthenticatedRequest extends Request {
   // Mise au rebut d'un lot (POST /logistics/batches/:id/scrap)
   validatedScrap?: ScrapPayload;
   validatedShipment?: ShipmentPayload;
+  // Constitution d'une palette (POST /logistics/logistic-units) et scan de son SSCC.
+  validatedLogisticUnit?: CreateLogisticUnitPayload;
+  validatedLogisticUnitScan?: ScanLogisticUnitParams;
   validatedTransformation?: TransformationPayload;
   // Déclenchement d'un rappel produit (POST /traceability/batches/:id/recall)
   validatedRecall?: RecallPayload;

@@ -11,6 +11,7 @@ import transformationRoutes from './modules/traceability/transformations/routes/
 import eventRoutes from './modules/traceability/events/routes/event.routes';
 import receiptRoutes from './modules/logistics/receipts/routes/receipt.routes';
 import shipmentRoutes from './modules/logistics/shipments/routes/shipment.routes';
+import logisticUnitRoutes from './modules/logistics/logisticUnits/routes/logisticUnit.routes';
 import syncRoutes from './modules/sync/routes/sync.routes';
 import alertRoutes from './modules/alerts/routes/alert.routes';
 import auditRoutes from './modules/auditIntegrity/routes/audit.routes';
@@ -40,6 +41,7 @@ app.use('/api', transformationRoutes);
 app.use('/api', eventRoutes);
 app.use('/api', receiptRoutes);
 app.use('/api', shipmentRoutes);
+app.use('/api', logisticUnitRoutes);
 app.use('/api', syncRoutes);
 app.use('/api', helloRoutes);
 app.use('/api', healthRoutes);
