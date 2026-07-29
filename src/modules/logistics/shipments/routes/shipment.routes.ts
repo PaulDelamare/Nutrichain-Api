@@ -2,7 +2,12 @@ import { Router } from 'express';
 import { sessionAuth } from '../../../../shared/middlewares/sessionAuth';
 import { validateShipmentParams } from '../middlewares/validateShipment.middleware';
 import { createShipmentController } from '../controllers/shipment.controller';
-import { WRITE_ROLES } from '../../../identity/constants/roles.constants';
+import {
+  getPalletLabelController,
+  resolvePalletController,
+} from '../controllers/palletLabel.controller';
+import { validatePalletScan } from '../middlewares/validatePalletScan.middleware';
+import { ALL_ROLES, WRITE_ROLES } from '../../../identity/constants/roles.constants';
 
 const router = Router();
 
@@ -86,6 +91,82 @@ router.post(
   sessionAuth(WRITE_ROLES),
   validateShipmentParams,
   createShipmentController
+);
+
+/**
+ * @swagger
+ * /api/logistics/shipments/{id}/label:
+ *   get:
+ *     summary: Étiquette scannable d'une palette (SSCC)
+ *     description: |
+ *       QR code portant l'**element string GS1** `00` + SSCC — le format qu'attend un lecteur
+ *       logistique, et non un Digital Link : une étiquette de palette s'adresse à la chaîne
+ *       d'approvisionnement, pas au consommateur.
+ *     tags: [Logistique]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Image PNG du QR code (réponse BINAIRE, pas l'enveloppe JSON habituelle)
+ *         content:
+ *           image/png:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *       401:
+ *         description: Aucune session
+ *       404:
+ *         description: Expédition introuvable dans l'organisation active (anti-énumération)
+ */
+router.get(
+  '/logistics/shipments/:id/label',
+  sessionAuth(ALL_ROLES),
+  getPalletLabelController
+);
+
+/**
+ * @swagger
+ * /api/logistics/shipments/by-sscc/{sscc}:
+ *   get:
+ *     summary: Contenu d'une palette à partir du SSCC scanné
+ *     description: |
+ *       Rend l'expédition et les lots que la palette transporte, avec leur statut sanitaire —
+ *       `contient_lot_rappele` signale un lot passé en rappel **après** son départ.
+ *
+ *       Authentifiée et cloisonnée : un SSCC expose le client, les produits et les quantités d'une
+ *       livraison. Le canal public reste celui du lot (`/api/gs1/01/../10/..`).
+ *     tags: [Logistique]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: sscc
+ *         required: true
+ *         description: 18 chiffres, ou 20 si la lecture a conservé le préfixe d'AI `00`.
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Contenu de la palette
+ *       400:
+ *         description: Le code scanné n'a pas la forme d'un SSCC
+ *       401:
+ *         description: Aucune session
+ *       404:
+ *         description: Palette introuvable dans l'organisation active
+ */
+router.get(
+  '/logistics/shipments/by-sscc/:sscc',
+  sessionAuth(ALL_ROLES),
+  validatePalletScan,
+  resolvePalletController
 );
 
 export default router;

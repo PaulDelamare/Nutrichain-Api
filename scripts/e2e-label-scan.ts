@@ -366,6 +366,71 @@ async function main() {
   const legacy = await fetch(`${API_URL}/api/public/scan/${shipped.lot_number}`);
   assert(legacy.status === 200, 'lot expédié résolu par son seul numéro → 200');
 
+  // ---- 10. L'étiquette de PALETTE (SSCC) : le niveau logistique du scan ----
+  // Le SSCC identifie le contenant physique. Sans étiquette, une palette quitte le quai sans code
+  // scannable, et un client destinataire d'un rappel ne peut pas identifier la sienne (#280).
+  console.log('\n[10] Étiquette de palette — le niveau logistique du scan');
+  const shipment = await prisma.shipment.findFirst({
+    where: { organization_id: ORG_ID },
+    orderBy: { date_envoi: 'desc' },
+  });
+
+  if (!shipment) {
+    console.log('  ⚠️ aucune expédition dans l\'organisation : étape ignorée (lancer `npm run seed:demo`)');
+  } else {
+    const palletLabel = await fetch(`${API_URL}/api/logistics/shipments/${shipment.id}/label`, {
+      headers: { Authorization: `Bearer ${sessionToken}` },
+    });
+    const palletPng = Buffer.from(await palletLabel.arrayBuffer());
+
+    assert(palletLabel.status === 200, 'étiquette de palette → 200');
+    assert(
+      (palletLabel.headers.get('cache-control') ?? '').includes('private'),
+      'étiquette de palette non mise en cache partagé'
+    );
+    assert(
+      palletPng.readUInt32BE(16) === palletPng.readUInt32BE(20),
+      `étiquette de palette carrée (${palletPng.readUInt32BE(16)}x${palletPng.readUInt32BE(20)})`
+    );
+
+    const palletDecoded = decodeQr(palletPng);
+    assert(palletDecoded !== null, 'étiquette de palette DÉCODABLE');
+    assert(
+      palletDecoded === `00${shipment.shipment_id}`,
+      `le QR porte l'element string GS1 AI 00 + SSCC (${palletDecoded})`
+    );
+
+    // On repart du code DÉCODÉ, préfixe d'AI compris : c'est ce que la caméra rend.
+    const palletScan = await fetch(`${API_URL}/api/logistics/shipments/by-sscc/${palletDecoded}`, {
+      headers: { Authorization: `Bearer ${sessionToken}` },
+    });
+    const palletBody = (await palletScan.json()) as {
+      data?: { sscc?: string; lots?: unknown[]; contient_lot_rappele?: boolean };
+    };
+
+    assert(palletScan.status === 200, 'le code scanné sur la palette résout son contenu');
+    assert(palletBody.data?.sscc === shipment.shipment_id, 'la réponse porte le SSCC scanné');
+    assert(
+      Array.isArray(palletBody.data?.lots) && palletBody.data.lots.length > 0,
+      `la palette annonce les lots qu'elle transporte (${palletBody.data?.lots?.length ?? 0})`
+    );
+    assert(
+      typeof palletBody.data?.contient_lot_rappele === 'boolean',
+      'la palette signale si elle contient un lot rappelé'
+    );
+
+    const palletAnonyme = await fetch(`${API_URL}/api/logistics/shipments/by-sscc/${shipment.shipment_id}`);
+    assert(
+      palletAnonyme.status === 401,
+      'contenu de palette sans session → 401 (ce n\'est pas un canal public)'
+    );
+
+    const palletMalforme = await fetch(`${API_URL}/api/logistics/shipments/by-sscc/123`, {
+      headers: { Authorization: `Bearer ${sessionToken}` },
+    });
+    assert(palletMalforme.status === 400, 'code scanné qui n\'est pas un SSCC → 400');
+  }
+
   console.log(`\n[E2E] ${passed} vérifications passées, ${failed} échouées.\n`);
   if (failed > 0) process.exit(1);
 }
