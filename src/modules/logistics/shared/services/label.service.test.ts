@@ -63,6 +63,23 @@ describe('labelService', () => {
       expect(png.subarray(0, 8).equals(PNG_SIGNATURE)).toBe(true);
     });
 
+    // Un QR code est carré par définition : ses trois motifs de repérage et son quadrillage de
+    // modules supposent le même pas en X et en Y. Une image étirée n'est plus décodable par une
+    // caméra — l'étiquette imprimée devient un rectangle noir sans effet. Le rendu sortait en
+    // 198x66 : la suite ne regardait que la signature PNG, jamais les dimensions.
+    it('rend un QR CARRE — une image etiree est indecodable par un lecteur reel', async () => {
+      const png = await labelService.generateQRCode(
+        'https://api.nutrichain.fr/api/gs1/01/03400000000000/10/LOT-XYZ'
+      );
+
+      // En-tête PNG : largeur et hauteur en big-endian aux offsets 16 et 20.
+      const width = png.readUInt32BE(16);
+      const height = png.readUInt32BE(20);
+
+      expect(width).toBeGreaterThan(0);
+      expect(height).toBe(width);
+    });
+
     it('rejette avec une APIError 500 orientee champ "qrcode" quand bwip-js echoue', async () => {
       // Un texte vide fait echouer le vrai encodeur ("bar code text not specified") :
       // on prouve la branche d'erreur reelle, sans mocker bwip-js.

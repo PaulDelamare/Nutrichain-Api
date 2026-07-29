@@ -30,6 +30,12 @@ export const labelService = {
 
   /**
    * Génère un QR Code GS1 Digital Link sous forme de Buffer (PNG)
+   *
+   * Ni `height` ni `width` : pour un symbole 2D, bwip-js les interprète en millimètres et étire
+   * l'image. `height: 10` produisait un rendu de 198x66 — un QR étiré n'est plus décodable (ses
+   * motifs de repérage supposent le même pas en X et en Y), donc chaque étiquette imprimée était
+   * un rectangle noir qu'aucune caméra ne lisait. Sans ces options, `scale` seul fixe la taille du
+   * module et le symbole reste carré.
    */
   async generateQRCode(text: string): Promise<Buffer> {
     return new Promise((resolve, reject) => {
@@ -37,10 +43,7 @@ export const labelService = {
         {
           bcid: 'qrcode', // Type de code
           text: text, // Contenu
-          scale: 3, // Résolution
-          height: 10, // Dimensions
-          includetext: false, // Pas de texte sous le code
-          textxalign: 'center',
+          scale: 3, // Taille d'un module, en pixels
         },
         (err, png) => {
           if (err) {
