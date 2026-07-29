@@ -21,6 +21,7 @@
 import jsQR from 'jsqr';
 import { PNG } from 'pngjs';
 import { prisma } from '../src/shared/configs/prismaClient.config';
+import { MIN_LABEL_PX } from '../src/modules/logistics/shared/services/label.service';
 import { signInAsOperator } from './helpers/e2eSession';
 
 const API_URL = process.env.API_URL || process.env.API_BASE || 'http://localhost:3000';
@@ -197,6 +198,12 @@ async function main() {
     png.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])),
     'le corps est un vrai PNG'
   );
+  // Sous 180 px de côté, l'étiquette cesse d'être décodable dès qu'une photo y ajoute un angle,
+  // du flou ou de la compression (#279). Mesuré ici sur la réponse HTTP réelle.
+  assert(
+    png.readUInt32BE(16) >= MIN_LABEL_PX,
+    `étiquette d'au moins ${MIN_LABEL_PX} px de côté (reçu : ${png.readUInt32BE(16)} px)`
+  );
 
   const width = png.readUInt32BE(16);
   const height = png.readUInt32BE(20);
@@ -288,9 +295,16 @@ async function main() {
     'lot d\'une AUTRE organisation → 404 (cloisonnement, anti-énumération)'
   );
 
-  // Le 400 « produit sans GTIN » documenté sur cette route n'est pas exerçable : `Product.code_gtin`
-  // est NON NULL en base. La garde reste un filet défensif ; fabriquer ici un état que la production
-  // ne produit jamais ne prouverait rien (cf. #276).
+  // Le 400 « produit sans GTIN » a été RETIRÉ de cette route (#276) : `Product.code_gtin` est NON
+  // NULL en base, la branche n'était atteignable par aucun chemin et le Swagger promettait un
+  // comportement que rien ne pouvait produire.
+
+  // L'étiquette est authentifiée et cloisonnée : aucun cache PARTAGÉ ne doit la conserver (#278).
+  // `public` est la seule directive qui autorise un proxy à garder une réponse portant un en-tête
+  // d'autorisation — vérifié ici sur la vraie réponse HTTP, pas sur un mock.
+  const cacheHeader = response.headers.get('cache-control') ?? '';
+  assert(cacheHeader.includes('private'), `étiquette servie en cache privé (reçu : ${cacheHeader})`);
+  assert(!cacheHeader.includes('public'), 'aucun cache partagé autorisé sur une ressource cloisonnée');
 
   // ---- 7. Le scan MÉTIER : l'opérateur scanne l'étiquette d'un lot en réception/transformation ----
   // Le parcours réel n'est pas « je connais le numéro de lot » : c'est « la caméra a lu ce QR ».

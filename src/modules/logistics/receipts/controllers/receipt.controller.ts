@@ -195,29 +195,26 @@ export const getBatchLabelController = catchAsync(
     // 1. Récupérer les infos du lot (pour avoir le GTIN produit)
     const batch = await receiptService.getBatchById(id, activeOrgId);
 
-    // 2. Générer le lien GS1
-    const gtin = batch.produit?.code_gtin;
-
-    if (!gtin) {
-      throw new APIError(400, {
-        error: [
-          {
-            field: 'batch',
-            message: 'Ce lot ne possède pas de code GTIN valide pour la labellisation.',
-          },
-        ],
-      });
-    }
-
-    const digitalLink = labelService.generateDigitalLink(gtin, batch.lot_number);
+    // 2. Générer le lien GS1. `Product.code_gtin` est NOT NULL en base : il n'y a pas de branche
+    // « produit sans GTIN » à traiter — la garde 400 qui vivait ici était inatteignable, et le
+    // Swagger promettait un comportement que rien ne pouvait produire.
+    const digitalLink = labelService.generateDigitalLink(batch.produit.code_gtin, batch.lot_number);
 
     // 3. Générer l'image QR
     const qrBuffer = await labelService.generateQRCode(digitalLink);
 
-    // 4. Envoyer le flux image avec Cache-Control pour performance (Lot immuable)
+    // 4. Envoyer le flux image.
+    //
+    // `private` et non `public` : la route est authentifiée et cloisonnée par organisation, et
+    // `public` est précisément la directive qui autorise un cache PARTAGÉ (proxy, CDN, cache
+    // d'entreprise) à conserver une réponse portant un en-tête d'autorisation. Le numéro de lot et
+    // le GTIN d'une organisation pouvaient ainsi être resservis à un appelant sans session.
+    //
+    // La durée tombe de un an à cinq minutes : une impression est un geste ponctuel, et un cache
+    // d'un an marqué `immutable` neutralise toute révocation d'accès côté client.
     res.setHeader('Content-Type', 'image/png');
     res.setHeader('Content-Disposition', `inline; filename="label-batch-${id}.png"`);
-    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable'); // Cache 1 an
+    res.setHeader('Cache-Control', 'private, max-age=300');
     res.send(qrBuffer);
   }
 );

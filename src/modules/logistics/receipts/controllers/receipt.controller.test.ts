@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Response } from 'express';
-import { createReceiptController } from './receipt.controller';
+import { createReceiptController, getBatchLabelController } from './receipt.controller';
 import { receiptService } from '../services/receipt.service';
 import { AuthenticatedRequest } from '../../../identity/types/auth.types';
 
@@ -11,6 +11,7 @@ vi.mock('../../../../shared/configs/prismaClient.config', () => ({
 vi.mock('../services/receipt.service', () => ({
   receiptService: {
     createReceipt: vi.fn(),
+    getBatchById: vi.fn(),
   },
 }));
 
@@ -80,6 +81,41 @@ describe('ReceiptController', () => {
         status: 401,
       });
       expect(receiptService.createReceipt).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getBatchLabelController', () => {
+    /**
+     * La route est authentifiée et cloisonnée par organisation. `Cache-Control: public` est
+     * précisément la directive qui autorise un cache PARTAGÉ (proxy, CDN, cache d'entreprise) à
+     * conserver une réponse portant un en-tête d'autorisation : le numéro de lot et le GTIN d'une
+     * organisation pouvaient être resservis à un appelant sans session. Le verrouiller ici, parce
+     * qu'un en-tête se remet « pour la performance » sans que rien ne rougisse.
+     */
+    it('répond en cache PRIVÉ et borné — jamais public sur une ressource cloisonnée', async () => {
+      vi.mocked(receiptService.getBatchById).mockResolvedValue({
+        lot_number: 'LOT-XYZ',
+        produit: { code_gtin: '03400000000000' },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+
+      const headers: Record<string, string> = {};
+      const res = {
+        setHeader: (k: string, v: string) => {
+          headers[k] = v;
+        },
+        send: vi.fn(),
+      } as unknown as Response;
+
+      await getBatchLabelController(
+        { params: { id: 'lot-1' }, activeOrgId: 'org-1' } as unknown as AuthenticatedRequest,
+        res
+      );
+
+      expect(headers['Cache-Control']).toBe('private, max-age=300');
+      expect(headers['Cache-Control']).not.toContain('public');
+      expect(headers['Cache-Control']).not.toContain('immutable');
+      expect(headers['Content-Type']).toBe('image/png');
     });
   });
 });
