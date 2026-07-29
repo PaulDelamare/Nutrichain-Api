@@ -5,6 +5,7 @@ import { sendSuccess } from '../../../../shared/utils/returnSuccess/returnSucces
 import { genealogyService } from '../services/genealogy.service';
 import { prisma } from '../../../../shared/configs/prismaClient.config';
 import { APIError } from '../../../../shared/utils/errorHandler/APIError';
+import { renderPublicScanHtml, PublicScanView } from './renderPublicScanHtml';
 
 /**
  * Résout un lot pour le scan public (B2C), quel que soit le critère de recherche fourni par
@@ -117,6 +118,27 @@ export const publicScanBatch = catchAsync(async (req: Request, res: Response) =>
 });
 
 /**
+ * Le consommateur reçoit une PAGE, la machine reçoit du JSON — depuis la même URL.
+ *
+ * C'est ce que prévoit GS1 Digital Link, et c'est l'argument qui a fait choisir ce format plutôt
+ * qu'un DataMatrix : un seul code pour les deux publics. Sans cette négociation, un scan réel
+ * affichait le JSON brut de l'API, où l'alerte de rappel — seule raison d'être de ce canal —
+ * passait inaperçue (#285).
+ *
+ * `accepts(['json', 'html'])` et non `accepts('html')` : un client sans préférence envoie `*&#47;*`,
+ * ce qui satisfait `html` et casserait les intégrations existantes. L'ordre fait du JSON le défaut ;
+ * seul un client qui demande explicitement du HTML (tout navigateur) obtient la page.
+ */
+function repondreSelonLeClient(req: Request, res: Response, vue: PublicScanView): void {
+  if (req.accepts(['json', 'html']) === 'html') {
+    res.type('html').send(renderPublicScanHtml(vue));
+    return;
+  }
+
+  sendSuccess(res, 200, 'Informations de traçabilité récupérées', vue);
+}
+
+/**
  * Résolution GS1 Digital Link (AI 01 = GTIN, AI 10 = lot) : c'est le lien réellement imprimé sur
  * l'étiquette (`labelService.generateDigitalLink`). Élimine l'ambiguïté inter-organisation à la
  * source — un scan réel ne tombe plus jamais sur le 409 « code ambigu ».
@@ -137,5 +159,5 @@ export const publicScanDigitalLink = catchAsync(async (req: Request, res: Respon
   );
   const publicData = await buildPublicScanResponse(batch);
 
-  sendSuccess(res, 200, 'Informations de traçabilité récupérées', publicData);
+  repondreSelonLeClient(req, res, publicData);
 });
