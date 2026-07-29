@@ -1,6 +1,6 @@
 # Index de la documentation
 
-Vingt-neuf documents se sont accumulés au fil du projet. Certains décrivent le code d'aujourd'hui,
+Trente documents se sont accumulés au fil du projet. Certains décrivent le code d'aujourd'hui,
 d'autres une intention passée. **Rien ne les distinguait** : il fallait ouvrir chaque fichier pour
 savoir lequel faisait foi — et deux d'entre eux enseignaient un modèle de sécurité supprimé depuis.
 
@@ -28,6 +28,7 @@ Cet index tranche. Trois statuts, un seul sens de lecture.
 | Doc | Statut | Contenu |
 |---|:--:|---|
 | [`04_tracabilite_et_lots.md`](04_tracabilite_et_lots.md) | ✅ | Règles de traçabilité, cycle de vie d'un lot. |
+| [`27_GS1_EPCIS.md`](27_GS1_EPCIS.md) | ✅ | **Les standards, expliqués** : ce que sont GTIN/SSCC/AI/EPCIS, pourquoi ces choix (LGTIN et non SGTIN, Digital Link et non DataMatrix), où ça vit dans le code, identifiants réels commentés, et l'inventaire des écarts de conformité assumés. |
 | [`11_TECH_TRANSFORMATIONS_GENEALOGY.md`](11_TECH_TRANSFORMATIONS_GENEALOGY.md) | ✅ | Transformations et généalogie, côté technique. |
 | [`11_TRANSFORMATIONS_GENEALOGY.md`](11_TRANSFORMATIONS_GENEALOGY.md) | 📌 | Note de conception antérieure, même sujet. Le fichier `11_TECH_*` fait foi. |
 | [`12_RECALLS_SYSTEM.md`](12_RECALLS_SYSTEM.md) | ✅ | Rappel produit et propagation à la descendance. |
