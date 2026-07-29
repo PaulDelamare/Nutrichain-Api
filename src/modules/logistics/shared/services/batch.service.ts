@@ -255,9 +255,10 @@ export const batchService = {
    * quarantaine froid cible les lots par `id_materiel_actuel` — une position figée à la création
    * rendait la surveillance fausse dès le premier déplacement réel (faux négatifs ET faux positifs).
    *
-   * Seul un lot LIBRE bouge (cf. MOVABLE_BATCH_STATUSES) : un lot en quarantaine ou sous rappel est
-   * immobilisé. Le matériel cible doit être un emplacement de STOCKAGE (pas une cuve/mixeur). Tracé
-   * dans l'audit WORM, comme toute écriture à conséquence sanitaire.
+   * Un lot disponible ou en quarantaine bouge (cf. MOVABLE_BATCH_STATUSES) — évacuer un frigo en
+   * panne fait partie du geste ; un lot sous rappel reste immobilisé. Le matériel cible doit être un
+   * emplacement de STOCKAGE (pas une cuve/mixeur). Tracé dans l'audit WORM, comme toute écriture à
+   * conséquence sanitaire.
    */
   async moveBatch(id: string, activeOrgId: string, userId: string, equipmentId: string) {
     return retryableTransaction(
@@ -283,7 +284,7 @@ export const batchService = {
             error: [
               {
                 field: 'statut',
-                message: `Un lot dans l'état ${batch.statut} ne peut pas être déplacé. Seul un lot disponible (EN_STOCK ou EN_ATTENTE_QC) se range ailleurs.`,
+                message: `Un lot dans l'état ${batch.statut} ne peut pas être déplacé. Se rangent ailleurs : un lot disponible (EN_STOCK, EN_ATTENTE_QC) et un lot en quarantaine (BLOQUE), qu'il faut pouvoir évacuer.`,
               },
             ],
           });
@@ -310,9 +311,13 @@ export const batchService = {
           });
         }
 
-        // Verrou optimiste : la version lue est dans le where. Si une excursion froid concurrente a
-        // fait passer le lot BLOQUE entre-temps, l'écriture ne mord pas (count 0) → 409, on ne
-        // déplace pas un lot dont l'état a changé sous nos yeux.
+        // Verrou optimiste : la version lue est dans le where. Le cas qui le justifie est le
+        // passage concurrent sous RAPPEL (`recall.service` incrémente `version`) — on ne déplace
+        // pas un lot devenu immobilisé entre la lecture et l'écriture.
+        // ⚠️ Effet de bord connu : une excursion froid concurrente incrémente elle aussi `version`,
+        // et rend donc un 409 « rechargez la fiche » à l'opérateur qui évacue au moment même de la
+        // détection — alors que le lot, devenu BLOQUE, est justement déplaçable. Il lui suffit de
+        // réessayer ; refuser à tort coûte moins cher que déplacer un lot dont l'état a changé.
         const updated = await tx.batch.updateMany({
           where: { id, organization_id: activeOrgId, version: batch.version },
           data: { id_materiel_actuel: equipmentId, version: { increment: 1 } },
