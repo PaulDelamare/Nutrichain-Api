@@ -36,6 +36,7 @@ const OTHER_ORG_ID = 'e2e-label-other-org';
 const SUPPLIER_ID = '223e4567-e89b-12d3-a456-426614174010';
 const PRODUCT_ID = '223e4567-e89b-12d3-a456-426614174011';
 const USER_ID = '223e4567-e89b-12d3-a456-426614174013';
+const EQUIPMENT_ID = '223e4567-e89b-12d3-a456-426614174014';
 const GTIN = '3000000000024';
 
 let sessionToken = '';
@@ -290,6 +291,80 @@ async function main() {
   // Le 400 « produit sans GTIN » documenté sur cette route n'est pas exerçable : `Product.code_gtin`
   // est NON NULL en base. La garde reste un filet défensif ; fabriquer ici un état que la production
   // ne produit jamais ne prouverait rien (cf. #276).
+
+  // ---- 7. Le scan MÉTIER : l'opérateur scanne l'étiquette d'un lot en réception/transformation ----
+  // Le parcours réel n'est pas « je connais le numéro de lot » : c'est « la caméra a lu ce QR ».
+  // On repart donc du contenu DÉCODÉ à l'étape 2, on en extrait le lot comme le fait le mobile
+  // (`src/lib/gs1.ts`), et on appelle la route de résolution avec ce qu'on en a tiré.
+  console.log('\n[7] Scan métier — du QR décodé à la résolution du lot (réception, transformation, expédition)');
+  const segments = (decoded ?? '').split('/');
+  const lotScanne = segments[segments.length - 1];
+  const gtinScanne = segments[segments.length - 3];
+
+  assert(lotScanne === shipped.lot_number, 'le numéro de lot extrait du QR est le bon');
+  assert(gtinScanne === GTIN, 'le GTIN extrait du QR est le bon');
+
+  const resolution = await fetch(
+    `${API_URL}/api/logistics/batches/resolve?lot_number=${encodeURIComponent(lotScanne)}`,
+    { headers: { Authorization: `Bearer ${sessionToken}` } }
+  );
+  const resolutionBody = (await resolution.json()) as { data?: { id?: string } };
+  assert(resolution.status === 200, 'lot scanné → résolu par l\'opérateur (200)');
+  assert(resolutionBody.data?.id === shipped.id, 'la résolution rend bien le lot scanné');
+
+  const resolutionAnonyme = await fetch(
+    `${API_URL}/api/logistics/batches/resolve?lot_number=${encodeURIComponent(lotScanne)}`
+  );
+  assert(resolutionAnonyme.status === 401, 'résolution sans session → 401');
+
+  // ---- 8. L'étiquette du MATÉRIEL (cuve, chambre froide) ----
+  // Même service de rendu que l'étiquette de lot : elle portait donc le même défaut (#277), et
+  // aucun test ne la couvrait non plus. Ce QR encode un code brut, pas une URL.
+  console.log('\n[8] Étiquette matériel — le second usage du même service de rendu');
+  const location = await prisma.location.findFirst({ where: { organization_id: ORG_ID } });
+  if (!location) {
+    console.log('  ⚠️ aucun lieu dans l\'organisation : étape ignorée (lancer `npm run seed:demo`)');
+  } else {
+    const equipment = await prisma.equipment.upsert({
+      where: { id: EQUIPMENT_ID },
+      update: {},
+      create: {
+        id: EQUIPMENT_ID,
+        organization_id: ORG_ID,
+        nom: 'Cuve E2E Etiquette',
+        type: 'CUVE',
+        id_lieu: location.id,
+        qr_code_id: 'EQ-E2E-LABEL-001',
+      },
+    });
+
+    const equipLabel = await fetch(`${API_URL}/api/organization/equipment/${equipment.id}/label`, {
+      headers: { Authorization: `Bearer ${sessionToken}` },
+    });
+    const equipPng = Buffer.from(await equipLabel.arrayBuffer());
+
+    assert(equipLabel.status === 200, 'étiquette matériel → 200');
+    assert(
+      equipPng.readUInt32BE(16) === equipPng.readUInt32BE(20),
+      `étiquette matériel carrée (${equipPng.readUInt32BE(16)}x${equipPng.readUInt32BE(20)})`
+    );
+    const equipDecoded = decodeQr(equipPng);
+    assert(equipDecoded !== null, 'étiquette matériel DÉCODABLE');
+    assert(
+      equipDecoded === equipment.qr_code_id,
+      `le QR matériel porte son code de rattachement (${equipDecoded})`
+    );
+
+    const equipAnonyme = await fetch(
+      `${API_URL}/api/organization/equipment/${equipment.id}/label`
+    );
+    assert(equipAnonyme.status === 401, 'étiquette matériel sans session → 401');
+  }
+
+  // ---- 9. Le canal public historique (lot seul) ----
+  console.log('\n[9] Scan public par numéro de lot seul (canal historique)');
+  const legacy = await fetch(`${API_URL}/api/public/scan/${shipped.lot_number}`);
+  assert(legacy.status === 200, 'lot expédié résolu par son seul numéro → 200');
 
   console.log(`\n[E2E] ${passed} vérifications passées, ${failed} échouées.\n`);
   if (failed > 0) process.exit(1);
