@@ -384,6 +384,11 @@ async function main() {
   // La boucle complète : constituer une palette, imprimer son étiquette, décoder l'image comme le
   // ferait une caméra, puis rappeler l'API avec CE QUE LE DÉCODEUR A LU — jamais avec un code
   // reconstruit. C'est la seule façon de prouver qu'une étiquette imprimée est exploitable.
+  // Le contenu de palette référence le lot en ON DELETE RESTRICT : un résidu d'exécution
+  // précédente ferait échouer la recréation du lot, et le scénario mourrait à chaque passage.
+  await prisma.logistic_Unit_Content.deleteMany({
+    where: { lot: { organization_id: ORG_ID, lot_number: 'E2ELABEL-PAL' } },
+  });
   const palletBatch = await makeBatch('PAL', 'EN_STOCK');
   const created = await fetch(`${API_URL}/api/logistics/logistic-units`, {
     method: 'POST',
@@ -394,7 +399,15 @@ async function main() {
     body: JSON.stringify({ items: [{ id_lot: palletBatch.id, quantite: 5 }] }),
   });
   assert(created.status === 201, `constitution de la palette → 201 (reçu ${created.status})`);
-  const pallet = (await created.json()).data as { id: string; sscc: string };
+  const pallet = (await created.json()).data as { id: string; sscc: string } | undefined;
+  if (!pallet?.id) {
+    // Sans cette sortie, le `pallet.id` suivant lèverait un TypeError qui court-circuiterait le
+    // nettoyage : la palette et son lot resteraient en base et empoisonneraient les runs suivants.
+    console.error('  ❌ palette non créée : étape 10 interrompue');
+    await prisma.batch.deleteMany({ where: { id: palletBatch.id } });
+    console.log(`\n[E2E] ${passed} vérifications passées, ${failed} échouées.\n`);
+    process.exit(1);
+  }
 
   const labelResponse = await fetch(
     `${API_URL}/api/logistics/logistic-units/${pallet.id}/label`,

@@ -69,11 +69,11 @@ describe('labelService', () => {
       }
     });
 
-    it('accepte un SSCC deja prefixe de son AI, sans le doubler', () => {
-      // La lecture d'une etiquette fournisseur conserve parfois le prefixe : le redoubler
-      // fabriquerait un code de 22 chiffres, illisible pour tout le monde.
-      expect(labelService.generateSsccElementString('00034567890000000606')).toBe(
-        '00034567890000000606'
+    it('refuse un SSCC deja prefixe de son AI plutot que de le doubler en silence', () => {
+      // 20 chiffres n'est pas un SSCC : le seul appelant lit `Logistic_Unit.sscc`, toujours ecrit
+      // sur 18 chiffres. Accepter ce cas serait tolerer une donnee que rien ne produit.
+      expect(() => labelService.generateSsccElementString('00034567890000000606')).toThrow(
+        APIError
       );
     });
   });

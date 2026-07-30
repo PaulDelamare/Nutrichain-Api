@@ -52,9 +52,7 @@ export const labelService = {
    */
   generateSsccElementString(sscc: string): string {
     const SSCC_AI = '00';
-    // Une lecture d'étiquette fournisseur conserve parfois l'AI : le redoubler fabriquerait un
-    // code de 22 chiffres que plus aucun lecteur ne résout.
-    const digits = sscc.startsWith(SSCC_AI) && sscc.length === 20 ? sscc.slice(2) : sscc;
+    const digits = sscc;
 
     if (!/^\d{18}$/.test(digits)) {
       throw new APIError(400, {

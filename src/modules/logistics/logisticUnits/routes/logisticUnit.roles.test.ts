@@ -182,12 +182,12 @@ describe('RBAC et câblage des routes de palette', () => {
       expect(res.status).toBe(401);
     });
 
-    it('n’est pas avalée par la route de scan : /label n’est pas un SSCC', async () => {
-      // Ordre des routes Express : `by-sscc/:sscc` ne doit pas capter ce chemin, et
-      // `:id/label` ne doit pas capter `by-sscc`. Un mauvais ordre rendrait 400 ici.
-      signedInAs('viewer');
-      const res = await request(app).get(`/api/logistics/logistic-units/${UNIT_ID}/label`);
-      expect(res.status).toBe(200);
+    it('ne capte pas le chemin de scan : « label » n’est pas un identifiant de palette', async () => {
+      // L'inverse du cas précédent : `by-sscc/label` doit rester la route de SCAN et tomber sur sa
+      // validation (400), et non être avalé par `:id/label` qui rendrait alors une image.
+      signedInAs('operator');
+      const res = await request(app).get('/api/logistics/logistic-units/by-sscc/label');
+      expect(res.status).toBe(400);
     });
   });
 });

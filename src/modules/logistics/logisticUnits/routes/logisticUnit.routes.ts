@@ -162,6 +162,7 @@ router.patch(
  *         content:
  *           image/png:
  *             schema: { type: string, format: binary }
+ *       400: { description: "Le SSCC enregistre n a pas 18 chiffres : aucune etiquette emise" }
  *       401: { description: "Aucune session" }
  *       403: { description: "Role insuffisant" }
  *       404: { description: "Palette introuvable dans l organisation active" }
