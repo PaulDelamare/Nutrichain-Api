@@ -8,6 +8,7 @@ import {
 } from '../middlewares/validateLogisticUnit.middleware';
 import {
   createLogisticUnitController,
+  getLogisticUnitLabelController,
   moveLogisticUnitController,
   resolveLogisticUnitController,
 } from '../controllers/logisticUnit.controller';
@@ -136,6 +137,40 @@ router.patch(
   sessionAuth(WRITE_ROLES),
   validateMoveLogisticUnit,
   moveLogisticUnitController
+);
+
+/**
+ * @swagger
+ * /api/logistics/logistic-units/{id}/label:
+ *   get:
+ *     summary: Etiquette scannable de la palette (QR PNG)
+ *     description: >
+ *       Rend un QR encodant l'element string GS1 du SSCC (`00` suivi des 18 chiffres), le format
+ *       que porte une etiquette logistique et que le scan de l'application sait resoudre. Ce n'est
+ *       volontairement PAS un Digital Link : celui-ci s'adresse au consommateur et suppose un GTIN,
+ *       que le contenant n'a pas.
+ *     tags: [Logistics - Palettes]
+ *     security: [{ sessionAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     responses:
+ *       200:
+ *         description: "Image PNG de l'etiquette, en cache prive"
+ *         content:
+ *           image/png:
+ *             schema: { type: string, format: binary }
+ *       400: { description: "Le SSCC enregistre n a pas 18 chiffres : aucune etiquette emise" }
+ *       401: { description: "Aucune session" }
+ *       403: { description: "Role insuffisant" }
+ *       404: { description: "Palette introuvable dans l organisation active" }
+ */
+router.get(
+  '/logistics/logistic-units/:id/label',
+  sessionAuth(ALL_ROLES),
+  getLogisticUnitLabelController
 );
 
 export default router;

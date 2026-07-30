@@ -1,5 +1,6 @@
 import { Response } from 'express';
 import { logisticUnitService } from '../services/logisticUnit.service';
+import { labelService } from '../../shared/services/label.service';
 import { sendSuccess } from '../../../../shared/utils/returnSuccess/returnSuccess';
 import { catchAsync } from '../../../../shared/utils/errorHandler/catchAsync';
 import { APIError } from '../../../../shared/utils/errorHandler/APIError';
@@ -73,5 +74,23 @@ export const resolveLogisticUnitController = catchAsync(
     const unit = await logisticUnitService.resolveBySscc(sscc, req.activeOrgId as string);
 
     sendSuccess(res, 200, 'Contenu de la palette.', unit);
+  }
+);
+
+export const getLogisticUnitLabelController = catchAsync(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const { id } = req.params;
+
+    const sscc = await logisticUnitService.getSsccById(id, req.activeOrgId as string);
+    const elementString = labelService.generateSsccElementString(sscc);
+    const qrBuffer = await labelService.generateQRCode(elementString);
+
+    // `private` : la route est authentifiée et cloisonnée, et `public` autoriserait un cache
+    // partagé à resservir le SSCC d'une organisation à un appelant sans session. Cinq minutes,
+    // parce qu'imprimer est un geste ponctuel — même contrat que l'étiquette de lot.
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Content-Disposition', `inline; filename="label-pallet-${sscc}.png"`);
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    res.send(qrBuffer);
   }
 );

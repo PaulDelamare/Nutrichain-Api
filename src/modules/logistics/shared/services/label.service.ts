@@ -39,6 +39,36 @@ export const labelService = {
   },
 
   /**
+   * Construit l'element string GS1 d'un SSCC : son AI `00` suivi des 18 chiffres.
+   *
+   * **Pas un Digital Link**, contrairement à l'étiquette de lot, et ce n'est pas un choix de
+   * style : le parseur de l'application mobile (`src/lib/gs1.ts`, `parseDigitalLink`) ne rend un
+   * résultat que si l'URL porte un GTIN ou un numéro de lot. Une URL ne portant qu'un SSCC lui
+   * renvoie `null` — l'étiquette passerait pour un code inconnu dans notre propre application.
+   * L'element string, lui, est décodé par `parseElementString`, qui reconnaît l'AI `00`.
+   *
+   * C'est aussi ce que porte une étiquette logistique du commerce : le SSCC identifie le
+   * contenant pour les opérations, là où le Digital Link s'adresse au consommateur.
+   */
+  generateSsccElementString(sscc: string): string {
+    const SSCC_AI = '00';
+    const digits = sscc;
+
+    if (!/^\d{18}$/.test(digits)) {
+      throw new APIError(400, {
+        error: [
+          {
+            field: 'sscc',
+            message: 'Un SSCC compte exactement 18 chiffres : aucune étiquette ne peut être émise.',
+          },
+        ],
+      });
+    }
+
+    return SSCC_AI + digits;
+  },
+
+  /**
    * Génère un QR Code GS1 Digital Link sous forme de Buffer (PNG)
    *
    * Ni `height` ni `width` : pour un symbole 2D, bwip-js les interprète en millimètres et étire

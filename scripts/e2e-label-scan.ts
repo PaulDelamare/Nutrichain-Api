@@ -380,6 +380,89 @@ async function main() {
   const legacy = await fetch(`${API_URL}/api/public/scan/${shipped.lot_number}`);
   assert(legacy.status === 200, 'lot expédié résolu par son seul numéro → 200');
 
+  console.log('\n[10] Étiquette de PALETTE — de l’impression au scan qui résout son contenu');
+  // La boucle complète : constituer une palette, imprimer son étiquette, décoder l'image comme le
+  // ferait une caméra, puis rappeler l'API avec CE QUE LE DÉCODEUR A LU — jamais avec un code
+  // reconstruit. C'est la seule façon de prouver qu'une étiquette imprimée est exploitable.
+  // Le contenu de palette référence le lot en ON DELETE RESTRICT : un résidu d'exécution
+  // précédente ferait échouer la recréation du lot, et le scénario mourrait à chaque passage.
+  await prisma.logistic_Unit_Content.deleteMany({
+    where: { lot: { organization_id: ORG_ID, lot_number: 'E2ELABEL-PAL' } },
+  });
+  const palletBatch = await makeBatch('PAL', 'EN_STOCK');
+  const created = await fetch(`${API_URL}/api/logistics/logistic-units`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${sessionToken}`,
+    },
+    body: JSON.stringify({ items: [{ id_lot: palletBatch.id, quantite: 5 }] }),
+  });
+  assert(created.status === 201, `constitution de la palette → 201 (reçu ${created.status})`);
+  const pallet = (await created.json()).data as { id: string; sscc: string } | undefined;
+  if (!pallet?.id) {
+    // Sans cette sortie, le `pallet.id` suivant lèverait un TypeError qui court-circuiterait le
+    // nettoyage : la palette et son lot resteraient en base et empoisonneraient les runs suivants.
+    console.error('  ❌ palette non créée : étape 10 interrompue');
+    await prisma.batch.deleteMany({ where: { id: palletBatch.id } });
+    console.log(`\n[E2E] ${passed} vérifications passées, ${failed} échouées.\n`);
+    process.exit(1);
+  }
+
+  const labelResponse = await fetch(
+    `${API_URL}/api/logistics/logistic-units/${pallet.id}/label`,
+    { headers: { Authorization: `Bearer ${sessionToken}` } }
+  );
+  assert(labelResponse.status === 200, 'étiquette de palette → 200');
+  assert(
+    labelResponse.headers.get('content-type') === 'image/png',
+    'l’étiquette est servie en image/png'
+  );
+  assert(
+    (labelResponse.headers.get('cache-control') ?? '').includes('private'),
+    'cache PRIVÉ : le SSCC ne se met pas en cache partagé'
+  );
+
+  const palletPng = Buffer.from(await labelResponse.arrayBuffer());
+  const palletImage = PNG.sync.read(palletPng);
+  assert(
+    palletImage.width === palletImage.height && palletImage.width >= 180,
+    `étiquette carrée et lisible (${palletImage.width}x${palletImage.height})`
+  );
+
+  const palletDecoded = decodeQr(palletPng);
+  assert(palletDecoded !== null, 'le motif de la palette est DÉCODABLE optiquement');
+  assert(
+    palletDecoded === `00${pallet.sscc}`,
+    `le QR porte l’element string GS1 attendu (lu : ${palletDecoded})`
+  );
+
+  // On rescanne avec la chaîne LUE, préfixe d'AI compris — exactement ce que rend une caméra.
+  const palletScan = await fetch(
+    `${API_URL}/api/logistics/logistic-units/by-sscc/${palletDecoded}`,
+    { headers: { Authorization: `Bearer ${sessionToken}` } }
+  );
+  assert(palletScan.status === 200, 'le code lu sur l’étiquette RÉSOUT la palette → 200');
+  const palletBody = await palletScan.json();
+  assert(
+    palletBody.data?.sscc === pallet.sscc,
+    'la palette résolue est bien celle qu’on a imprimée'
+  );
+  assert(
+    palletBody.data?.lots?.[0]?.id === palletBatch.id,
+    'le scan rend le lot que porte la palette'
+  );
+
+  const palletUnauthenticated = await fetch(
+    `${API_URL}/api/logistics/logistic-units/${pallet.id}/label`
+  );
+  assert(palletUnauthenticated.status === 401, 'étiquette de palette sans session → 401');
+
+  await prisma.logistic_Unit_Content.deleteMany({ where: { id_unite_logistique: pallet.id } });
+  await prisma.ePCIS_Event.deleteMany({ where: { related_id: pallet.id } });
+  await prisma.logistic_Unit.deleteMany({ where: { id: pallet.id } });
+  await prisma.batch.deleteMany({ where: { id: palletBatch.id } });
+
   console.log(`\n[E2E] ${passed} vérifications passées, ${failed} échouées.\n`);
   if (failed > 0) process.exit(1);
 }

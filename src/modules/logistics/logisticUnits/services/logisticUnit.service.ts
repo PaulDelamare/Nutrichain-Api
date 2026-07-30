@@ -518,4 +518,25 @@ export const logisticUnitService = {
       lots,
     };
   },
+
+  /**
+   * Rend le SSCC d'une palette de l'organisation active — ce que son étiquette doit encoder.
+   *
+   * 404 volontairement indistinct entre « n'existe pas » et « appartient à une autre
+   * organisation » : répondre autre chose confirmerait l'existence de la palette d'un voisin.
+   */
+  async getSsccById(unitId: string, organizationId: string): Promise<string> {
+    const unit = await prisma.logistic_Unit.findFirst({
+      where: { id: unitId, organization_id: organizationId },
+      select: { sscc: true },
+    });
+
+    if (!unit) {
+      throw new APIError(404, {
+        error: [{ field: 'id', message: 'Palette introuvable dans cette organisation' }],
+      });
+    }
+
+    return unit.sscc;
+  },
 };
