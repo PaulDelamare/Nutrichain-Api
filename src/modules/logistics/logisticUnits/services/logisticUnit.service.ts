@@ -10,6 +10,7 @@ import {
   EPCIS_ACTION,
   EPCIS_BIZSTEP,
   EPCIS_EVENT_TYPE,
+  EPCIS_RELATED_ENTITY,
 } from '../../../../shared/constants/epcis.constants';
 import {
   BATCH_STATUSES,
@@ -235,7 +236,7 @@ export const logisticUnitService = {
           organization_id: organizationId,
           event_time: new Date(),
           event_type: EPCIS_EVENT_TYPE.aggregation,
-          related_entity: 'Logistic_Unit',
+          related_entity: EPCIS_RELATED_ENTITY.logisticUnit,
           related_id: unit.id,
           payload: {
             parentID: gs1Utils.buildSsccUrn(gs1Prefix, sscc),

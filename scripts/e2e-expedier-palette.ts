@@ -24,7 +24,7 @@ function assert(condition: boolean, label: string): void {
   }
 }
 
-async function main(): Promise<void> {
+async function main(): Promise<{ lots: string[]; palletId: string; shipmentId: string }> {
   if (!ORG_ID) throw new Error('API_KEY_ORG_ID manquant dans .env');
 
   const stamp = Date.now().toString().slice(-8);
@@ -133,7 +133,26 @@ async function main(): Promise<void> {
   );
   assert(rescan.expedition?.client === client.nom_enseigne, 'et le client destinataire');
 
-  console.log('\n[E2E] 6 — l’audit nomme la palette, pas seulement les lots');
+  console.log('\n[E2E] 6 — la palette est désagrégée : un seul contenant revendique la marchandise');
+  const evenementPalette = async (action: string) =>
+    prisma.ePCIS_Event.findFirst({
+      where: {
+        organization_id: ORG_ID,
+        related_id: pallet.id,
+        event_type: 'AggregationEvent',
+        payload: { path: ['action'], equals: action },
+      },
+    });
+  const desagregation = await evenementPalette('DELETE');
+  const agregation = await evenementPalette('ADD');
+  const parent = (p: unknown) => (p as { parentID?: string } | null)?.parentID;
+  assert(desagregation !== null, 'le départ de la palette émet un AggregationEvent DELETE');
+  assert(
+    parent(desagregation?.payload) === parent(agregation?.payload),
+    'et il referme EXACTEMENT le contenant que la palettisation avait agrégé'
+  );
+
+  console.log('\n[E2E] 7 — l’audit nomme la palette, pas seulement les lots');
   const audit = await prisma.audit_Log.findFirst({
     where: { organization_id: ORG_ID, action: 'CREATE_SHIPMENT', entity_id: shipment.id },
   });
@@ -143,17 +162,40 @@ async function main(): Promise<void> {
     'le maillon WORM porte le SSCC de la palette expédiée'
   );
 
-  // Cleanup — enfants avant parents. Les maillons d'Audit_Log ne se suppriment PAS : la chaîne est
-  // chaînée par hash, en retirer un la romprait pour toute l'organisation.
-  const lots = [lotA.id, lotB.id];
+  return { lots: [lotA.id, lotB.id], palletId: pallet.id, shipmentId: shipment.id };
+}
+
+/**
+ * Nettoyage — enfants avant parents. Appelé depuis un `finally` : sans lui, une assertion qui
+ * régresse laissait des lots et des palettes orphelins dans la base, et la violation de clé
+ * étrangère remplaçait le rapport lisible par une pile Prisma.
+ *
+ * Les maillons d'Audit_Log ne se suppriment PAS : la chaîne est chaînée par hash, en retirer un la
+ * romprait pour toute l'organisation.
+ */
+async function nettoyer(ids: { lots: string[]; palletId: string; shipmentId: string }): Promise<void> {
+  const { lots, palletId, shipmentId } = ids;
   await prisma.batch_Mouvement.deleteMany({ where: { id_lot: { in: lots } } });
-  await prisma.liaison_Shipment.deleteMany({ where: { id_expedition: shipment.id } });
-  await prisma.shipment.deleteMany({ where: { id: shipment.id } });
-  await prisma.logistic_Unit_Content.deleteMany({ where: { id_unite_logistique: pallet.id } });
-  await prisma.ePCIS_Event.deleteMany({ where: { related_id: { in: [pallet.id, shipment.id] } } });
-  await prisma.logistic_Unit.deleteMany({ where: { id: pallet.id } });
+  await prisma.liaison_Shipment.deleteMany({ where: { id_expedition: shipmentId } });
+  await prisma.shipment.deleteMany({ where: { id: shipmentId } });
+  await prisma.logistic_Unit_Content.deleteMany({ where: { id_unite_logistique: palletId } });
+  await prisma.ePCIS_Event.deleteMany({ where: { related_id: { in: [palletId, shipmentId] } } });
+  await prisma.logistic_Unit.deleteMany({ where: { id: palletId } });
   await prisma.batch.deleteMany({ where: { id: { in: lots } } });
-  await prisma.$disconnect();
+}
+
+async function run(): Promise<void> {
+  let ids: { lots: string[]; palletId: string; shipmentId: string } | null = null;
+  try {
+    ids = await main();
+  } finally {
+    // Sans ce `finally`, une assertion qui régresse laissait lots et palette orphelins en base, et
+    // la violation de clé étrangère au nettoyage suivant remplaçait le rapport par une pile Prisma.
+    if (ids) {
+      await nettoyer(ids).catch((e) => console.error('[E2E] nettoyage incomplet :', e));
+    }
+    await prisma.$disconnect();
+  }
 
   if (failures.length > 0) {
     console.error(`\n[E2E] ❌ ${failures.length} assertion(s) en échec.`);
@@ -162,7 +204,7 @@ async function main(): Promise<void> {
   console.log('\n[E2E] ✅ toutes les assertions passent.');
 }
 
-main().catch(async (error) => {
+run().catch(async (error) => {
   console.error('\n[E2E] Échec :', error);
   await prisma.$disconnect();
   process.exit(1);

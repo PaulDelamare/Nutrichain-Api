@@ -82,7 +82,10 @@ const router = Router();
  *       201:
  *         description: Expédition créée, SSCC généré
  *       400:
- *         description: Payload invalide, expédition sans lot ni palette, lot chargé deux fois, ou lot non expédiable
+ *         description: |
+ *           Payload invalide, expédition sans lot ni palette, lot chargé deux fois, lot non
+ *           expédiable, ou plus de 500 lignes une fois les palettes développées (c'est ce total,
+ *           et non le nombre d'entrées du payload, qui décide de la taille de la transaction).
  *       401:
  *         description: Aucune session
  *       403:
