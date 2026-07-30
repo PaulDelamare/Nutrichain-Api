@@ -16,7 +16,8 @@ export const createShipmentController = catchAsync(
         error: [{ field: 'shipment', message: "Données d'expédition non validées." }],
       });
     }
-    const { id_client, shipment_id, transporteur, destination_adresse, lots } = validatedShipment;
+    const { id_client, shipment_id, transporteur, destination_adresse, lots, palettes } =
+      validatedShipment;
     const activeOrgId = req.activeOrgId as string;
 
     // L'auteur vient de la session, et de NULLE PART ailleurs (cf. `receipt.controller`).
@@ -36,10 +37,13 @@ export const createShipmentController = catchAsync(
       destination_adresse,
       date_envoi: new Date(),
       created_by: userId,
-      items: lots.map((l: { id_lot: string; quantite_expediee: number }) => ({
+      // `lots` est facultatif depuis qu'on peut charger des palettes. « Au moins l'un des deux »
+      // se tranche dans le service : VineJS ne sait pas exprimer cette dépendance entre champs.
+      items: (lots ?? []).map((l: { id_lot: string; quantite_expediee: number }) => ({
         id_lot: l.id_lot,
         quantite: l.quantite_expediee,
       })),
+      palettes,
     });
 
     return sendSuccess(res, 201, 'Expédition créée avec succès', { shipment });

@@ -32,7 +32,7 @@ const router = Router();
  *         application/json:
  *           schema:
  *             type: object
- *             required: [id_client, shipment_id, transporteur, destination_adresse, lots]
+ *             required: [id_client, shipment_id, transporteur, destination_adresse]
  *             properties:
  *               id_client:
  *                 type: string
@@ -50,11 +50,24 @@ const router = Router();
  *                 type: string
  *                 minLength: 5
  *                 maxLength: 255
+ *               palettes:
+ *                 type: array
+ *                 maxItems: 50
+ *                 description: >
+ *                   SSCC des palettes chargees telles quelles, le geste du quai. Leur contenu
+ *                   devient les lignes du bon, chaque liaison porte la palette, et la palette est
+ *                   videe : c est le seul cas ou l origine de la marchandise est certaine. Le code
+ *                   peut porter son AI 00, tel qu une camera le rend. Une palette ne part qu une fois.
+ *                 items:
+ *                   type: string
+ *                   pattern: "^(00)?[0-9]{18}$"
  *               lots:
  *                 type: array
- *                 minItems: 1
  *                 maxItems: 500
- *                 description: Borné — une expédition de dizaines de milliers de lignes ouvrait une transaction géante
+ *                 description: >
+ *                   Lots charges en vrac. Facultatif si des palettes sont fournies, mais l un des
+ *                   deux doit porter quelque chose. Borne : une expedition de dizaines de milliers
+ *                   de lignes ouvrait une transaction geante.
  *                 items:
  *                   type: object
  *                   required: [id_lot, quantite_expediee]
@@ -69,7 +82,7 @@ const router = Router();
  *       201:
  *         description: Expédition créée, SSCC généré
  *       400:
- *         description: Payload invalide, ou lot non expédiable (quarantaine, rappel, attente de contrôle)
+ *         description: Payload invalide, expédition sans lot ni palette, lot chargé deux fois, ou lot non expédiable
  *       401:
  *         description: Aucune session
  *       403:
@@ -78,8 +91,9 @@ const router = Router();
  *         description: Client ou lot introuvable dans l'organisation active
  *       409:
  *         description: |
- *           Référence d'expédition déjà utilisée, client archivé, ou conflit de verrou optimiste
- *           sur un lot modifié entre-temps — dans ce dernier cas, rejouer la requête.
+ *           Référence d'expédition déjà utilisée, client archivé, palette déjà partie sur une autre
+ *           expédition, palette sans contenu, ou conflit de verrou optimiste sur un lot modifié
+ *           entre-temps — dans ce dernier cas, rejouer la requête.
  */
 router.post(
   '/logistics/shipments',

@@ -236,6 +236,7 @@ describe('logisticUnitService', () => {
         sscc: '380123400000000428',
         source: 'INTERNE',
         created_at: new Date('2026-07-29T10:00:00Z'),
+        liaisons: [],
         contenu: [
           {
             quantite: 40,
@@ -266,6 +267,7 @@ describe('logisticUnitService', () => {
         sscc: '380123400000000428',
         source: 'INTERNE',
         created_at: new Date(),
+        liaisons: [],
         contenu: [
           {
             quantite: 40,
@@ -297,6 +299,7 @@ describe('logisticUnitService', () => {
         sscc: '380123400000000428',
         source: 'INTERNE',
         created_at: new Date(),
+        liaisons: [],
         contenu: [
           {
             quantite: 40,
@@ -338,6 +341,7 @@ describe('logisticUnitService', () => {
         sscc: '380123400000000428',
         source: 'INTERNE',
         created_at: new Date(),
+        liaisons: [],
         contenu: [
           {
             quantite: 40,

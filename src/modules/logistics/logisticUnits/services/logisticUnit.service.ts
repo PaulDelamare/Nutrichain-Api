@@ -51,7 +51,25 @@ const CONTENT_INCLUDE = {
       },
     },
   },
-} as const;
+  // L'expédition sur laquelle la palette est partie. Une palette chargée est vidée de son contenu :
+  // sans cette lecture, elle serait strictement indiscernable d'une palette qu'on n'a jamais
+  // remplie, et l'opérateur qui la rescanne au quai ne saurait pas si elle est vide ou déjà partie.
+  liaisons: {
+    take: 1,
+    include: {
+      expedition: {
+        select: {
+          shipment_id: true,
+          date_envoi: true,
+          statut_livraison: true,
+          client: { select: { nom_enseigne: true } },
+        },
+      },
+    },
+  },
+  // `satisfies` et non `as const` : les arguments imbriqués de Prisma refusent les propriétés en
+  // lecture seule que `as const` propage en profondeur.
+} satisfies Prisma.Logistic_UnitInclude;
 
 /**
  * `Serializable` comme `moveBatch`, qui écrit exactement le même champ : deux fonctions qui
@@ -511,6 +529,15 @@ export const logisticUnitService = {
       created_at: unit.created_at,
       id_materiel: position,
       positions_divergentes: positionsDivergentes,
+      // `null` tant que la palette n'est pas partie. Renseignée, elle explique un contenu vide.
+      expedition: unit.liaisons[0]
+        ? {
+            shipment_id: unit.liaisons[0].expedition.shipment_id,
+            date_envoi: unit.liaisons[0].expedition.date_envoi,
+            statut_livraison: unit.liaisons[0].expedition.statut_livraison,
+            client: unit.liaisons[0].expedition.client?.nom_enseigne ?? null,
+          }
+        : null,
       // Un lot peut passer en rappel APRÈS la palettisation : c'est précisément ce que le scan
       // doit révéler sur le quai, sinon le rappel reste une notification et ne devient jamais un
       // geste.
