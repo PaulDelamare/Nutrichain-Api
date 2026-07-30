@@ -536,6 +536,26 @@ describe('BatchSharedService', () => {
       version: 2,
     };
 
+    it('détache le lot détruit de toute palette qui le portait', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(prisma.batch.findFirst).mockResolvedValueOnce(bloqueOrgA as any);
+      vi.mocked(prisma.batch.updateMany).mockResolvedValue({ count: 1 } as never);
+      vi.mocked(prisma.batch.findFirst).mockResolvedValueOnce({
+        ...bloqueOrgA,
+        statut: 'REBUT',
+        quantite_actuelle: 0,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+
+      await batchService.scrapBatch('batch-1', 'org-1', 'user-1', 'Lot rappelé détruit');
+
+      // Sans ce retrait, la palette déclare à vie un lot détruit — et devient irrangeable, la garde
+      // exigeant que tout son contenu soit déplaçable.
+      expect(prisma.logistic_Unit_Content.deleteMany).toHaveBeenCalledWith({
+        where: { id_lot: 'batch-1', unite_logistique: { organization_id: 'org-1' } },
+      });
+    });
+
     it('met au rebut un lot en quarantaine (BLOQUE -> REBUT), quantité à zéro, avec mouvement et audit', async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       vi.mocked(prisma.batch.findFirst).mockResolvedValueOnce(bloqueOrgA as any);

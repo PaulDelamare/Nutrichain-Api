@@ -5,6 +5,7 @@ import { auditService } from '../../../../shared/utils/audit/audit.service';
 import { retryableTransaction } from '../../../../shared/utils/db/withWriteConflictRetry';
 import { gs1Utils } from '../../../../shared/utils/gs1/gs1.utils';
 import { enforceSeparationOfDuties, SELF_RELEASE_TRACE } from '../utils/separationOfDuties';
+import { reconcileLogisticUnitContent } from '../utils/reconcileLogisticUnitContent';
 import {
   BATCH_STATUSES,
   BatchStatus,
@@ -436,6 +437,15 @@ export const batchService = {
             ],
           });
         }
+
+        // Un lot détruit ne repose plus sur aucune palette. Sans ce retrait, la palette continue de
+        // le déclarer et devient irrangeable : la garde exige que tout son contenu soit déplaçable,
+        // ce qu'un lot au rebut n'est plus.
+        await reconcileLogisticUnitContent(tx, {
+          batchId: id,
+          organizationId: activeOrgId,
+          remainingQuantity: 0,
+        });
 
         await tx.scrapRecord.create({
           data: {

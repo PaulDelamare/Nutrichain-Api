@@ -215,14 +215,17 @@ async function main(): Promise<void> {
   // Cleanup — dans l'ordre des dépendances. Les mouvements en premier : ranger la palette et
   // sortir un lot en écrivent, et `Batch_Mouvement` référence le lot.
   const createdBatches = [lotA.id, lotB.id, lotBloque.id];
+  const createdUnits = [pallet.id];
   await prisma.batch_Mouvement.deleteMany({ where: { id_lot: { in: createdBatches } } });
-  await prisma.logistic_Unit_Content.deleteMany({ where: { id_unite_logistique: pallet.id } });
-  await prisma.ePCIS_Event.deleteMany({ where: { related_id: pallet.id } });
+  await prisma.logistic_Unit_Content.deleteMany({
+    where: { id_unite_logistique: { in: createdUnits } },
+  });
+  await prisma.ePCIS_Event.deleteMany({ where: { related_id: { in: createdUnits } } });
   // On ne supprime PAS les Audit_Log : la chaîne est chaînée par hash, en retirer un maillon la
   // rompt pour TOUTE l'organisation — et le bouton « vérifier l'intégrité » afficherait alors une
   // falsification. Les traces de ce scénario restent, inoffensives. (Dix scripts e2e du dépôt le
   // font encore : c'est ce qui a cassé la chaîne de la base de démonstration.)
-  await prisma.logistic_Unit.delete({ where: { id: pallet.id } });
+  await prisma.logistic_Unit.deleteMany({ where: { id: { in: createdUnits } } });
   await prisma.batch.deleteMany({ where: { id: { in: createdBatches } } });
   await prisma.$disconnect();
 

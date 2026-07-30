@@ -45,12 +45,12 @@ const router = Router();
  *                     id_lot: { type: string, format: uuid }
  *                     quantite: { type: number, minimum: 0, exclusiveMinimum: true }
  *     responses:
- *       201: { description: Palette constituée (id, sscc, nombre de lots) }
- *       400: { description: Payload invalide, quantité supérieure au stock, ou lot en double }
- *       401: { description: Aucune session }
- *       403: { description: Rôle insuffisant }
- *       404: { description: Lot introuvable dans l'organisation active }
- *       409: { description: Lot non palettisable (quarantaine, rappel, expédié) }
+ *       201: { description: "Palette constituée (id, sscc, nombre de lots)" }
+ *       400: { description: "Payload invalide, quantité supérieure au stock, ou lot en double" }
+ *       401: { description: "Aucune session" }
+ *       403: { description: "Rôle insuffisant" }
+ *       404: { description: "Lot introuvable dans l'organisation active" }
+ *       409: { description: "Lot non palettisable (quarantaine, rappel, expédié)" }
  */
 router.post(
   '/logistics/logistic-units',
@@ -78,10 +78,10 @@ router.post(
  *         description: 18 chiffres, ou 20 si la lecture a conservé le préfixe d'AI `00`.
  *         schema: { type: string }
  *     responses:
- *       200: { description: Contenu de la palette }
- *       400: { description: Le code scanné n'a pas la forme d'un SSCC }
- *       401: { description: Aucune session }
- *       404: { description: Palette introuvable dans l'organisation active }
+ *       200: { description: "Contenu de la palette" }
+ *       400: { description: "Le code scanné n'a pas la forme d'un SSCC" }
+ *       401: { description: "Aucune session" }
+ *       404: { description: "Palette introuvable dans l'organisation active" }
  */
 router.get(
   '/logistics/logistic-units/by-sscc/:sscc',
@@ -124,12 +124,12 @@ router.get(
  *             properties:
  *               id_materiel: { type: string, format: uuid }
  *     responses:
- *       200: { description: Palette rangée (nombre de lots déplacés ; 0 si elle y était déjà) }
- *       400: { description: Payload invalide, ou destination qui n'est pas un emplacement de stockage }
- *       401: { description: Aucune session }
- *       403: { description: Rôle insuffisant }
- *       404: { description: Palette ou matériel introuvable dans l'organisation active }
- *       409: { description: Un lot de la palette est sous rappel, ou son état a changé pendant le geste }
+ *       200: { description: "Palette rangée (nombre de lots déplacés ; 0 si elle y était déjà)" }
+ *       400: { description: "Payload invalide, ou destination qui n'est pas un emplacement de stockage" }
+ *       401: { description: "Aucune session" }
+ *       403: { description: "Rôle insuffisant" }
+ *       404: { description: "Palette ou matériel introuvable dans l'organisation active" }
+ *       409: { description: "Un lot de la palette est sous rappel, ou son état a changé pendant le geste" }
  */
 router.patch(
   '/logistics/logistic-units/:id/location',

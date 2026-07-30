@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '../../../../shared/configs/prismaClient.config';
 import { APIError } from '../../../../shared/utils/errorHandler/APIError';
 import { auditService } from '../../../../shared/utils/audit/audit.service';
@@ -44,11 +45,28 @@ const CONTENT_INCLUDE = {
           lot_number: true,
           statut: true,
           date_peremption: true,
+          id_materiel_actuel: true,
           produit: { select: { nom: true, code_gtin: true } },
         },
       },
     },
   },
+} as const;
+
+/**
+ * `Serializable` comme `moveBatch`, qui écrit exactement le même champ : deux fonctions qui
+ * déplacent un lot ne doivent pas raisonner sous deux isolations différentes. Les conflits de
+ * sérialisation sont rejoués par `retryableTransaction`.
+ *
+ * Le timeout est explicite : jusqu'à 100 lots, chacun avec son écriture conditionnelle, plus le
+ * maillon d'audit. Le défaut Prisma de 5 s sortait en P2028 — non retryable — sur les grosses
+ * palettes, c'est-à-dire précisément le cas d'usage visé. `maxWait` est relevé pour la même raison :
+ * sous rafale, attendre une connexion plus longtemps vaut mieux qu'un P2028 que personne ne rejoue.
+ */
+const MOVE_TRANSACTION_OPTIONS = {
+  isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+  timeout: 15_000,
+  maxWait: 10_000,
 } as const;
 
 /**
@@ -142,15 +160,18 @@ export const logisticUnitService = {
         }
       }
 
-      // Un lot est sur AU PLUS UNE palette : la contrainte est en base
-      // (`@@unique([id_lot])`), on la vérifie ici pour rendre un message exploitable plutôt qu'un
-      // 409 « ressource déjà existante » qui n'apprend rien à l'opérateur.
+      // Un lot est sur AU PLUS UNE palette : la contrainte est en base (`@@unique([id_lot])`), on la
+      // vérifie ici pour rendre un message exploitable plutôt qu'un 409 « ressource déjà existante »
+      // qui n'apprend rien à l'opérateur.
       const dejaPalettises = await tx.logistic_Unit_Content.findMany({
         where: {
           id_lot: { in: items.map((item) => item.id_lot) },
           unite_logistique: { organization_id: organizationId },
         },
-        include: { unite_logistique: { select: { sscc: true } }, lot: { select: { lot_number: true } } },
+        include: {
+          unite_logistique: { select: { sscc: true } },
+          lot: { select: { lot_number: true } },
+        },
       });
 
       if (dejaPalettises.length > 0) {
@@ -159,7 +180,7 @@ export const logisticUnitService = {
           error: [
             {
               field: 'items',
-              message: `Le lot ${premier.lot.lot_number} est déjà sur la palette ${premier.unite_logistique.sscc}. Sortez-le d'abord, ou rangez cette palette-là.`,
+              message: `Le lot ${premier.lot.lot_number} est déjà sur la palette ${premier.unite_logistique.sscc}. Sortez-le d'abord, ou déclarez un lot distinct pour cette palette.`,
             },
           ],
         });
@@ -279,28 +300,9 @@ export const logisticUnitService = {
         });
       }
 
-      // Idempotent : un retry réseau d'un rangement réussi ne doit ni rejouer les mouvements ni
-      // ajouter un maillon d'audit. Les lots déjà en place ne sont simplement pas retouchés.
-      const aDeplacer = unit.contenu.filter((c) => c.lot.id_materiel_actuel !== equipmentId);
-
-      if (aDeplacer.length === 0) {
-        return { id: unit.id, sscc: unit.sscc, lots_deplaces: 0, id_materiel: equipmentId };
-      }
-
-      // Toutes les gardes AVANT la première écriture : le refus doit être total, pas partiel.
-      for (const contenu of aDeplacer) {
-        if (!(MOVABLE_BATCH_STATUSES as readonly string[]).includes(contenu.lot.statut)) {
-          throw new APIError(409, {
-            error: [
-              {
-                field: 'contenu',
-                message: `Le lot ${contenu.lot.lot_number} est dans l'état ${contenu.lot.statut} : la palette ne peut pas être rangée tant qu'il la porte. Sortez-le d'abord.`,
-              },
-            ],
-          });
-        }
-      }
-
+      // La destination est validée AVANT toute autre chose, y compris avant le raccourci
+      // d'idempotence : sans cela, une palette déjà en place répondait « Palette rangée. » sur un
+      // matériel inexistant, appartenant à une autre organisation, ou sur une cuve.
       const equipment = await tx.equipment.findFirst({
         where: { id: equipmentId, organization_id: activeOrgId },
       });
@@ -322,6 +324,48 @@ export const logisticUnitService = {
         });
       }
 
+      // Une palette vide n'est pas « rangée » : elle ne porte plus rien, et la position ne vit que
+      // sur les lots. Répondre succès laisserait croire à une traçabilité d'emplacement inexistante.
+      if (unit.contenu.length === 0) {
+        throw new APIError(409, {
+          error: [
+            {
+              field: 'contenu',
+              message: `La palette ${unit.sscc} ne porte plus aucun lot : il n'y a rien à ranger.`,
+            },
+          ],
+        });
+      }
+
+      // Gardes sur TOUT le contenu, pas seulement sur les lots à déplacer : un lot sous rappel déjà
+      // posé à la destination doit bloquer le geste, sinon le contrat « si un seul lot ne peut pas
+      // suivre, rien ne bouge » serait vrai ou faux selon la position initiale des lots.
+      for (const contenu of unit.contenu) {
+        if (!(MOVABLE_BATCH_STATUSES as readonly string[]).includes(contenu.lot.statut)) {
+          throw new APIError(409, {
+            error: [
+              {
+                field: 'contenu',
+                // Le message ne conseille PAS « sortez-le d'abord » : un lot sous rappel n'est pas
+                // déplaçable seul non plus (`moveBatch` le refuse), donc ce conseil désignait un
+                // geste impossible. La seule issue réelle est la décision qualité sur le lot.
+                message: `Le lot ${contenu.lot.lot_number} est dans l'état ${contenu.lot.statut} : la palette ne peut pas être rangée tant qu'il la porte. Traitez d'abord le lot (levée de quarantaine ou mise au rebut).`,
+              },
+            ],
+          });
+        }
+      }
+
+      // Idempotent : un retry réseau d'un rangement réussi ne doit ni rejouer les mouvements ni
+      // ajouter un maillon d'audit. Les lots déjà en place ne sont simplement pas retouchés.
+      const aDeplacer = unit.contenu.filter((c) => c.lot.id_materiel_actuel !== equipmentId);
+
+      if (aDeplacer.length === 0) {
+        return { id: unit.id, sscc: unit.sscc, lots_deplaces: 0, id_materiel: equipmentId };
+      }
+
+      const mouvements: Prisma.Batch_MouvementCreateManyInput[] = [];
+
       for (const contenu of aDeplacer) {
         // Verrou optimiste par lot : si l'état de l'un a changé depuis la lecture, on annule TOUT.
         const updated = await tx.batch.updateMany({
@@ -334,33 +378,65 @@ export const logisticUnitService = {
         });
 
         if (updated.count === 0) {
-          throw new APIError(409, {
-            error: [
-              {
-                field: 'contenu',
-                message: `L'état du lot ${contenu.lot.lot_number} a changé pendant le rangement. Rechargez la palette avant de réessayer.`,
-              },
-            ],
+          // La version a bougé, mais pas forcément la position : deux appuis sur le même bouton, ou
+          // un retry réseau, font aboutir le premier et échouer le second alors que TOUT a réussi.
+          // On relit donc l'état frais avant d'alarmer, et on rejoue la garde de statut complète —
+          // un rappel intercalé change la version sans toucher la position, et scellerait sinon un
+          // maillon d'audit affirmant qu'on a rangé un lot devenu intouchable.
+          const frais = await tx.batch.findFirst({
+            where: { id: contenu.lot.id, organization_id: activeOrgId },
+            select: { statut: true, id_materiel_actuel: true },
           });
+
+          const dejaEnPlace =
+            frais?.id_materiel_actuel === equipmentId &&
+            (MOVABLE_BATCH_STATUSES as readonly string[]).includes(frais.statut);
+
+          if (!dejaEnPlace) {
+            throw new APIError(409, {
+              error: [
+                {
+                  field: 'contenu',
+                  message: `L'état du lot ${contenu.lot.lot_number} a changé pendant le rangement. Rechargez la palette avant de réessayer.`,
+                },
+              ],
+            });
+          }
+
+          continue;
         }
 
-        await tx.batch_Mouvement.create({
-          data: {
-            id_lot: contenu.lot.id,
-            type_action: MOVEMENT_TYPES.MOVE,
-            quantite: contenu.lot.quantite_actuelle,
-            unite: contenu.lot.unite_code,
-            id_user: userId,
-            // Le SSCC dans le mouvement : la frise du lot doit dire qu'il a bougé PARCE QUE sa
-            // palette a été rangée, et non par un geste individuel.
-            metadata: {
-              from: contenu.lot.id_materiel_actuel,
-              to: equipmentId,
-              sscc: unit.sscc,
-            },
+        mouvements.push({
+          id_lot: contenu.lot.id,
+          type_action: MOVEMENT_TYPES.MOVE,
+          // La quantité du MOUVEMENT est celle qui est sur CETTE palette, pas le stock total du
+          // lot : un lot réparti sur deux palettes verrait sinon ses 800 kg déplacés deux fois
+          // dans sa frise, alors que 300 seulement ont bougé.
+          quantite: contenu.quantite,
+          unite: contenu.unite,
+          id_user: userId,
+          // Le SSCC dans le mouvement : la frise du lot doit dire qu'il a bougé PARCE QUE sa
+          // palette a été rangée, et non par un geste individuel.
+          metadata: {
+            from: contenu.lot.id_materiel_actuel,
+            to: equipmentId,
+            sscc: unit.sscc,
           },
         });
       }
+
+      // Écriture groupée : la boucle faisait deux allers-retours par lot, soit jusqu'à 200 pour les
+      // 100 lots que la validation autorise — et la transaction porte aussi la chaîne d'audit, qui
+      // se sérialise par organisation. Moins elle dure, moins elle bloque les scans concurrents.
+      // Rien n'a bougé : une course a fait aboutir un geste identique juste avant. Le raccourci
+      // d'idempotence plus haut promet qu'un retry n'ajoute pas de maillon d'audit — sortir ici tient
+      // la même promesse sur ce chemin-là, au lieu de sceller un « rangement de zéro lot » dans une
+      // chaîne WORM qui se sérialise déjà par organisation.
+      if (mouvements.length === 0) {
+        return { id: unit.id, sscc: unit.sscc, lots_deplaces: 0, id_materiel: equipmentId };
+      }
+
+      await tx.batch_Mouvement.createMany({ data: mouvements });
 
       // UN maillon d'audit pour le geste, pas un par lot : ranger une palette est une seule
       // décision, et les écritures d'audit d'une organisation se sérialisent sur une chaîne
@@ -376,7 +452,7 @@ export const logisticUnitService = {
           newValue: {
             sscc: unit.sscc,
             id_materiel: equipmentId,
-            lots: aDeplacer.map((c) => c.lot.id),
+            lots: mouvements.map((mouvement) => mouvement.id_lot),
           },
         },
         tx
@@ -385,10 +461,10 @@ export const logisticUnitService = {
       return {
         id: unit.id,
         sscc: unit.sscc,
-        lots_deplaces: aDeplacer.length,
+        lots_deplaces: mouvements.length,
         id_materiel: equipmentId,
       };
-    });
+    }, MOVE_TRANSACTION_OPTIONS);
   },
 
   /**
@@ -420,11 +496,20 @@ export const logisticUnitService = {
       date_peremption: content.lot.date_peremption,
     }));
 
+    // La palette ne porte pas de position : elle se déduit de ses lots. Après avoir rangé, un
+    // rescan du SSCC doit dire OÙ elle est, sinon l'opérateur n'a aucun moyen de vérifier son
+    // geste. Si les lots divergent, on ne choisit pas — on le signale.
+    const positions = new Set(unit.contenu.map((content) => content.lot.id_materiel_actuel));
+    const positionsDivergentes = positions.size > 1;
+    const position = positionsDivergentes ? null : ([...positions][0] ?? null);
+
     return {
       id: unit.id,
       sscc: unit.sscc,
       source: unit.source,
       created_at: unit.created_at,
+      id_materiel: position,
+      positions_divergentes: positionsDivergentes,
       // Un lot peut passer en rappel APRÈS la palettisation : c'est précisément ce que le scan
       // doit révéler sur le quai, sinon le rappel reste une notification et ne devient jamais un
       // geste.

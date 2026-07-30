@@ -5,11 +5,11 @@ import { auditService } from '../../../../shared/utils/audit/audit.service';
 
 vi.mock('../../../../shared/configs/prismaClient.config', () => ({
   prisma: {
-    batch: { findMany: vi.fn(), updateMany: vi.fn() },
-    batch_Mouvement: { create: vi.fn() },
+    batch: { findMany: vi.fn(), findFirst: vi.fn(), updateMany: vi.fn() },
+    batch_Mouvement: { create: vi.fn(), createMany: vi.fn() },
     equipment: { findFirst: vi.fn() },
     logistic_Unit: { create: vi.fn(), findFirst: vi.fn() },
-    logistic_Unit_Content: { createMany: vi.fn(), delete: vi.fn() },
+    logistic_Unit_Content: { createMany: vi.fn(), delete: vi.fn(), findMany: vi.fn() },
     ePCIS_Event: { create: vi.fn() },
     organization: { findUnique: vi.fn() },
     $queryRaw: vi.fn(),
@@ -69,6 +69,8 @@ describe('logisticUnitService.moveLogisticUnit — ranger une palette', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     vi.mocked(prisma.equipment.findFirst).mockResolvedValue(FRIGO as any);
     vi.mocked(prisma.batch.updateMany).mockResolvedValue({ count: 1 } as never);
+    // Par défaut : aucun lot de la palette n'est posé sur une autre palette.
+    vi.mocked(prisma.logistic_Unit_Content.findMany).mockResolvedValue([] as never);
   });
 
   it('déplace TOUS les lots de la palette, en un seul geste', async () => {
@@ -104,18 +106,24 @@ describe('logisticUnitService.moveLogisticUnit — ranger une palette', () => {
 
     await logisticUnitService.moveLogisticUnit('palette-1', ORG, USER, 'frigo-B');
 
-    expect(prisma.batch_Mouvement.create).toHaveBeenCalledTimes(2);
-    expect(prisma.batch_Mouvement.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
+    expect(prisma.batch_Mouvement.createMany).toHaveBeenCalledTimes(1);
+    const data = vi.mocked(prisma.batch_Mouvement.createMany).mock.calls[0][0].data;
+
+    expect(data).toHaveLength(2);
+    expect(data).toContainEqual(
+      expect.objectContaining({
         id_lot: 'lot-1',
         type_action: 'DEPLACEMENT',
+        // La quantité posée sur CETTE palette (30), pas le stock total du lot (100) : sinon un lot
+        // réparti sur deux palettes voit tout son stock déplacé deux fois dans sa frise.
+        quantite: 30,
         metadata: expect.objectContaining({
           from: 'frigo-A',
           to: 'frigo-B',
           sscc: '380123400000000428',
         }),
-      }),
-    });
+      })
+    );
   });
 
   it('scelle UN maillon d’audit pour le geste, pas un par lot', async () => {
@@ -187,10 +195,35 @@ describe('logisticUnitService.moveLogisticUnit — ranger une palette', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     vi.mocked(prisma.logistic_Unit.findFirst).mockResolvedValue(palette() as any);
     vi.mocked(prisma.batch.updateMany).mockResolvedValue({ count: 0 } as never);
+    // L'état frais montre un lot passé sous rappel : la position n'a pas bougé, l'alarme est juste.
+    vi.mocked(prisma.batch.findFirst).mockResolvedValue({
+      statut: 'ALERTE',
+      id_materiel_actuel: 'frigo-A',
+    } as never);
 
     const action = logisticUnitService.moveLogisticUnit('palette-1', ORG, USER, 'frigo-B');
 
     await expect(action).rejects.toMatchObject({ status: 409 });
+  });
+
+  /**
+   * Double appui sur le bouton, ou retry réseau : la première requête a tout rangé, la seconde
+   * perd le verrou optimiste. Alarmer l'opérateur alors que le geste a RÉUSSI l'envoie rescanner
+   * la palette pour rien — c'est le cas que ce chemin est censé couvrir.
+   */
+  it('n’alarme pas quand le lot est déjà arrivé à destination entre-temps', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(prisma.logistic_Unit.findFirst).mockResolvedValue(palette() as any);
+    vi.mocked(prisma.batch.updateMany).mockResolvedValue({ count: 0 } as never);
+    vi.mocked(prisma.batch.findFirst).mockResolvedValue({
+      statut: 'EN_STOCK',
+      id_materiel_actuel: 'frigo-B',
+    } as never);
+
+    const result = await logisticUnitService.moveLogisticUnit('palette-1', ORG, USER, 'frigo-B');
+
+    expect(result.lots_deplaces).toBe(0);
+    expect(prisma.batch_Mouvement.createMany).not.toHaveBeenCalled();
   });
 
   it('no-op si la palette est déjà à cet emplacement (aucune écriture)', async () => {
@@ -201,7 +234,34 @@ describe('logisticUnitService.moveLogisticUnit — ranger une palette', () => {
 
     expect(result.lots_deplaces).toBe(0);
     expect(prisma.batch.updateMany).not.toHaveBeenCalled();
-    expect(prisma.batch_Mouvement.create).not.toHaveBeenCalled();
+    expect(prisma.batch_Mouvement.createMany).not.toHaveBeenCalled();
     expect(auditService.logAction).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Le raccourci d'idempotence répondait « Palette rangée. » AVANT de vérifier la destination :
+   * un UUID inexistant, un matériel d'une autre organisation ou une cuve passaient tous.
+   */
+  it('valide la destination même quand il n’y a rien à déplacer', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(prisma.logistic_Unit.findFirst).mockResolvedValue(palette() as any);
+    vi.mocked(prisma.equipment.findFirst).mockResolvedValue(null);
+
+    const action = logisticUnitService.moveLogisticUnit('palette-1', ORG, USER, 'frigo-A');
+
+    await expect(action).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('refuse (409) de « ranger » une palette vide plutôt que de confirmer un rangement fictif', async () => {
+    vi.mocked(prisma.logistic_Unit.findFirst).mockResolvedValue({
+      id: 'palette-1',
+      organization_id: ORG,
+      sscc: '380123400000000428',
+      contenu: [],
+    } as never);
+
+    const action = logisticUnitService.moveLogisticUnit('palette-1', ORG, USER, 'frigo-B');
+
+    await expect(action).rejects.toMatchObject({ status: 409 });
   });
 });

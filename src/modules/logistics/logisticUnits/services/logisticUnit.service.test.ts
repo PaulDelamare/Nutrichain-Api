@@ -180,9 +180,11 @@ describe('logisticUnitService', () => {
 
     /**
      * La position d'un lot est UNE valeur. Un lot présent sur deux palettes rangées dans deux
-     * frigos différents déclarerait la position de la dernière rangée, alors qu'une partie est
-     * ailleurs — et l'excursion sur l'autre frigo ne le mettrait pas en quarantaine. Faux négatif
-     * sanitaire silencieux, d'où la contrainte.
+     * frigos déclarerait la position de la dernière rangée alors qu'une partie est ailleurs, et
+     * l'excursion sur l'autre frigo ne le mettrait pas en quarantaine — faux négatif sanitaire,
+     * silencieux. Aucune garde applicative ne peut le rattraper : deux palettes ne portant que le
+     * même lot sont indiscernables dans ce modèle. D'où la contrainte en base, doublée ici d'un
+     * message exploitable.
      */
     it('refuse (409) un lot déjà posé sur une autre palette, en nommant laquelle', async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -283,6 +285,92 @@ describe('logisticUnitService', () => {
       const result = await logisticUnitService.resolveBySscc('380123400000000428', ORG);
 
       expect(result.contient_lot_rappele).toBe(true);
+    });
+
+    /**
+     * Après avoir rangé, l'opérateur rescanne le SSCC pour vérifier. Sans la position dans la
+     * réponse, il n'a aucun moyen de lever le doute — l'écran lui affiche un contenu, pas un lieu.
+     */
+    it('rend la position de la palette quand tous ses lots la partagent', async () => {
+      vi.mocked(prisma.logistic_Unit.findFirst).mockResolvedValue({
+        id: 'palette-1',
+        sscc: '380123400000000428',
+        source: 'INTERNE',
+        created_at: new Date(),
+        contenu: [
+          {
+            quantite: 40,
+            unite: 'kg',
+            lot: {
+              id: 'lot-1',
+              lot_number: '260729-AAAAAA',
+              statut: 'EN_STOCK',
+              date_peremption: null,
+              id_materiel_actuel: 'frigo-B',
+              produit: { nom: 'Beurre doux', code_gtin: '3401234567890' },
+            },
+          },
+          {
+            quantite: 10,
+            unite: 'kg',
+            lot: {
+              id: 'lot-2',
+              lot_number: '260729-BBBBBB',
+              statut: 'EN_STOCK',
+              date_peremption: null,
+              id_materiel_actuel: 'frigo-B',
+              produit: { nom: 'Beurre demi-sel', code_gtin: '3401234567891' },
+            },
+          },
+        ],
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+
+      const result = await logisticUnitService.resolveBySscc('380123400000000428', ORG);
+
+      expect(result.id_materiel).toBe('frigo-B');
+      expect(result.positions_divergentes).toBe(false);
+    });
+
+    it('signale des positions divergentes plutôt que d’en inventer une', async () => {
+      vi.mocked(prisma.logistic_Unit.findFirst).mockResolvedValue({
+        id: 'palette-1',
+        sscc: '380123400000000428',
+        source: 'INTERNE',
+        created_at: new Date(),
+        contenu: [
+          {
+            quantite: 40,
+            unite: 'kg',
+            lot: {
+              id: 'lot-1',
+              lot_number: '260729-AAAAAA',
+              statut: 'EN_STOCK',
+              date_peremption: null,
+              id_materiel_actuel: 'frigo-B',
+              produit: { nom: 'Beurre doux', code_gtin: '3401234567890' },
+            },
+          },
+          {
+            quantite: 10,
+            unite: 'kg',
+            lot: {
+              id: 'lot-2',
+              lot_number: '260729-BBBBBB',
+              statut: 'EN_STOCK',
+              date_peremption: null,
+              id_materiel_actuel: 'frigo-C',
+              produit: { nom: 'Beurre demi-sel', code_gtin: '3401234567891' },
+            },
+          },
+        ],
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+
+      const result = await logisticUnitService.resolveBySscc('380123400000000428', ORG);
+
+      expect(result.id_materiel).toBeNull();
+      expect(result.positions_divergentes).toBe(true);
     });
 
     it('filtre par organisation : le SSCC d’un autre tenant est introuvable (404)', async () => {

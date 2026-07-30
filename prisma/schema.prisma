@@ -640,10 +640,9 @@ model Logistic_Unit {
 
 /// Contenu d'une palette : quel lot, en quelle quantité.
 ///
-/// La quantité est portée ici parce qu'un lot se répartit sur plusieurs palettes — 800 kg de beurre
-/// tiennent rarement sur une seule. Constituer une palette ne DÉDUIT PAS le stock : la déduction
-/// reste à l'expédition, là où vit le verrou optimiste. Conséquence assumée : rien n'empêche de
-/// monter deux palettes sur le même stock la veille, l'incohérence se découvre au départ.
+/// `quantite` dit quelle part du lot est posée sur cette palette — le reste peut rester en vrac.
+/// Constituer une palette ne DÉDUIT PAS le stock : la déduction reste à l'expédition, là où vit le
+/// verrou optimiste.
 model Logistic_Unit_Content {
   id_unite_logistique String
   unite_logistique    Logistic_Unit @relation(fields: [id_unite_logistique], references: [id], onDelete: Cascade)
@@ -654,19 +653,15 @@ model Logistic_Unit_Content {
   unite               String
 
   @@id([id_unite_logistique, id_lot])
-  // Un lot est sur AU PLUS UNE palette, et la contrainte est en base.
+  // Un lot est sur AU PLUS UNE palette. La position vit sur le LOT, en une seule valeur : deux
+  // palettes d'un même lot rangées dans deux frigos rendraient cette position mensongère, et une
+  // excursion sur l'autre frigo ne mettrait pas le lot en quarantaine — un faux négatif sanitaire,
+  // silencieux. Aucune garde applicative ne peut tenir cette règle : deux palettes qui ne portent
+  // que le même lot sont, dans ce modèle, indiscernables. D'où la contrainte, en base.
   //
-  // Sans elle, un lot pouvait figurer sur deux palettes — ce que la clé primaire composite
-  // autorisait. Or la position est portée par le lot, en une seule valeur : palette A rangée au
-  // frigo 1 puis palette B au frigo 2, et le lot déclarait être au frigo 2 alors qu'une partie
-  // était au frigo 1. Une excursion sur le frigo 1 ne l'aurait alors PAS mis en quarantaine.
-  // Un faux négatif sanitaire, silencieux.
-  //
-  // Répartir un lot sur deux palettes suppose donc de scinder le lot lui-même, ou de déplacer la
-  // position vers la palette — un autre modèle, qui casserait la surveillance du froid telle
-  // qu'elle est écrite. Limite assumée et documentée, pas un oubli.
+  // Répartir une production sur plusieurs palettes reste possible en déclarant un lot par palette,
+  // ce qui est conforme GS1 et rend même le rappel plus fin : on ne bloque que la palette visée.
   @@unique([id_lot])
-  @@index([id_lot])
 }
 
 // --- MOUVEMENTS (APPEND ONLY) ---
