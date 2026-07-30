@@ -19,6 +19,10 @@ vi.mock('../../../../shared/configs/prismaClient.config', () => ({
     batch_Mouvement: {
       create: vi.fn(),
     },
+    logistic_Unit_Content: {
+      deleteMany: vi.fn(),
+      updateMany: vi.fn(),
+    },
     shipment: {
       create: vi.fn(),
       count: vi.fn(),
@@ -66,6 +70,66 @@ describe('ShipmentService', () => {
     vi.mocked(prisma.$queryRaw).mockResolvedValue([{ serial: 11n }] as never);
     // Par défaut, la déduction de stock gardée réussit (verrou optimiste : un seul lot mis à jour).
     vi.mocked(prisma.batch.updateMany).mockResolvedValue({ count: 1 } as never);
+    vi.mocked(prisma.logistic_Unit_Content.deleteMany).mockResolvedValue({ count: 0 } as never);
+  });
+
+  /**
+   * Rien ne vidait jamais `Logistic_Unit_Content` : une palette continuait de déclarer une
+   * marchandise partie chez le client, et devenait irrangeable — la garde de rangement exige que
+   * tout son contenu soit déplaçable, ce qu'un lot expédié n'est plus.
+   */
+  describe('un lot qui quitte le stock quitte sa palette', () => {
+    const lotDe100 = {
+      id: 'batch-1',
+      organization_id: 'org-123',
+      lot_number: '260704-LOT001',
+      produit: { code_gtin: '3456789012345' },
+      unite_code: 'KG',
+      statut: 'EN_STOCK',
+      version: 7,
+      date_peremption: new Date(Date.now() + 1000000),
+    };
+
+    beforeEach(() => {
+      vi.mocked(prisma.shipment.create).mockResolvedValue({ id: 'ship-1' } as never);
+    });
+
+    it('détache le lot de ses palettes quand la totalité part', async () => {
+      vi.mocked(prisma.batch.findFirst).mockResolvedValue({
+        ...lotDe100,
+        quantite_actuelle: new Prisma.Decimal(10),
+      } as never);
+
+      await shipmentService.createShipment(mockShipmentData);
+
+      expect(prisma.logistic_Unit_Content.deleteMany).toHaveBeenCalledWith({
+        where: {
+          id_lot: 'batch-1',
+          unite_logistique: { organization_id: 'org-123' },
+        },
+      });
+    });
+
+    it('sur une expédition partielle, plafonne ce que la palette déclare au stock restant', async () => {
+      vi.mocked(prisma.batch.findFirst).mockResolvedValue({
+        ...lotDe100,
+        quantite_actuelle: new Prisma.Decimal(100),
+      } as never);
+
+      await shipmentService.createShipment(mockShipmentData);
+
+      // Le lot garde 90 sur 100 : la palette reste, mais ne peut plus en déclarer davantage —
+      // sinon `moveLogisticUnit` scellerait un mouvement portant une quantité qui n'existe plus.
+      expect(prisma.logistic_Unit_Content.deleteMany).not.toHaveBeenCalled();
+      expect(prisma.logistic_Unit_Content.updateMany).toHaveBeenCalledWith({
+        where: {
+          id_lot: 'batch-1',
+          unite_logistique: { organization_id: 'org-123' },
+          quantite: { gt: 90 },
+        },
+        data: { quantite: 90 },
+      });
+    });
   });
 
   it('devrait échouer (404) si le client destinataire n appartient pas à l organisation', async () => {
@@ -85,7 +149,7 @@ describe('ShipmentService', () => {
       organization_id: 'org-123',
       lot_number: '260704-LOT001',
       produit: { code_gtin: '3456789012345' },
-      quantite_actuelle: { toNumber: () => 100 },
+      quantite_actuelle: new Prisma.Decimal(100),
       unite_code: 'KG',
       statut: 'EN_STOCK',
       version: 7,
@@ -126,7 +190,7 @@ describe('ShipmentService', () => {
       organization_id: 'org-123',
       lot_number: '260704-LOT001',
       produit: { code_gtin: '3456789012345' },
-      quantite_actuelle: { toNumber: () => 100 },
+      quantite_actuelle: new Prisma.Decimal(100),
       unite_code: 'KG',
       statut: 'EN_STOCK',
       version: 1,
@@ -155,7 +219,7 @@ describe('ShipmentService', () => {
       organization_id: 'org-123',
       lot_number: '260704-LOT001',
       produit: { code_gtin: '3456789012345' },
-      quantite_actuelle: { toNumber: () => 100 },
+      quantite_actuelle: new Prisma.Decimal(100),
       unite_code: 'KG',
       statut: 'EN_STOCK',
       date_peremption: new Date(Date.now() + 1000000),
@@ -195,7 +259,7 @@ describe('ShipmentService', () => {
       organization_id: 'org-123',
       lot_number: lotNumber,
       produit: { code_gtin: '3456789012345' },
-      quantite_actuelle: { toNumber: () => 100 },
+      quantite_actuelle: new Prisma.Decimal(100),
       unite_code: 'KG',
       statut: 'EN_STOCK',
       date_peremption: new Date(Date.now() + 1000000),
@@ -244,7 +308,7 @@ describe('ShipmentService', () => {
       organization_id: 'org-123',
       lot_number: '260704-LOT001',
       produit: { code_gtin: '3456789012345' },
-      quantite_actuelle: { toNumber: () => 100 },
+      quantite_actuelle: new Prisma.Decimal(100),
       unite_code: 'KG',
       statut: 'EN_STOCK',
     };
@@ -280,7 +344,7 @@ describe('ShipmentService', () => {
       organization_id: 'org-123',
       lot_number: '260704-LOT001',
       produit: { code_gtin: '3456789012345' },
-      quantite_actuelle: { toNumber: () => 100 },
+      quantite_actuelle: new Prisma.Decimal(100),
       unite_code: 'KG',
       statut: 'EN_STOCK',
     };
@@ -317,7 +381,7 @@ describe('ShipmentService', () => {
       organization_id: 'org-123',
       lot_number: '260704-LOT001',
       produit: { code_gtin: '3456789012345' },
-      quantite_actuelle: { toNumber: () => 100 },
+      quantite_actuelle: new Prisma.Decimal(100),
       unite_code: 'KG',
       statut: 'EN_STOCK',
     };
@@ -354,7 +418,7 @@ describe('ShipmentService', () => {
       organization_id: 'org-123',
       lot_number: '260704-LOT001',
       produit: { code_gtin: '3456789012345' },
-      quantite_actuelle: { toNumber: () => 100 },
+      quantite_actuelle: new Prisma.Decimal(100),
       unite_code: 'KG',
       statut: 'EN_STOCK',
     };
@@ -385,7 +449,7 @@ describe('ShipmentService', () => {
     const mockBatch = {
       id: 'batch-1',
       organization_id: 'org-123',
-      quantite_actuelle: { toNumber: () => 100 },
+      quantite_actuelle: new Prisma.Decimal(100),
       unite_code: 'KG',
       statut: 'EN_STOCK',
     };
@@ -417,7 +481,7 @@ describe('ShipmentService', () => {
     const mockBatch = {
       id: 'batch-1',
       organization_id: 'org-123',
-      quantite_actuelle: { toNumber: () => 5 },
+      quantite_actuelle: new Prisma.Decimal(5),
       unite_code: 'KG',
       statut: 'EN_STOCK',
     };
@@ -438,7 +502,7 @@ describe('ShipmentService', () => {
       const mockBatch = {
         id: 'batch-1',
         organization_id: 'org-123',
-        quantite_actuelle: { toNumber: () => 100 },
+        quantite_actuelle: new Prisma.Decimal(100),
         unite_code: 'KG',
         statut,
       };
@@ -468,7 +532,7 @@ describe('ShipmentService', () => {
       organization_id: 'org-123',
       lot_number: '260704-LOT001',
       produit: { code_gtin: '3456789012345' },
-      quantite_actuelle: { toNumber: () => 100 },
+      quantite_actuelle: new Prisma.Decimal(100),
       unite_code: 'KG',
       statut: 'EN_STOCK',
       version: 3,
@@ -492,7 +556,7 @@ describe('ShipmentService', () => {
     const mockBatch = {
       id: 'batch-1',
       organization_id: 'org-123',
-      quantite_actuelle: { toNumber: () => 100 },
+      quantite_actuelle: new Prisma.Decimal(100),
       unite_code: 'KG',
       statut: 'EN_STOCK',
       date_peremption: new Date(Date.now() - 1000000),

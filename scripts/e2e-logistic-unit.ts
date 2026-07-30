@@ -4,12 +4,15 @@
  * Prouve : une palette reçoit son SSCC à la palettisation (avant toute expédition), son contenu
  * est persisté, un AggregationEvent EPCIS `packing` est écrit, un maillon d'audit est scellé, et
  * le SSCC se rescanne — y compris le lendemain, puisque rien ne dépend d'une expédition. Prouve
- * aussi le cloisonnement : le SSCC d'une autre organisation est introuvable.
+ * aussi qu'on la RANGE en un geste (ses lots suivent, sans changer de statut), que le geste est
+ * idempotent, qu'un lot déplacé seul quitte la palette, et le cloisonnement : le SSCC d'une autre
+ * organisation est introuvable.
  *
  * Pré-requis : Postgres + migrations + seed. Lancement : npm run e2e:logistic-unit
  */
 import { prisma } from '../src/shared/configs/prismaClient.config';
 import { logisticUnitService } from '../src/modules/logistics/logisticUnits/services/logisticUnit.service';
+import { batchService } from '../src/modules/logistics/shared/services/batch.service';
 
 const ORG_ID = process.env.API_KEY_ORG_ID;
 const failures: string[] = [];
@@ -101,6 +104,82 @@ async function main(): Promise<void> {
   assert(scanned.lots.length === 2, 'le scan rend ses deux lots');
   assert(scanned.contient_lot_rappele === false, 'aucun lot rappelé pour l’instant');
 
+  console.log('\n[E2E] 5b — ranger la palette : ses deux lots suivent, en un seul geste');
+  const frigo = await prisma.equipment.findFirstOrThrow({
+    where: { organization_id: ORG_ID, type: { in: ['FRIGO', 'CONGELATEUR', 'ETAGERE'] } },
+  });
+  const ranged = await logisticUnitService.moveLogisticUnit(
+    pallet.id,
+    ORG_ID,
+    member.userId,
+    frigo.id
+  );
+  assert(ranged.lots_deplaces === 2, 'les deux lots de la palette ont suivi');
+  const positions = await prisma.batch.findMany({
+    where: { id: { in: [lotA.id, lotB.id] } },
+    select: { id_materiel_actuel: true, statut: true },
+  });
+  assert(
+    positions.every((p) => p.id_materiel_actuel === frigo.id),
+    'chaque lot porte désormais la position de la palette'
+  );
+  assert(
+    positions.some((p) => p.statut === 'EN_ATTENTE_QC'),
+    'ranger ne change aucun statut : le lot en attente de contrôle l’est toujours'
+  );
+  const rangedAudit = await prisma.audit_Log.findFirst({
+    where: { organization_id: ORG_ID, action: 'MOVE_LOGISTIC_UNIT', entity_id: pallet.id },
+  });
+  assert(rangedAudit !== null, 'le rangement est scellé dans la chaîne d’audit');
+
+  console.log('\n[E2E] 5c — idempotent : ranger au même endroit ne réécrit rien');
+  const again = await logisticUnitService.moveLogisticUnit(
+    pallet.id,
+    ORG_ID,
+    member.userId,
+    frigo.id
+  );
+  assert(again.lots_deplaces === 0, 'aucun lot déplacé une seconde fois');
+
+  console.log('\n[E2E] 5d — un lot déplacé SEUL quitte la palette');
+  const autreFrigo = await prisma.equipment.findFirst({
+    where: {
+      organization_id: ORG_ID,
+      type: { in: ['FRIGO', 'CONGELATEUR', 'ETAGERE'] },
+      id: { not: frigo.id },
+    },
+  });
+  if (autreFrigo) {
+    await batchService.moveBatch(lotB.id, ORG_ID, member.userId, autreFrigo.id);
+    const resteDansLaPalette = await prisma.logistic_Unit_Content.count({
+      where: { id_unite_logistique: pallet.id, id_lot: lotB.id },
+    });
+    assert(resteDansLaPalette === 0, 'le lot sorti n’est plus déclaré sur la palette');
+    const contenuRestant = await prisma.logistic_Unit_Content.count({
+      where: { id_unite_logistique: pallet.id },
+    });
+    assert(contenuRestant === 1, 'la palette ne porte plus qu’un lot, et le dit');
+  } else {
+    console.log('  — ignoré : un seul emplacement de stockage en base');
+  }
+
+  console.log('\n[E2E] 5e — un lot ne se pose pas sur DEUX palettes (409, contrainte en base)');
+  let refuseDoublePalette = false;
+  let messageNommeLaPalette = false;
+  try {
+    await logisticUnitService.createLogisticUnit({
+      organizationId: ORG_ID,
+      userId: member.userId,
+      items: [{ id_lot: lotA.id, quantite: 5 }],
+    });
+  } catch (e) {
+    const err = e as { status?: number; body?: { error: { message: string }[] } };
+    refuseDoublePalette = err.status === 409;
+    messageNommeLaPalette = (err.body?.error?.[0]?.message ?? '').includes(pallet.sscc);
+  }
+  assert(refuseDoublePalette, 'palettiser un lot déjà sur une palette refusé en 409');
+  assert(messageNommeLaPalette, 'le message dit sur QUELLE palette le lot se trouve déjà');
+
   console.log('\n[E2E] 6 — un lot passé en RAPPEL après coup est signalé au scan');
   await prisma.batch.update({ where: { id: lotA.id }, data: { statut: 'ALERTE' } });
   const rescanned = await logisticUnitService.resolveBySscc(pallet.sscc, ORG_ID);
@@ -133,11 +212,20 @@ async function main(): Promise<void> {
     console.log('  — ignoré : une seule organisation en base');
   }
 
-  // Cleanup — dans l'ordre des dépendances.
+  // Cleanup — dans l'ordre des dépendances. Les mouvements en premier : ranger la palette et
+  // sortir un lot en écrivent, et `Batch_Mouvement` référence le lot.
   const createdBatches = [lotA.id, lotB.id, lotBloque.id];
-  await prisma.logistic_Unit_Content.deleteMany({ where: { id_unite_logistique: pallet.id } });
-  await prisma.ePCIS_Event.deleteMany({ where: { related_id: pallet.id } });
-  await prisma.logistic_Unit.delete({ where: { id: pallet.id } });
+  const createdUnits = [pallet.id];
+  await prisma.batch_Mouvement.deleteMany({ where: { id_lot: { in: createdBatches } } });
+  await prisma.logistic_Unit_Content.deleteMany({
+    where: { id_unite_logistique: { in: createdUnits } },
+  });
+  await prisma.ePCIS_Event.deleteMany({ where: { related_id: { in: createdUnits } } });
+  // On ne supprime PAS les Audit_Log : la chaîne est chaînée par hash, en retirer un maillon la
+  // rompt pour TOUTE l'organisation — et le bouton « vérifier l'intégrité » afficherait alors une
+  // falsification. Les traces de ce scénario restent, inoffensives. (Dix scripts e2e du dépôt le
+  // font encore : c'est ce qui a cassé la chaîne de la base de démonstration.)
+  await prisma.logistic_Unit.deleteMany({ where: { id: { in: createdUnits } } });
   await prisma.batch.deleteMany({ where: { id: { in: createdBatches } } });
   await prisma.$disconnect();
 

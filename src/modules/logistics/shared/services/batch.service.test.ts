@@ -13,6 +13,8 @@ vi.mock('../../../../shared/configs/prismaClient.config', () => ({
       updateMany: vi.fn(),
     },
     batch_Mouvement: { create: vi.fn() },
+    // Un lot déplacé seul quitte sa palette : le service retire son lien de contenu.
+    logistic_Unit_Content: { deleteMany: vi.fn() },
     equipment: { findFirst: vi.fn() },
     qualityControl: { findFirst: vi.fn() },
     scrapRecord: { create: vi.fn() },
@@ -36,6 +38,8 @@ describe('BatchSharedService', () => {
     // `clearAllMocks` n'efface pas les implémentations — sans ce défaut, un mock NON_CONFORME
     // fuirait d'un test à l'autre. Chaque test part donc d'un lot non condamné.
     vi.mocked(prisma.qualityControl.findFirst).mockResolvedValue(null);
+    // Par défaut le lot n'est sur aucune palette : le retrait de contenu ne mord sur rien.
+    vi.mocked(prisma.logistic_Unit_Content.deleteMany).mockResolvedValue({ count: 0 } as never);
   });
 
   describe('createBatch', () => {
@@ -531,6 +535,26 @@ describe('BatchSharedService', () => {
       unite_code: 'KG',
       version: 2,
     };
+
+    it('détache le lot détruit de toute palette qui le portait', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(prisma.batch.findFirst).mockResolvedValueOnce(bloqueOrgA as any);
+      vi.mocked(prisma.batch.updateMany).mockResolvedValue({ count: 1 } as never);
+      vi.mocked(prisma.batch.findFirst).mockResolvedValueOnce({
+        ...bloqueOrgA,
+        statut: 'REBUT',
+        quantite_actuelle: 0,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+
+      await batchService.scrapBatch('batch-1', 'org-1', 'user-1', 'Lot rappelé détruit');
+
+      // Sans ce retrait, la palette déclare à vie un lot détruit — et devient irrangeable, la garde
+      // exigeant que tout son contenu soit déplaçable.
+      expect(prisma.logistic_Unit_Content.deleteMany).toHaveBeenCalledWith({
+        where: { id_lot: 'batch-1', unite_logistique: { organization_id: 'org-1' } },
+      });
+    });
 
     it('met au rebut un lot en quarantaine (BLOQUE -> REBUT), quantité à zéro, avec mouvement et audit', async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -7,7 +7,7 @@ vi.mock('../../../../shared/configs/prismaClient.config', () => ({
   prisma: {
     batch: { findMany: vi.fn() },
     logistic_Unit: { create: vi.fn(), findFirst: vi.fn() },
-    logistic_Unit_Content: { createMany: vi.fn() },
+    logistic_Unit_Content: { createMany: vi.fn(), findMany: vi.fn() },
     ePCIS_Event: { create: vi.fn() },
     organization: { findUnique: vi.fn() },
     $queryRaw: vi.fn(),
@@ -50,6 +50,8 @@ describe('logisticUnitService', () => {
     vi.mocked(prisma.$queryRaw).mockResolvedValue([{ serial: 42n }] as never);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     vi.mocked(prisma.logistic_Unit.create).mockResolvedValue({ id: 'palette-1' } as any);
+    // Par défaut aucun lot n'est déjà sur une palette.
+    vi.mocked(prisma.logistic_Unit_Content.findMany).mockResolvedValue([] as never);
   });
 
   describe('createLogisticUnit — constituer une palette', () => {
@@ -176,6 +178,39 @@ describe('logisticUnitService', () => {
       expect(prisma.logistic_Unit.create).not.toHaveBeenCalled();
     });
 
+    /**
+     * La position d'un lot est UNE valeur. Un lot présent sur deux palettes rangées dans deux
+     * frigos déclarerait la position de la dernière rangée alors qu'une partie est ailleurs, et
+     * l'excursion sur l'autre frigo ne le mettrait pas en quarantaine — faux négatif sanitaire,
+     * silencieux. Aucune garde applicative ne peut le rattraper : deux palettes ne portant que le
+     * même lot sont indiscernables dans ce modèle. D'où la contrainte en base, doublée ici d'un
+     * message exploitable.
+     */
+    it('refuse (409) un lot déjà posé sur une autre palette, en nommant laquelle', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(prisma.batch.findMany).mockResolvedValue([lotBeurre] as any);
+      vi.mocked(prisma.logistic_Unit_Content.findMany).mockResolvedValue([
+        {
+          id_lot: 'lot-1',
+          unite_logistique: { sscc: '380123400000000411' },
+          lot: { lot_number: '260729-AAAAAA' },
+        },
+      ] as never);
+
+      const action = logisticUnitService.createLogisticUnit({
+        organizationId: ORG,
+        userId: USER,
+        items: [{ id_lot: 'lot-1', quantite: 10 }],
+      });
+
+      await expect(action).rejects.toMatchObject({
+        status: 409,
+        // Le message doit dire OÙ est le lot : un 409 nu n'aide pas l'opérateur.
+        body: { error: [{ message: expect.stringContaining('380123400000000411') }] },
+      });
+      expect(prisma.logistic_Unit.create).not.toHaveBeenCalled();
+    });
+
     it('refuse (400) le même lot deux fois — la clé primaire composite l’interdirait en base', async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       vi.mocked(prisma.batch.findMany).mockResolvedValue([lotBeurre] as any);
@@ -250,6 +285,92 @@ describe('logisticUnitService', () => {
       const result = await logisticUnitService.resolveBySscc('380123400000000428', ORG);
 
       expect(result.contient_lot_rappele).toBe(true);
+    });
+
+    /**
+     * Après avoir rangé, l'opérateur rescanne le SSCC pour vérifier. Sans la position dans la
+     * réponse, il n'a aucun moyen de lever le doute — l'écran lui affiche un contenu, pas un lieu.
+     */
+    it('rend la position de la palette quand tous ses lots la partagent', async () => {
+      vi.mocked(prisma.logistic_Unit.findFirst).mockResolvedValue({
+        id: 'palette-1',
+        sscc: '380123400000000428',
+        source: 'INTERNE',
+        created_at: new Date(),
+        contenu: [
+          {
+            quantite: 40,
+            unite: 'kg',
+            lot: {
+              id: 'lot-1',
+              lot_number: '260729-AAAAAA',
+              statut: 'EN_STOCK',
+              date_peremption: null,
+              id_materiel_actuel: 'frigo-B',
+              produit: { nom: 'Beurre doux', code_gtin: '3401234567890' },
+            },
+          },
+          {
+            quantite: 10,
+            unite: 'kg',
+            lot: {
+              id: 'lot-2',
+              lot_number: '260729-BBBBBB',
+              statut: 'EN_STOCK',
+              date_peremption: null,
+              id_materiel_actuel: 'frigo-B',
+              produit: { nom: 'Beurre demi-sel', code_gtin: '3401234567891' },
+            },
+          },
+        ],
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+
+      const result = await logisticUnitService.resolveBySscc('380123400000000428', ORG);
+
+      expect(result.id_materiel).toBe('frigo-B');
+      expect(result.positions_divergentes).toBe(false);
+    });
+
+    it('signale des positions divergentes plutôt que d’en inventer une', async () => {
+      vi.mocked(prisma.logistic_Unit.findFirst).mockResolvedValue({
+        id: 'palette-1',
+        sscc: '380123400000000428',
+        source: 'INTERNE',
+        created_at: new Date(),
+        contenu: [
+          {
+            quantite: 40,
+            unite: 'kg',
+            lot: {
+              id: 'lot-1',
+              lot_number: '260729-AAAAAA',
+              statut: 'EN_STOCK',
+              date_peremption: null,
+              id_materiel_actuel: 'frigo-B',
+              produit: { nom: 'Beurre doux', code_gtin: '3401234567890' },
+            },
+          },
+          {
+            quantite: 10,
+            unite: 'kg',
+            lot: {
+              id: 'lot-2',
+              lot_number: '260729-BBBBBB',
+              statut: 'EN_STOCK',
+              date_peremption: null,
+              id_materiel_actuel: 'frigo-C',
+              produit: { nom: 'Beurre demi-sel', code_gtin: '3401234567891' },
+            },
+          },
+        ],
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+
+      const result = await logisticUnitService.resolveBySscc('380123400000000428', ORG);
+
+      expect(result.id_materiel).toBeNull();
+      expect(result.positions_divergentes).toBe(true);
     });
 
     it('filtre par organisation : le SSCC d’un autre tenant est introuvable (404)', async () => {

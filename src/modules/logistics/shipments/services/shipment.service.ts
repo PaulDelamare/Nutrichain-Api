@@ -5,6 +5,7 @@ import { retryableTransaction } from '../../../../shared/utils/db/withWriteConfl
 import { gs1Utils } from '../../../../shared/utils/gs1/gs1.utils';
 import { resolveGs1Prefix } from '../../../../shared/utils/gs1/gs1Prefix';
 import { nextSsccSerial } from '../../../../shared/utils/gs1/ssccSerial';
+import { reconcileLogisticUnitContent } from '../../shared/utils/reconcileLogisticUnitContent';
 import {
   EPCIS_ACTION,
   EPCIS_BIZSTEP,
@@ -185,6 +186,17 @@ export const shipmentService = {
             ],
           });
         }
+
+        // Ce qui part chez le client quitte la palette : tout le lot, elle n'en déclare plus rien ;
+        // une partie, elle n'en déclare pas plus que le reste.
+        await reconcileLogisticUnitContent(tx, {
+          batchId: item.id_lot,
+          organizationId: data.organization_id,
+          // Soustraction en Decimal, pas en `number` : `100.3 - 30.1` vaut 70.19999999999999 en
+          // virgule flottante, et la palette afficherait ce nombre au scan pendant que le lot en
+          // déclare 70.2. La transformation fait déjà la sienne en Decimal.
+          remainingQuantity: batch.quantite_actuelle.minus(item.quantite).toNumber(),
+        });
 
         // 5. Créer la liaison
         await tx.liaison_Shipment.create({

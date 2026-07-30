@@ -4,6 +4,7 @@ import { auditService } from '../../../../shared/utils/audit/audit.service';
 import { retryableTransaction } from '../../../../shared/utils/db/withWriteConflictRetry';
 import { gs1Utils } from '../../../../shared/utils/gs1/gs1.utils';
 import { resolveGs1Prefix } from '../../../../shared/utils/gs1/gs1Prefix';
+import { reconcileLogisticUnitContent } from '../../../logistics/shared/utils/reconcileLogisticUnitContent';
 import {
   EPCIS_BIZSTEP,
   EPCIS_DISPOSITION,
@@ -330,6 +331,16 @@ async function runTransformation(
             ],
           });
         }
+
+        // Ce qui part en production quitte la palette : le lot entièrement consommé n'y figure plus,
+        // et un prélèvement partiel n'y laisse pas déclarée une quantité qui n'existe plus.
+        await reconcileLogisticUnitContent(tx, {
+          batchId: input.id_lot_parent,
+          organizationId: data.organization_id,
+          remainingQuantity: currentParent.quantite_actuelle
+            .minus(input.quantite_prelevee)
+            .toNumber(),
+        });
 
         // Mouvement de stock (Sortie pour transformation)
         await tx.batch_Mouvement.create({

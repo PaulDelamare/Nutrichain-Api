@@ -31,6 +31,10 @@ vi.mock('../../../../shared/configs/prismaClient.config', () => ({
     batch_Mouvement: {
       create: vi.fn(),
     },
+    logistic_Unit_Content: {
+      deleteMany: vi.fn(),
+      updateMany: vi.fn(),
+    },
     ePCIS_Event: {
       create: vi.fn(),
     },
@@ -92,6 +96,7 @@ describe('TransformationService', () => {
     transformation: { create: vi.fn().mockResolvedValue({ id: 'trans-1' }) },
     transformationComposition: { create: vi.fn() },
     batch_Mouvement: { create: vi.fn() },
+    logistic_Unit_Content: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }), updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
     ePCIS_Event: { create: vi.fn() },
   });
 
@@ -557,5 +562,58 @@ describe('TransformationService', () => {
       }),
       expect.anything()
     );
+  });
+
+  /**
+   * Un lot entièrement consommé n'est plus physiquement sur sa palette. Sans ce retrait, la palette
+   * le déclare à vie et devient irrangeable — la garde de rangement exige que tout son contenu soit
+   * déplaçable, ce qu'un lot épuisé n'est plus.
+   */
+  it('détache de sa palette le lot parent entièrement consommé', async () => {
+    const mockTx = buildHappyMockTx();
+    vi.mocked(prisma.$transaction).mockImplementation(
+      (callback: (tx: unknown) => Promise<unknown>) => callback(mockTx)
+    );
+
+    await transformationService.createTransformation({
+      organization_id: activeOrgId,
+      id_produit_fini: 'prod-fini',
+      id_materiel: 'mat-1',
+      quantite_produite: 50,
+      unite_code: 'KG',
+      created_by: userId,
+      inputs: [{ id_lot_parent: 'lot-p1', quantite_prelevee: 100, unite: 'KG' }],
+    });
+
+    expect(mockTx.logistic_Unit_Content.deleteMany).toHaveBeenCalledWith({
+      where: { id_lot: 'lot-p1', unite_logistique: { organization_id: activeOrgId } },
+    });
+  });
+
+  it('plafonne ce que la palette déclare quand il reste du stock au lot parent', async () => {
+    const mockTx = buildHappyMockTx();
+    vi.mocked(prisma.$transaction).mockImplementation(
+      (callback: (tx: unknown) => Promise<unknown>) => callback(mockTx)
+    );
+
+    await transformationService.createTransformation({
+      organization_id: activeOrgId,
+      id_produit_fini: 'prod-fini',
+      id_materiel: 'mat-1',
+      quantite_produite: 10,
+      unite_code: 'KG',
+      created_by: userId,
+      inputs: [{ id_lot_parent: 'lot-p1', quantite_prelevee: 20, unite: 'KG' }],
+    });
+
+    expect(mockTx.logistic_Unit_Content.deleteMany).not.toHaveBeenCalled();
+    expect(mockTx.logistic_Unit_Content.updateMany).toHaveBeenCalledWith({
+      where: {
+        id_lot: 'lot-p1',
+        unite_logistique: { organization_id: activeOrgId },
+        quantite: { gt: 80 },
+      },
+      data: { quantite: 80 },
+    });
   });
 });
