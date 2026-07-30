@@ -5,6 +5,7 @@ import { sendSuccess } from '../../../../shared/utils/returnSuccess/returnSucces
 import { catchAsync } from '../../../../shared/utils/errorHandler/catchAsync';
 import { APIError } from '../../../../shared/utils/errorHandler/APIError';
 import { AuthenticatedRequest } from '../../../identity/types/auth.types';
+import { stripSsccAi } from '../../../../shared/utils/gs1/sscc';
 
 export const createLogisticUnitController = catchAsync(
   async (req: AuthenticatedRequest, res: Response) => {
@@ -69,7 +70,7 @@ export const resolveLogisticUnitController = catchAsync(
     }
 
     // La caméra rend l'element string complet : l'AI `00` en fait partie, l'identifiant non.
-    const sscc = scan.sscc.length === 20 ? scan.sscc.slice(2) : scan.sscc;
+    const sscc = stripSsccAi(scan.sscc);
 
     const unit = await logisticUnitService.resolveBySscc(sscc, req.activeOrgId as string);
 

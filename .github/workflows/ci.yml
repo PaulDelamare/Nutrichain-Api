@@ -198,6 +198,8 @@ jobs:
         run: npm run e2e:move-batch
       - name: 🧱 Palette SSCC, constituée avant toute expédition
         run: npm run e2e:logistic-unit
+      - name: 🚚 Expédier une palette entière, et ne l'expédier qu'une fois
+        run: npm run e2e:expedier-palette
       - name: 🔁 Idempotence de la transformation (pas de double prélèvement)
         run: npm run e2e:transformation-idempotency
       - name: 🛡️ Séparation des tâches qualité (RBAC)

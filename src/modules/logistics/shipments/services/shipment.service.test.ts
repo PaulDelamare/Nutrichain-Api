@@ -22,6 +22,10 @@ vi.mock('../../../../shared/configs/prismaClient.config', () => ({
     logistic_Unit_Content: {
       deleteMany: vi.fn(),
       updateMany: vi.fn(),
+      delete: vi.fn(),
+    },
+    logistic_Unit: {
+      findFirst: vi.fn(),
     },
     shipment: {
       create: vi.fn(),
@@ -570,5 +574,257 @@ describe('ShipmentService', () => {
         error: [{ field: 'lots', message: 'Le lot batch-1 est périmé.' }],
       })
     );
+  });
+});
+
+/**
+ * Étape 3 de #284 — l'expédition reprend la palette existante au lieu d'en fabriquer une.
+ *
+ * Charger une palette est le geste du quai : on pousse un contenant, on ne dicte pas une liste de
+ * lots. Et c'est le seul cas où l'origine de la marchandise est CERTAINE — ce qui part est
+ * exactement ce que la palette portait.
+ */
+describe('expédier une palette', () => {
+  const PALETTE = {
+    id: 'palette-1',
+    sscc: '034567890000000606',
+    contenu: [{ id_lot: 'batch-1', quantite: 30, unite: 'KG' }],
+    liaisons: [],
+  };
+
+  const lotSurPalette = {
+    id: 'batch-1',
+    organization_id: 'org-123',
+    lot_number: '260704-LOT001',
+    produit: { code_gtin: '3456789012345' },
+    quantite_actuelle: new Prisma.Decimal(100),
+    unite_code: 'KG',
+    statut: 'EN_STOCK',
+    version: 7,
+    date_peremption: new Date(Date.now() + 1000000),
+  };
+
+  const bon = {
+    organization_id: 'org-123',
+    id_client: 'client-456',
+    shipment_id: 'SHIP-PAL',
+    transporteur: 'DHL',
+    date_envoi: new Date(),
+    created_by: 'user-789',
+  };
+
+  const expedierLaPalette = () =>
+    shipmentService.createShipment({ ...bon, items: [], palettes: ['00034567890000000606'] });
+
+  beforeEach(() => {
+    // Ce bloc vit hors du `describe` parent : il ne bénéficie pas de sa remise à zéro, et sans
+    // elle les appels s'accumulent d'un test à l'autre — un `not.toHaveBeenCalled` deviendrait
+    // faux pour une raison qui n'a rien à voir avec le code testé.
+    vi.clearAllMocks();
+    vi.mocked(prisma.customer.findFirst).mockResolvedValue({
+      id: 'client-456',
+      is_active: true,
+    } as never);
+    vi.mocked(prisma.organization.findUnique).mockResolvedValue({
+      gs1_company_prefix: '3456789',
+    } as never);
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([{ serial: 11n }] as never);
+    vi.mocked(prisma.batch.updateMany).mockResolvedValue({ count: 1 } as never);
+    vi.mocked(prisma.logistic_Unit.findFirst).mockResolvedValue(PALETTE as never);
+    vi.mocked(prisma.batch.findFirst).mockResolvedValue(lotSurPalette as never);
+    vi.mocked(prisma.shipment.create).mockResolvedValue({ id: 'ship-1' } as never);
+  });
+
+  it('développe le contenu de la palette en lignes d’expédition', async () => {
+    await expedierLaPalette();
+
+    // L'AI `00` que porte l'étiquette est retiré avant la résolution.
+    expect(prisma.logistic_Unit.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { sscc: '034567890000000606', organization_id: 'org-123' },
+      })
+    );
+    expect(prisma.batch.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ quantite_actuelle: { decrement: 30 } }),
+      })
+    );
+  });
+
+  it('inscrit la palette sur la liaison — un rappel doit savoir quel contenant retirer', async () => {
+    await expedierLaPalette();
+
+    expect(prisma.liaison_Shipment.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ id_unite_logistique: 'palette-1' }),
+    });
+  });
+
+  /**
+   * #297 : à l'expédition d'une palette, et à ce moment SEULEMENT, l'origine est certaine. La
+   * ligne de contenu s'en va donc entièrement, au lieu d'être plafonnée au stock restant du lot —
+   * sinon la même palette resterait chargeable en boucle.
+   */
+  it('retire le contenu de la palette, sans plafonner sur le stock restant', async () => {
+    await expedierLaPalette();
+
+    expect(prisma.logistic_Unit_Content.delete).toHaveBeenCalledWith({
+      where: {
+        id_unite_logistique_id_lot: { id_unite_logistique: 'palette-1', id_lot: 'batch-1' },
+      },
+    });
+    expect(prisma.logistic_Unit_Content.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('nomme les palettes dans le maillon d’audit', async () => {
+    await expedierLaPalette();
+
+    expect(auditService.logAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        newValue: expect.objectContaining({ palettes: ['034567890000000606'] }),
+      }),
+      expect.anything()
+    );
+  });
+
+  it('refuse (409) une palette déjà partie sur une expédition', async () => {
+    vi.mocked(prisma.logistic_Unit.findFirst).mockResolvedValue({
+      ...PALETTE,
+      liaisons: [{ id: 'liaison-1' }],
+    } as never);
+
+    await expect(expedierLaPalette()).rejects.toMatchObject({ status: 409 });
+    expect(prisma.batch.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('refuse (409) une palette qui ne porte plus rien', async () => {
+    vi.mocked(prisma.logistic_Unit.findFirst).mockResolvedValue({
+      ...PALETTE,
+      contenu: [],
+    } as never);
+
+    await expect(expedierLaPalette()).rejects.toMatchObject({ status: 409 });
+  });
+
+  it('refuse (404) la palette d’une autre organisation', async () => {
+    vi.mocked(prisma.logistic_Unit.findFirst).mockResolvedValue(null);
+
+    await expect(expedierLaPalette()).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('refuse (400) le même lot chargé en vrac ET sur une palette', async () => {
+    const action = shipmentService.createShipment({
+      ...bon,
+      items: [{ id_lot: 'batch-1', quantite: 5 }],
+      palettes: ['034567890000000606'],
+    });
+
+    await expect(action).rejects.toMatchObject({ status: 400 });
+    expect(prisma.batch.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('refuse (400) deux fois la même palette sur le même bon', async () => {
+    const action = shipmentService.createShipment({
+      ...bon,
+      items: [],
+      palettes: ['034567890000000606', '00034567890000000606'],
+    });
+
+    // Le message est assorti : sans lui, la garde « lot déjà chargé » attrape le même cas avec le
+    // même statut, et retirer la garde de doublon de palette laissait ce test vert.
+    await expect(action).rejects.toMatchObject({
+      status: 400,
+      body: { error: [{ field: 'palettes', message: expect.stringContaining('figure deux fois') }] },
+    });
+  });
+
+  it('refuse (400) le même lot deux fois en vrac, au lieu de le déduire deux fois', async () => {
+    const action = shipmentService.createShipment({
+      ...bon,
+      items: [
+        { id_lot: 'batch-1', quantite: 5 },
+        { id_lot: 'batch-1', quantite: 5 },
+      ],
+    });
+
+    await expect(action).rejects.toMatchObject({
+      status: 400,
+      body: { error: [{ field: 'lots', message: expect.stringContaining('figure deux fois') }] },
+    });
+    expect(prisma.batch.updateMany).not.toHaveBeenCalled();
+  });
+
+  /**
+   * La borne de `lots` (500) ne bornait plus la transaction : 50 palettes de 100 lots la font
+   * gonfler à 5 000 lignes, bien au-delà du timeout Prisma de 5 s. Le plafond porte donc sur le
+   * total développé.
+   */
+  it('refuse (400) une expédition dont les palettes développent trop de lignes', async () => {
+    vi.mocked(prisma.logistic_Unit.findFirst).mockResolvedValue({
+      ...PALETTE,
+      contenu: Array.from({ length: 501 }, (_, i) => ({
+        id_lot: `batch-${i}`,
+        quantite: 1,
+        unite: 'KG',
+      })),
+    } as never);
+
+    await expect(expedierLaPalette()).rejects.toMatchObject({
+      status: 400,
+      body: { error: [{ field: 'palettes' }] },
+    });
+    expect(prisma.batch.updateMany).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Un opérateur qui pousse une palette n'a saisi aucun `lots` et ne voit jamais d'UUID : lui
+   * opposer les deux rend le refus inexploitable — ni surlignable, ni traduisible côté client.
+   */
+  it('désigne le lot par son numéro et sa palette quand le refus vient d’une palette', async () => {
+    vi.mocked(prisma.batch.findFirst).mockResolvedValue({
+      ...lotSurPalette,
+      statut: 'ALERTE',
+    } as never);
+
+    await expect(expedierLaPalette()).rejects.toMatchObject({
+      status: 400,
+      body: {
+        error: [
+          {
+            field: 'palettes',
+            message: expect.stringContaining('260704-LOT001 (palette 034567890000000606)'),
+          },
+        ],
+      },
+    });
+  });
+
+  /**
+   * Sans cet événement, deux contenants GS1 revendiquent la même marchandise pour toujours : la
+   * palette l'a agrégée à la palettisation et rien ne l'en retire jamais.
+   */
+  it('désagrège la palette (AggregationEvent DELETE) avant d’agréger l’expédition', async () => {
+    await expedierLaPalette();
+
+    expect(prisma.ePCIS_Event.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        event_type: 'AggregationEvent',
+        related_entity: 'Logistic_Unit',
+        related_id: 'palette-1',
+        payload: expect.objectContaining({
+          action: 'DELETE',
+          bizStep: 'urn:epcglobal:cbv:bizstep:unpacking',
+          // Exactement l URN que la palettisation a agrege (meme `buildSsccUrn`, meme prefixe) :
+          // un DELETE qui nommerait un autre contenant ne refermerait rien.
+          parentID: 'urn:epc:id:sscc:3456789.0000000060',
+        }),
+      }),
+    });
+  });
+
+  it('refuse (400) une expédition sans lot ni palette, avant toute lecture', async () => {
+    const action = shipmentService.createShipment({ ...bon, shipment_id: 'SHIP-VIDE', items: [] });
+
+    await expect(action).rejects.toMatchObject({ status: 400 });
+    expect(prisma.customer.findFirst).not.toHaveBeenCalled();
   });
 });

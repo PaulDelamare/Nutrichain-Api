@@ -57,11 +57,18 @@ describe('Logistics - Shipments Routes', () => {
   });
 
   it('refuse (400) un payload invalide avant toute logique métier', async () => {
+    const { prisma } = await import('../../../../shared/configs/prismaClient.config');
+
+    // Un SSCC malformé : SEULE la validation VineJS peut le refuser. Ce test portait auparavant sur
+    // `lots: []`, que le service refuse désormais lui-même — il restait donc vert même en démontant
+    // `validateShipmentPayload` de la route, et ne prouvait plus le câblage qu'il existe pour prouver.
     const res = await request(app)
       .post('/api/logistics/shipments')
-      .send({ ...validPayload, lots: [] }); // lots vide → viole minLength(1)
+      .send({ ...validPayload, palettes: ['PAS-UN-SSCC'] });
 
     expect(res.status).toBe(400);
-    expect(res.body.error).toBeDefined();
+    expect(res.body.error[0].field).toBe('palettes.0');
+    // Avant toute logique métier : le service n'est jamais entré.
+    expect(prisma.customer.findFirst).not.toHaveBeenCalled();
   });
 });

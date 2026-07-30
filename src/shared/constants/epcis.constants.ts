@@ -19,6 +19,7 @@ export const EPCIS_RELATED_ENTITY = {
   receipt: 'Receipt',
   shipment: 'Shipment',
   transformation: 'Transformation',
+  logisticUnit: 'Logistic_Unit',
 } as const;
 
 // Tuples dérivés pour les enums VineJS (filtrage des query params).
@@ -31,6 +32,7 @@ export const EPCIS_RELATED_ENTITIES = [
   EPCIS_RELATED_ENTITY.receipt,
   EPCIS_RELATED_ENTITY.shipment,
   EPCIS_RELATED_ENTITY.transformation,
+  EPCIS_RELATED_ENTITY.logisticUnit,
 ] as const;
 
 export const EPCIS_BIZSTEP = {
@@ -40,6 +42,9 @@ export const EPCIS_BIZSTEP = {
   // Constitution d'une palette : c'est là que le SSCC est attribué et l'agrégation déclarée, et
   // non au départ du camion — une palette existe et se stocke avant d'être expédiée.
   packing: 'urn:epcglobal:cbv:bizstep:packing',
+  // Départ de la palette : ce qu'elle portait cesse d'être dans la palette pour passer dans
+  // l'expédition. Sans ce pas, deux contenants revendiqueraient la même marchandise indéfiniment.
+  unpacking: 'urn:epcglobal:cbv:bizstep:unpacking',
 } as const;
 
 export const EPCIS_DISPOSITION = {
@@ -50,5 +55,6 @@ export const EPCIS_DISPOSITION = {
 
 export const EPCIS_ACTION = {
   add: 'ADD',
+  delete: 'DELETE',
   observe: 'OBSERVE',
 } as const;

@@ -1,5 +1,6 @@
 import vine from '@vinejs/vine';
 import type { Infer } from '@vinejs/vine/build/src/types';
+import { SSCC_PATTERN } from '../../../../shared/utils/gs1/sscc';
 
 /**
  * Nombre maximal de lots sur une palette.
@@ -36,7 +37,7 @@ export const scanLogisticUnitSchema = vine.object({
   sscc: vine
     .string()
     .trim()
-    .regex(/^(00)?\d{18}$/),
+    .regex(SSCC_PATTERN),
 });
 
 /** Rangement d'une palette : seul l'emplacement de destination est fourni. */
