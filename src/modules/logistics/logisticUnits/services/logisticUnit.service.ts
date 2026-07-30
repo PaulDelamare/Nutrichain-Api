@@ -180,7 +180,10 @@ export const logisticUnitService = {
           error: [
             {
               field: 'items',
-              message: `Le lot ${premier.lot.lot_number} est déjà sur la palette ${premier.unite_logistique.sscc}. Sortez-le d'abord, ou déclarez un lot distinct pour cette palette.`,
+              // Pas « sortez-le d'abord » : le seul geste qui détache un lot est de le DÉPLACER,
+              // et déplacer vers son emplacement actuel est un no-op qui ne détache rien. Le
+              // message doit donc désigner un déplacement réel, sinon l'opérateur boucle.
+              message: `Le lot ${premier.lot.lot_number} est déjà sur la palette ${premier.unite_logistique.sscc}. Déplacez-le vers un autre emplacement pour l'en retirer, ou déclarez un lot distinct pour cette palette.`,
             },
           ],
         });
@@ -285,8 +288,6 @@ export const logisticUnitService = {
                   statut: true,
                   version: true,
                   id_materiel_actuel: true,
-                  quantite_actuelle: true,
-                  unite_code: true,
                 },
               },
             },

@@ -192,7 +192,10 @@ export const shipmentService = {
         await reconcileLogisticUnitContent(tx, {
           batchId: item.id_lot,
           organizationId: data.organization_id,
-          remainingQuantity: batch.quantite_actuelle.toNumber() - item.quantite,
+          // Soustraction en Decimal, pas en `number` : `100.3 - 30.1` vaut 70.19999999999999 en
+          // virgule flottante, et la palette afficherait ce nombre au scan pendant que le lot en
+          // déclare 70.2. La transformation fait déjà la sienne en Decimal.
+          remainingQuantity: batch.quantite_actuelle.minus(item.quantite).toNumber(),
         });
 
         // 5. Créer la liaison

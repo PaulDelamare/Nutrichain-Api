@@ -164,6 +164,51 @@ describe('logisticUnitService.moveLogisticUnit — ranger une palette', () => {
     expect(prisma.batch.updateMany).not.toHaveBeenCalled();
   });
 
+  /**
+   * Le contrat annoncé est « si un seul lot ne peut pas suivre, rien ne bouge ». Tant que la garde
+   * ne portait que sur les lots à DÉPLACER, un lot sous rappel déjà posé à la destination passait
+   * au travers : le contrat était vrai ou faux selon la position initiale des lots.
+   */
+  it('refuse (409) même si le lot sous rappel est DÉJÀ à la destination', async () => {
+    vi.mocked(prisma.logistic_Unit.findFirst).mockResolvedValue({
+      id: 'palette-1',
+      organization_id: ORG,
+      sscc: '380123400000000428',
+      contenu: [
+        {
+          id_lot: 'lot-rappele',
+          quantite: 10,
+          unite: 'kg',
+          lot: {
+            id: 'lot-rappele',
+            lot_number: '260729-RAPPEL',
+            statut: 'ALERTE',
+            version: 1,
+            // Déjà en place : il n'entre donc PAS dans les lots à déplacer.
+            id_materiel_actuel: 'frigo-B',
+          },
+        },
+        {
+          id_lot: 'lot-2',
+          quantite: 20,
+          unite: 'kg',
+          lot: {
+            id: 'lot-2',
+            lot_number: '260729-BBBBBB',
+            statut: 'EN_STOCK',
+            version: 1,
+            id_materiel_actuel: 'frigo-A',
+          },
+        },
+      ],
+    } as never);
+
+    const action = logisticUnitService.moveLogisticUnit('palette-1', ORG, USER, 'frigo-B');
+
+    await expect(action).rejects.toMatchObject({ status: 409 });
+    expect(prisma.batch.updateMany).not.toHaveBeenCalled();
+  });
+
   it('refuse (400) une destination qui n’est pas un emplacement de stockage', async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     vi.mocked(prisma.logistic_Unit.findFirst).mockResolvedValue(palette() as any);
@@ -224,6 +269,27 @@ describe('logisticUnitService.moveLogisticUnit — ranger une palette', () => {
 
     expect(result.lots_deplaces).toBe(0);
     expect(prisma.batch_Mouvement.createMany).not.toHaveBeenCalled();
+    // Rien n'a bougé : pas de maillon scellant un « rangement de zéro lot » dans la chaîne WORM.
+    expect(auditService.logAction).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Le lot est bien arrivé à destination, mais un rappel s'est intercalé : la version a changé
+   * pour une raison qui n'a rien à voir avec la position. Accepter en silence scellerait un
+   * maillon d'audit affirmant qu'on a rangé un lot devenu intouchable.
+   */
+  it('alarme quand le lot est à destination mais qu’un rappel s’est intercalé', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(prisma.logistic_Unit.findFirst).mockResolvedValue(palette() as any);
+    vi.mocked(prisma.batch.updateMany).mockResolvedValue({ count: 0 } as never);
+    vi.mocked(prisma.batch.findFirst).mockResolvedValue({
+      statut: 'ALERTE',
+      id_materiel_actuel: 'frigo-B',
+    } as never);
+
+    const action = logisticUnitService.moveLogisticUnit('palette-1', ORG, USER, 'frigo-B');
+
+    await expect(action).rejects.toMatchObject({ status: 409 });
   });
 
   it('no-op si la palette est déjà à cet emplacement (aucune écriture)', async () => {
