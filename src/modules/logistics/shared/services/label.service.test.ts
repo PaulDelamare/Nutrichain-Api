@@ -54,6 +54,30 @@ describe('labelService', () => {
     });
   });
 
+  describe('generateSsccElementString', () => {
+    it('prefixe le SSCC de son AI 00, sans separateur', () => {
+      expect(labelService.generateSsccElementString('034567890000000606')).toBe(
+        '00034567890000000606'
+      );
+    });
+
+    it('refuse ce qui n est pas un SSCC de 18 chiffres', () => {
+      // Un SSCC tronque ou porteur de lettres produirait une etiquette que le lecteur decode
+      // sans erreur mais qui ne resout aucune palette — un carton scanne dans le vide.
+      for (const invalide of ['12345', '03456789000000060', '0345678900000006061', 'ABC']) {
+        expect(() => labelService.generateSsccElementString(invalide)).toThrow(APIError);
+      }
+    });
+
+    it('accepte un SSCC deja prefixe de son AI, sans le doubler', () => {
+      // La lecture d'une etiquette fournisseur conserve parfois le prefixe : le redoubler
+      // fabriquerait un code de 22 chiffres, illisible pour tout le monde.
+      expect(labelService.generateSsccElementString('00034567890000000606')).toBe(
+        '00034567890000000606'
+      );
+    });
+  });
+
   describe('generateQRCode', () => {
     it('rend un vrai PNG (Buffer non vide portant la signature PNG) via bwip-js', async () => {
       const png = await labelService.generateQRCode(
@@ -108,6 +132,24 @@ describe('labelService', () => {
 
       expect(decoded).not.toBeNull();
       expect(decoded?.data).toBe(link);
+    });
+
+    /**
+     * L'etiquette de palette encode un ELEMENT STRING (`00` + SSCC), pas un Digital Link.
+     * Ce n'est pas un detail de forme : le parseur du mobile (`src/lib/gs1.ts`) refuse un Digital
+     * Link qui ne porte qu'un SSCC — il exige un GTIN ou un numero de lot pour rendre un resultat.
+     * Une etiquette en Digital Link serait donc lue comme un code inconnu par notre propre
+     * application.
+     */
+    it('produit un QR REELLEMENT DECODABLE, portant exactement l element string SSCC', async () => {
+      const elementString = labelService.generateSsccElementString('034567890000000606');
+
+      const png = await labelService.generateQRCode(elementString);
+      const image = PNG.sync.read(png);
+      const decoded = jsQR(new Uint8ClampedArray(image.data), image.width, image.height);
+
+      expect(decoded).not.toBeNull();
+      expect(decoded?.data).toBe('00034567890000000606');
     });
 
     it('rejette avec une APIError 500 orientee champ "qrcode" quand bwip-js echoue', async () => {

@@ -24,6 +24,8 @@ vi.mock('../controllers/logisticUnit.controller', () => ({
     res.status(200).end(),
   moveLogisticUnitController: (_req: express.Request, res: express.Response) =>
     res.status(200).end(),
+  getLogisticUnitLabelController: (_req: express.Request, res: express.Response) =>
+    res.status(200).end(),
 }));
 
 const { default: logisticUnitRoutes } = await import('./logisticUnit.routes');
@@ -158,6 +160,33 @@ describe('RBAC et câblage des routes de palette', () => {
       const res = await request(app).get(
         `/api/logistics/logistic-units/by-sscc/00${VALID_SSCC}`
       );
+      expect(res.status).toBe(200);
+    });
+  });
+
+  describe('GET /logistics/logistic-units/:id/label (imprimer l’étiquette — lecture)', () => {
+    const UNIT_ID = '22222222-2222-4222-8222-222222222222';
+
+    it.each(['owner', 'admin', 'quality', 'operator', 'viewer'])(
+      'autorise %s : imprimer une étiquette est une lecture',
+      async (role) => {
+        signedInAs(role);
+        const res = await request(app).get(`/api/logistics/logistic-units/${UNIT_ID}/label`);
+        expect(res.status).toBe(200);
+      }
+    );
+
+    it('refuse (401) sans session — une étiquette porte le SSCC d’une organisation', async () => {
+      getSession.mockResolvedValue(null);
+      const res = await request(app).get(`/api/logistics/logistic-units/${UNIT_ID}/label`);
+      expect(res.status).toBe(401);
+    });
+
+    it('n’est pas avalée par la route de scan : /label n’est pas un SSCC', async () => {
+      // Ordre des routes Express : `by-sscc/:sscc` ne doit pas capter ce chemin, et
+      // `:id/label` ne doit pas capter `by-sscc`. Un mauvais ordre rendrait 400 ici.
+      signedInAs('viewer');
+      const res = await request(app).get(`/api/logistics/logistic-units/${UNIT_ID}/label`);
       expect(res.status).toBe(200);
     });
   });

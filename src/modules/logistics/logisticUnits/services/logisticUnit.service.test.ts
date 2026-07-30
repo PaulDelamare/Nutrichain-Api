@@ -386,4 +386,28 @@ describe('logisticUnitService', () => {
       );
     });
   });
+
+  describe('getSsccById — ce que l’étiquette doit encoder', () => {
+    it('rend le SSCC de la palette', async () => {
+      vi.mocked(prisma.logistic_Unit.findFirst).mockResolvedValue({
+        sscc: '380123400000000428',
+      } as never);
+
+      const sscc = await logisticUnitService.getSsccById('palette-1', ORG);
+
+      expect(sscc).toBe('380123400000000428');
+    });
+
+    it('cloisonne : la palette d’un autre tenant est introuvable (404)', async () => {
+      vi.mocked(prisma.logistic_Unit.findFirst).mockResolvedValue(null);
+
+      const action = logisticUnitService.getSsccById('palette-1', ORG);
+
+      await expect(action).rejects.toMatchObject({ status: 404 });
+      // Sans ce filtre, un identifiant de palette deviné imprimerait le SSCC d'un voisin.
+      expect(prisma.logistic_Unit.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'palette-1', organization_id: ORG } })
+      );
+    });
+  });
 });
