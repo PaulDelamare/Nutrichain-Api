@@ -4,6 +4,7 @@ import { APIError } from '../../../../shared/utils/errorHandler/APIError';
 import { auditService } from '../../../../shared/utils/audit/audit.service';
 import { retryableTransaction } from '../../../../shared/utils/db/withWriteConflictRetry';
 import { gs1Utils } from '../../../../shared/utils/gs1/gs1.utils';
+import { logger } from '../../../../shared/utils/logger/logger';
 import { resolveGs1Prefix } from '../../../../shared/utils/gs1/gs1Prefix';
 import { nextSsccSerial } from '../../../../shared/utils/gs1/ssccSerial';
 import {
@@ -68,13 +69,34 @@ function parseOpeningSnapshot(value: Prisma.JsonValue | null): OpeningSnapshotLi
  * `@@unique([id_lot])` interdit — ou détruite depuis. On écarte donc à la lecture :
  *
  * - les lots posés depuis sur une AUTRE palette : ils ont un contenant, ce n'est plus celui-ci ;
- * - les lots au rebut ou épuisés : il n'en reste rien à chercher sur le quai.
+ * - les lots partis, détruits ou épuisés : il n'en reste rien à chercher sur le quai. `EXPEDIE`
+ *   compte autant que `REBUT` — un lot rappelé après son départ enverrait sinon fouiller un quai
+ *   pendant que la marchandise est en rayon.
  *
  * La quantité rendue est celle de l'ouverture, et son nom le dit — c'est un repère historique, pas
- * un état de stock.
+ * un état de stock : elle n'est jamais réconciliée à la baisse.
  */
-async function readOpeningSnapshot(value: Prisma.JsonValue | null, organizationId: string) {
+const GONE_FROM_THE_DOCK: readonly string[] = [
+  BATCH_STATUSES.SCRAPPED,
+  BATCH_STATUSES.DEPLETED,
+  BATCH_STATUSES.SHIPPED,
+];
+
+async function readOpeningSnapshot(
+  value: Prisma.JsonValue | null,
+  organizationId: string,
+  sscc: string
+) {
   const snapshot = parseOpeningSnapshot(value);
+  // Une ligne illisible fait afficher MOINS de marchandise qu'il n'y en a. On ne casse pas le scan
+  // pour autant — il reste utile dégradé — mais un affichage sanitaire incomplet ne doit pas être
+  // silencieux.
+  const attendues = Array.isArray(value) ? value.length : 0;
+  if (attendues > snapshot.length) {
+    logger.warn(
+      `[LogisticUnit] Trace d'ouverture partiellement illisible pour le SSCC ${sscc} : ${attendues - snapshot.length} ligne(s) ecartee(s).`
+    );
+  }
   if (snapshot.length === 0) return [];
 
   const batches = await prisma.batch.findMany({
@@ -95,9 +117,7 @@ async function readOpeningSnapshot(value: Prisma.JsonValue | null, organizationI
     const batch = byId.get(line.id_lot);
     if (!batch) return [];
     if (batch.contenus_palette.length > 0) return [];
-    if (batch.statut === BATCH_STATUSES.SCRAPPED || batch.statut === BATCH_STATUSES.DEPLETED) {
-      return [];
-    }
+    if (GONE_FROM_THE_DOCK.includes(batch.statut)) return [];
 
     return [
       {
@@ -784,7 +804,6 @@ export const logisticUnitService = {
       unite: content.unite,
       statut: content.lot.statut,
       date_peremption: content.lot.date_peremption,
-      id_materiel_actuel: content.lot.id_materiel_actuel,
     }));
 
     // Une palette ouverte ne porte plus RIEN : `lots` reste vide, et c'est exact. Mais sa
@@ -793,13 +812,13 @@ export const logisticUnitService = {
     // DISTINCT de `lots` : c'est une trace, pas un contenu. Il ne sert jamais de source à une
     // décision de stock.
     const lastKnownContent = unit.opened_at
-      ? await readOpeningSnapshot(unit.contenu_a_l_ouverture, organizationId)
+      ? await readOpeningSnapshot(unit.contenu_a_l_ouverture, organizationId, unit.sscc)
       : [];
 
-    // La position se déduit des lots RÉELLEMENT portés. Une palette ouverte n'en a donc aucune :
-    // la déduire de sa trace la ferait « suivre » un lot déplacé depuis, et afficher un
-    // emplacement où le contenant n'a jamais été.
-    const positions = new Set(lots.map((lot) => lot.id_materiel_actuel));
+    // La position se déduit des lots RÉELLEMENT portés — donc jamais de la trace d'ouverture, qui
+    // ferait « suivre » à la palette un lot déplacé depuis. Une palette ouverte n'a plus de
+    // position, et c'est exact : elle n'est plus une unité de manutention.
+    const positions = new Set(unit.contenu.map((content) => content.lot.id_materiel_actuel));
     const positionsDivergentes = positions.size > 1;
     const position = positionsDivergentes ? null : ([...positions][0] ?? null);
 

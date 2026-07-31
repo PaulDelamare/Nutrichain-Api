@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { logisticUnitService } from './logisticUnit.service';
 import { prisma } from '../../../../shared/configs/prismaClient.config';
 import { auditService } from '../../../../shared/utils/audit/audit.service';
+import { logger } from '../../../../shared/utils/logger/logger';
 
 vi.mock('../../../../shared/configs/prismaClient.config', () => ({
   prisma: {
@@ -24,6 +25,10 @@ vi.mock('../../../../shared/configs/prismaClient.config', () => ({
 
 vi.mock('../../../../shared/utils/audit/audit.service', () => ({
   auditService: { logAction: vi.fn() },
+}));
+
+vi.mock('../../../../shared/utils/logger/logger', () => ({
+  logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn() },
 }));
 
 const ORG = 'org-1';
@@ -388,6 +393,21 @@ describe('logisticUnitService.openLogisticUnit — ouvrir une palette', () => {
       expect(resultat.dernier_contenu).toHaveLength(0);
     });
 
+    // Le cas le plus dangereux des trois : un lot parti chez un client puis rappele ferait
+    // chercher sur un quai une marchandise qui est en rayon.
+    it('ecarte un lot expedie : il a quitte le site', async () => {
+      vi.mocked(prisma.logistic_Unit.findFirst).mockResolvedValue(paletteOuverte());
+      vi.mocked(prisma.batch.findMany).mockResolvedValue(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        lotActuel({ statut: 'EXPEDIE' }) as any
+      );
+
+      const resultat = await logisticUnitService.resolveBySscc(SSCC, ORG);
+
+      expect(resultat.dernier_contenu).toHaveLength(0);
+      expect(resultat.contient_lot_rappele).toBe(false);
+    });
+
     it('ecarte un lot mis au rebut : il n y a plus rien a chercher sur le quai', async () => {
       vi.mocked(prisma.logistic_Unit.findFirst).mockResolvedValue(paletteOuverte());
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -396,6 +416,28 @@ describe('logisticUnitService.openLogisticUnit — ouvrir une palette', () => {
       const resultat = await logisticUnitService.resolveBySscc(SSCC, ORG);
 
       expect(resultat.dernier_contenu).toHaveLength(0);
+    });
+
+    // Une trace partiellement illisible fait afficher MOINS de marchandise qu'il n'y en a. On ne
+    // casse pas le scan pour autant, mais un affichage sanitaire incomplet ne doit pas etre muet.
+    it('signale une trace partiellement illisible au lieu de la degrader en silence', async () => {
+      vi.mocked(prisma.logistic_Unit.findFirst).mockResolvedValue(
+        palette({
+          contenu: [],
+          opened_at: new Date('2026-07-31T08:00:00Z'),
+          contenu_a_l_ouverture: [
+            { id_lot: 'lot-1', lot_number: '260729-AAAAAA', quantite: 30, unite: 'kg' },
+            { casse: true },
+          ],
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        }) as any
+      );
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(prisma.batch.findMany).mockResolvedValue(lotActuel() as any);
+
+      await logisticUnitService.resolveBySscc(SSCC, ORG);
+
+      expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining(SSCC));
     });
 
     it('relit les lots DANS leur organisation', async () => {
