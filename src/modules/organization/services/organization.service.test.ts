@@ -195,13 +195,35 @@ describe('OrganizationService (façade de lecture pour le front)', () => {
 
     await organizationService.listShipments(ORG);
 
-    expect(prisma.shipment.findMany).toHaveBeenCalledWith({
-      where: { organization_id: ORG },
-      include: {
-        client: { select: { nom_enseigne: true } },
-        liaisons: { select: { lot: { select: { id: true } } } },
-      },
-      orderBy: { date_envoi: 'desc' },
-    });
+    expect(prisma.shipment.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { organization_id: ORG },
+        orderBy: { date_envoi: 'desc' },
+        select: expect.objectContaining({
+          statut_livraison: true,
+          date_livraison: true,
+          client: { select: { nom_enseigne: true } },
+          liaisons: { select: { lot: { select: { id: true } } } },
+        }),
+      })
+    );
+  });
+
+  /**
+   * Cette liste est ouverte à TOUS les rôles de lecture. Une projection explicite est la seule
+   * chose qui empêche `delivered_by` — l'identité d'une personne — d'y arriver par le simple ajout
+   * d'une colonne au modèle. Sans cette assertion, revenir à `include` ne ferait rougir personne.
+   */
+  it("listShipments : n'expose PAS l'auteur de la livraison", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(prisma.shipment.findMany).mockResolvedValue([] as any);
+
+    await organizationService.listShipments(ORG);
+
+    const appel = vi.mocked(prisma.shipment.findMany).mock.calls[0][0];
+    expect(appel).not.toHaveProperty('include');
+    expect(appel?.select).toBeDefined();
+    expect(appel?.select).not.toHaveProperty('delivered_by');
+    expect(appel?.select).not.toHaveProperty('delivered_by_label');
   });
 });

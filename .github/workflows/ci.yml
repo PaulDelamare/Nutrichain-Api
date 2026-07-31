@@ -250,6 +250,8 @@ jobs:
         run: npm run e2e:api-key
       - name: 🧱 Palette par HTTP reel — rangement, excursion, ouverture
         run: npm run e2e:palette-http
+      - name: 🚚 Confirmation de livraison, et le rappel qui cesse de mentir
+        run: npm run e2e:confirmer-livraison
       - name: 📦 SSCC concurrents (pas de doublon)
         run: npm run e2e:sscc
       - name: 🏷️ Événements EPCIS (Object/Transformation/Aggregation)

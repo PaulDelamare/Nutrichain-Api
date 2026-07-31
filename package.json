@@ -60,6 +60,7 @@
     "e2e:invitation": "tsx --env-file=.env scripts/e2e-invitation-tenant.ts",
     "e2e:label-scan": "tsx --env-file=.env scripts/e2e-label-scan.ts",
     "e2e:logistic-unit": "tsx --env-file=.env scripts/e2e-logistic-unit.ts",
+    "e2e:confirmer-livraison": "tsx --env-file=.env scripts/e2e-confirmer-livraison.ts",
     "e2e:palette-http": "tsx --env-file=.env scripts/e2e-palette-http.ts",
     "e2e:expedier-palette": "tsx --env-file=.env scripts/e2e-expedier-palette.ts"
   },

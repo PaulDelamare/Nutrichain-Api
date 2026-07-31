@@ -528,15 +528,14 @@ async function main() {
     created_by: userId,
     items: [{ id_lot: transfoBeurre.lot_enfant_id, quantite: 400 }],
   });
-  // `createShipment` crée toujours l'expédition EN_ROUTE (pas de service de confirmation de
-  // livraison à ce jour). Les statuts LIVRE / EN_TRANSIT sont uniquement cosmétiques pour la
-  // démo (aucun événement EPCIS n'y est attaché) : une mise à jour directe reste ici la solution
-  // la plus simple, sans inventer un service hors du périmètre de cette issue.
-  await prisma.shipment.update({ where: { id: shipLait.id }, data: { statut_livraison: 'LIVRE' } });
-  await prisma.shipment.update({
-    where: { id: shipBeurre.id },
-    data: { statut_livraison: 'EN_TRANSIT' },
-  });
+  // Une expédition livrée, l'autre encore en route : c'est ce contraste qui rend lisible l'impact
+  // d'un rappel. On passe par le SERVICE et non par une mise à jour directe — le statut écrit à la
+  // main laissait une expédition « livrée » sans date ni auteur, un état que la base refuse
+  // désormais, et qui faisait afficher au rappel une information invérifiable. `EN_TRANSIT`, qui
+  // traînait ici, n'a jamais fait partie du vocabulaire.
+  // Sans date explicite : le seed crée les expéditions à l'instant, et la garde refuse — à raison —
+  // une arrivée antérieure au départ. Une livraison antidatée exigerait d'antidater l'expédition.
+  await shipmentService.confirmDelivery(shipLait.id, orgId, { userId });
 
   // 7. Alerte chaîne du froid ACTIVE (type réel émis par l'API)
   await prisma.alert.create({

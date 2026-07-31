@@ -1243,7 +1243,7 @@ transporteur (SSCC) pour idempotence.
 d’envoi.
 ● transporteur : Postgres text — Prisma String — Nom du transporteur.
 ● statut_livraison : Postgres text / ENUM — Prisma String —
-(PREPARATION, EN_ROUTE, LIVRE, RETOURNE).
+(EN_ROUTE, LIVRE), closes par une contrainte CHECK en base.
 ● created_by : Postgres uuid — Prisma String (uuid) — FK → User.id.
 8. Table Client — Destinataires / points de vente
 ● id : Postgres uuid — Prisma String (uuid) — Identifiant client.

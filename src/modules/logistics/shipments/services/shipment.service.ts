@@ -18,6 +18,7 @@ import {
   BATCH_STATUSES,
   BLOCKING_BATCH_STATUSES,
   MOVEMENT_TYPES,
+  SHIPMENT_DELIVERY_STATUSES,
   isBatchBlocked,
 } from '../../constants/logistics.constants';
 
@@ -311,7 +312,7 @@ export const shipmentService = {
         transporteur: data.transporteur,
         destination_adresse: data.destination_adresse,
         date_envoi: data.date_envoi,
-        statut_livraison: 'EN_ROUTE',
+        statut_livraison: SHIPMENT_DELIVERY_STATUSES.IN_TRANSIT,
         created_by: data.created_by,
       });
 
@@ -558,5 +559,202 @@ export const shipmentService = {
 
       return shipment;
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  },
+
+  /**
+   * Constate l'arrivée d'une expédition.
+   *
+   * Sans ce geste, `statut_livraison` restait figé à `EN_ROUTE` depuis sa création : le rappel
+   * produit lisait ce champ et affichait « en route » pour toute expédition, y compris livrée
+   * depuis trois semaines — au moment précis où il faut choisir entre intercepter un camion et
+   * rappeler en rayon.
+   *
+   * L'auteur prend DEUX formes : une session interne (`userId`), ou un nom libre (`label`) pour un
+   * confirmant sans compte — le transporteur au quai du client. La seconde n'est pas encore
+   * exposée par une route ; elle existe ici pour que le chemin externe n'oblige pas à défaire cette
+   * migration.
+   *
+   * Aucun événement EPCIS : un `receiving` émis par l'EXPÉDITEUR dirait « cette organisation a reçu
+   * la marchandise » alors qu'elle vient de s'en séparer, et il ne pourrait porter ni `epcList` ni
+   * `parentID` — rien ne persiste, sur `Shipment`, si sa référence est un SSCC que nous avons émis.
+   * L'événement d'arrivée appartient au destinataire, avec le geste de scan.
+   */
+  async confirmDelivery(
+    shipmentId: string,
+    activeOrgId: string,
+    confirmant: { userId?: string; label?: string; dateLivraison?: Date }
+  ) {
+    const { userId, label, dateLivraison } = confirmant;
+
+    if (!userId && !label) {
+      throw new APIError(400, {
+        error: [
+          {
+            field: 'auth',
+            message: "Une livraison se constate au nom de quelqu'un : session ou nom du confirmant.",
+          },
+        ],
+      });
+    }
+
+    return retryableTransaction(
+      async (tx) => {
+        const shipment = await tx.shipment.findFirst({
+          where: { id: shipmentId, organization_id: activeOrgId },
+          select: {
+            id: true,
+            shipment_id: true,
+            date_envoi: true,
+            statut_livraison: true,
+            date_livraison: true,
+            delivered_by: true,
+            delivered_by_label: true,
+          },
+        });
+
+        if (!shipment) {
+          throw new APIError(404, {
+            error: [{ field: 'id', message: 'Expédition introuvable dans cette organisation' }],
+          });
+        }
+
+        if (shipment.statut_livraison === SHIPMENT_DELIVERY_STATUSES.DELIVERED) {
+          // Un double appui sur un quai en réseau faible n'est pas une erreur : on rend l'état, on
+          // ne rescelle rien. Mais un AUTRE acteur qui confirme une arrivée déjà constatée n'est
+          // pas un rejeu — c'est un désaccord, et c'est ce qu'on cherchera lors d'un litige.
+          const memeAuteur =
+            (userId && shipment.delivered_by === userId) ||
+            (label && shipment.delivered_by_label === label);
+
+          if (!memeAuteur) {
+            await auditService.logAction(
+              {
+                organizationId: activeOrgId,
+                userId,
+                action: 'CONFIRM_SHIPMENT_DELIVERY_REJOUEE',
+                entity: 'Shipment',
+                entityId: shipment.id,
+                newValue: {
+                  shipment_id: shipment.shipment_id,
+                  date_retenue: shipment.date_livraison,
+                  confirmant_refuse: label ?? userId ?? null,
+                },
+              },
+              tx
+            );
+          }
+
+          return {
+            id: shipment.id,
+            shipment_id: shipment.shipment_id,
+            statut_livraison: shipment.statut_livraison,
+            date_livraison: shipment.date_livraison,
+            lots_livres: 0,
+          };
+        }
+
+        // Pas de garde explicite « seule une expédition en route se confirme » : le vocabulaire n'a
+        // que deux valeurs, closes par une contrainte en base, et `LIVRE` est déjà traité au-dessus.
+        // Elle serait donc inatteignable — la mutation l'a montré, aucun test ne pouvait la faire
+        // rougir. Le `updateMany` conditionné ci-dessous rend le 409 si l'état a changé.
+        // Une troisième valeur (un retour, par exemple) devra toucher ce point ET la contrainte.
+
+        // Bornes de la date constatée. Sans elles, ce champ devient un vecteur d'antériorité
+        // falsifiée sur une donnée que la chaîne d'audit scelle : une arrivée ne précède pas le
+        // départ, et ne se constate pas dans le futur.
+        const constatee = dateLivraison ?? new Date();
+        if (constatee < shipment.date_envoi) {
+          throw new APIError(400, {
+            error: [
+              {
+                field: 'date_livraison',
+                message: `Une arrivée ne précède pas le départ (${shipment.date_envoi.toISOString().slice(0, 10)}).`,
+              },
+            ],
+          });
+        }
+        if (constatee.getTime() > Date.now()) {
+          throw new APIError(400, {
+            error: [
+              { field: 'date_livraison', message: 'Une arrivée ne se constate pas dans le futur.' },
+            ],
+          });
+        }
+
+        const marquee = await tx.shipment.updateMany({
+          where: {
+            id: shipment.id,
+            organization_id: activeOrgId,
+            statut_livraison: SHIPMENT_DELIVERY_STATUSES.IN_TRANSIT,
+          },
+          data: {
+            statut_livraison: SHIPMENT_DELIVERY_STATUSES.DELIVERED,
+            date_livraison: constatee,
+            delivered_by: userId ?? null,
+            delivered_by_label: label ?? null,
+          },
+        });
+
+        if (marquee.count === 0) {
+          throw new APIError(409, {
+            error: [
+              {
+                field: 'statut_livraison',
+                message: `L'expédition ${shipment.shipment_id} vient d'être confirmée par quelqu'un d'autre.`,
+              },
+            ],
+          });
+        }
+
+        // Double filtre, comme le rappel : l'identifiant d'expédition seul suffirait à lire les
+        // lignes d'un tenant voisin s'il fuitait.
+        const lignes = await tx.liaison_Shipment.findMany({
+          where: { id_expedition: shipment.id, expedition: { organization_id: activeOrgId } },
+          select: { id_lot: true, quantite_expediee: true, unite: true },
+        });
+
+        // La frise du lot doit porter l'arrivée : sans ce maillon elle s'arrête à EXPEDITION, et
+        // celui qui l'ouvre pendant un rappel ne sait pas si la marchandise est déjà en rayon.
+        if (lignes.length > 0) {
+          await tx.batch_Mouvement.createMany({
+            data: lignes.map((ligne) => ({
+              id_lot: ligne.id_lot,
+              type_action: MOVEMENT_TYPES.DELIVERY,
+              quantite: ligne.quantite_expediee,
+              unite: ligne.unite,
+              id_expedition: shipment.id,
+              id_user: userId ?? null,
+              metadata: { confirmant: label ?? null },
+            })),
+          });
+        }
+
+        await auditService.logAction(
+          {
+            organizationId: activeOrgId,
+            userId,
+            action: 'CONFIRM_SHIPMENT_DELIVERY',
+            entity: 'Shipment',
+            entityId: shipment.id,
+            newValue: {
+              shipment_id: shipment.shipment_id,
+              date_livraison: constatee.toISOString(),
+              confirmant: label ?? userId ?? null,
+              lots: lignes.length,
+            },
+          },
+          tx
+        );
+
+        return {
+          id: shipment.id,
+          shipment_id: shipment.shipment_id,
+          statut_livraison: SHIPMENT_DELIVERY_STATUSES.DELIVERED,
+          date_livraison: constatee,
+          lots_livres: lignes.length,
+        };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 15_000 }
+    );
   },
 };

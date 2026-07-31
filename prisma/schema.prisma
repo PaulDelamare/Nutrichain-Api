@@ -25,7 +25,8 @@ model User {
   transformations    Transformation[]
   tests_qualite      QualityControl[]
   receptions         Receipt[]
-  expeditions        Shipment[]
+  expeditions        Shipment[]        @relation("ShipmentCreatedBy")
+  livraisons         Shipment[]        @relation("ShipmentDeliveredBy")
   mouvements         Batch_Mouvement[]
   idempotencyKeys    IdempotencyKey[]
   platformAdmin      PlatformAdmin?
@@ -570,7 +571,19 @@ model Shipment {
   destination_adresse String?
   statut_livraison    String
   created_by          String
-  user                User         @relation(fields: [created_by], references: [id])
+  user                User         @relation("ShipmentCreatedBy", fields: [created_by], references: [id])
+
+  /// Arrivée constatée. Tant que c'est `null`, la marchandise est réputée en transit — et c'est ce
+  /// que le rappel doit dire au décideur, au lieu d'afficher « en route » pour l'éternité.
+  date_livraison      DateTime?
+  /// QUI a constaté l'arrivée, en DEUX formes, parce que le confirmant n'est pas toujours des
+  /// nôtres : une session interne renseigne `delivered_by`, un transporteur — qui n'a pas de compte
+  /// — ne pourra renseigner que `delivered_by_label`. Une clé étrangère seule aurait rendu la
+  /// confirmation externe impossible sans défaire cette migration.
+  delivered_by        String?
+  livre_par           User?        @relation("ShipmentDeliveredBy", fields: [delivered_by], references: [id], onDelete: Restrict)
+  /// Identité lisible d'un confirmant sans compte : transporteur, chauffeur, magasin.
+  delivered_by_label  String?
 
   liaisons   Liaison_Shipment[]
   mouvements Batch_Mouvement[]

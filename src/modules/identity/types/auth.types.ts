@@ -14,7 +14,11 @@ import type { QuarantineLiftPayload } from '../../logistics/receipts/middlewares
 import type { MoveBatchPayload } from '../../logistics/receipts/middlewares/moveBatch.schema';
 import type { ScrapPayload } from '../../logistics/receipts/middlewares/scrap.schema';
 import type { BatchResolveQuery } from '../../logistics/receipts/middlewares/validateBatchResolve.middleware';
-import type { ShipmentPayload } from '../../logistics/shipments/middlewares/shipmentPayload.schema';
+import type {
+  ShipmentPayload,
+  ConfirmDeliveryPayload,
+  ShipmentIdParam,
+} from '../../logistics/shipments/middlewares/shipmentPayload.schema';
 import type {
   CreateLogisticUnitPayload,
   MoveLogisticUnitPayload,
@@ -98,6 +102,8 @@ export interface AuthenticatedRequest extends Request {
   // Mise au rebut d'un lot (POST /logistics/batches/:id/scrap)
   validatedScrap?: ScrapPayload;
   validatedShipment?: ShipmentPayload;
+  validatedConfirmDelivery?: ConfirmDeliveryPayload;
+  validatedShipmentIdParam?: ShipmentIdParam;
   // Constitution d'une palette (POST /logistics/logistic-units), scan de son SSCC, rangement.
   validatedLogisticUnit?: CreateLogisticUnitPayload;
   validatedLogisticUnitScan?: ScanLogisticUnitParams;

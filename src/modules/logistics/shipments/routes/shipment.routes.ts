@@ -1,7 +1,13 @@
 import { Router } from 'express';
 import { sessionAuth } from '../../../../shared/middlewares/sessionAuth';
-import { validateShipmentParams } from '../middlewares/validateShipment.middleware';
-import { createShipmentController } from '../controllers/shipment.controller';
+import {
+  validateConfirmDelivery,
+  validateShipmentParams,
+} from '../middlewares/validateShipment.middleware';
+import {
+  confirmDeliveryController,
+  createShipmentController,
+} from '../controllers/shipment.controller';
 import { WRITE_ROLES } from '../../../identity/constants/roles.constants';
 
 const router = Router();
@@ -103,6 +109,48 @@ router.post(
   sessionAuth(WRITE_ROLES),
   validateShipmentParams,
   createShipmentController
+);
+
+/**
+ * @swagger
+ * /api/logistics/shipments/{id}/delivered:
+ *   post:
+ *     summary: Constate l arrivee d une expedition
+ *     description: >
+ *       Sans ce geste, `statut_livraison` restait fige a `EN_ROUTE` depuis la creation : le rappel
+ *       produit lit ce champ et affichait donc toute expedition comme en transit, y compris livree
+ *       depuis des semaines. La date est optionnelle — une arrivee se constate souvent le lendemain,
+ *       sur un bon papier — mais bornee : jamais avant le depart, jamais dans le futur. Idempotent :
+ *       rejouer rend 200 avec la date retenue ; un AUTRE auteur laisse une trace d audit.
+ *       N emet aucun evenement EPCIS : l evenement d arrivee appartient au destinataire.
+ *     tags: [Logistics - Expeditions]
+ *     security: [{ sessionAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               date_livraison: { type: string, format: date-time }
+ *     responses:
+ *       200: { description: "Livraison confirmee (ou deja confirmee : la date retenue est rendue)" }
+ *       400: { description: "Identifiant invalide, ou date hors bornes" }
+ *       401: { description: "Aucune session" }
+ *       403: { description: "Role insuffisant" }
+ *       404: { description: "Expedition introuvable dans l organisation active" }
+ *       409: { description: "Etat inattendu, ou confirmation concurrente" }
+ */
+router.post(
+  '/logistics/shipments/:id/delivered',
+  sessionAuth(WRITE_ROLES),
+  validateConfirmDelivery,
+  confirmDeliveryController
 );
 
 export default router;

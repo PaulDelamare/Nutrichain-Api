@@ -43,6 +43,7 @@ Ce module implémente la capacité critique de NutriChain à identifier et bloqu
       "customerAddress": "50 av Distribution, 75010 Paris",
       "dateEnvoi": "2026-05-20T10:00:00Z",
       "statutLivraison": "LIVRE",
+      "dateLivraison": "2026-07-30T14:12:00.000Z",
       "transporteur": "Transports Nutri",
       "batchIds": ["uuid-source"]
     }

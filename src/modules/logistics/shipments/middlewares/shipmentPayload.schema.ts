@@ -36,3 +36,21 @@ export const shipmentSchema = vine.object({
 });
 
 export type ShipmentPayload = Infer<typeof shipmentSchema>;
+
+/**
+ * Confirmation de livraison : l'identifiant de l'expédition, et une date optionnelle.
+ *
+ * La date est optionnelle parce qu'une arrivée se constate souvent le lendemain, sur un bon papier
+ * — l'imposer à « maintenant » obligerait à mentir. Ses bornes ne sont pas ici : « pas avant le
+ * départ » dépend de l'expédition, donc du service.
+ */
+export const confirmDeliverySchema = vine.object({
+  date_livraison: vine.date({ formats: { utc: true } }).optional(),
+});
+
+export const shipmentIdParamSchema = vine.object({
+  id: vine.string().trim().uuid(),
+});
+
+export type ConfirmDeliveryPayload = Infer<typeof confirmDeliverySchema>;
+export type ShipmentIdParam = Infer<typeof shipmentIdParamSchema>;

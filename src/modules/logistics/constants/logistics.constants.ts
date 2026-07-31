@@ -20,6 +20,30 @@ export const RECEIPT_STATUSES = {
   NON_CONFORM: 'NONCONFORME',
 } as const;
 
+// ========== STATUTS DE LIVRAISON ==========
+/**
+ * États d'une expédition, source unique de vérité pour `Shipment.statut_livraison`.
+ *
+ * Deux valeurs seulement, parce qu'aucun geste n'en atteint d'autres. `bdd.md` et `context.md` en
+ * documentaient quatre : `PREPARATION` n'existe pas — une expédition naît au départ — et `RETOURNE`
+ * n'a aucun geste. Déclarer un état que rien n'atteint est le défaut d'`Equipment.statut`, jamais
+ * écrit. Le retour se déclarera avec le geste qui le produit, et avec le correctif du portail
+ * magasins, qui compte aujourd'hui « en cours » tout ce qui n'est pas `LIVRE`.
+ *
+ * ⚠️ Cette constante ne protège que `src/` : `prisma/` et `scripts/` sont hors du périmètre de
+ * `tsconfig.check.json`, et c'est ainsi qu'un `EN_TRANSIT` s'est glissé dans le seed sans que rien
+ * ne le voie. La garde qui mord vraiment est la contrainte CHECK en base.
+ */
+export const SHIPMENT_DELIVERY_STATUSES = {
+  /** Partie du quai, arrivée non constatée. */
+  IN_TRANSIT: 'EN_ROUTE',
+  /** Arrivée constatée, datée et attribuée. */
+  DELIVERED: 'LIVRE',
+} as const;
+
+export type ShipmentDeliveryStatus =
+  (typeof SHIPMENT_DELIVERY_STATUSES)[keyof typeof SHIPMENT_DELIVERY_STATUSES];
+
 // ========== STATUTS DE LOT ==========
 /**
  * Énumération exhaustive des statuts possibles pour un lot (Batch.statut),
@@ -115,6 +139,13 @@ export const MOVEMENT_TYPES = {
   RECALL: 'RAPPEL',
   MOVE: 'DEPLACEMENT',
   SCRAP: 'MISE_AU_REBUT',
+  /**
+   * Arrivée constatée chez le client. Aucune matière ne bouge de notre côté — comme `RAPPEL` ou
+   * `LEVEE_QUARANTAINE`, qui s'écrivent aussi sur des lots qui ne sont plus manipulables ici. Sans
+   * ce maillon, la frise d'un lot s'arrêterait à `EXPEDITION` et le décideur qui l'ouvre pendant un
+   * rappel ne saurait pas si la marchandise est arrivée.
+   */
+  DELIVERY: 'LIVRAISON',
 } as const;
 
 /**
