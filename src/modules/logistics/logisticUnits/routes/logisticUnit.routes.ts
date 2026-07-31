@@ -4,12 +4,14 @@ import { ALL_ROLES, WRITE_ROLES } from '../../../identity/constants/roles.consta
 import {
   validateCreateLogisticUnit,
   validateMoveLogisticUnit,
+  validateOpenLogisticUnit,
   validateScanLogisticUnit,
 } from '../middlewares/validateLogisticUnit.middleware';
 import {
   createLogisticUnitController,
   getLogisticUnitLabelController,
   moveLogisticUnitController,
+  openLogisticUnitController,
   resolveLogisticUnitController,
 } from '../controllers/logisticUnit.controller';
 
@@ -137,6 +139,40 @@ router.patch(
   sessionAuth(WRITE_ROLES),
   validateMoveLogisticUnit,
   moveLogisticUnitController
+);
+
+/**
+ * @swagger
+ * /api/logistics/logistic-units/{id}/open:
+ *   post:
+ *     summary: Ouvre une palette dont on preleve
+ *     description: >
+ *       Le contenant cesse d'exister comme unite de manutention : ses lots redeviennent autonomes
+ *       et repalettisables, sans changer d'emplacement ni de statut. IRREVERSIBLE — on n'y remet
+ *       rien, le SSCC n'est pas reutilise, et la palette ne peut plus etre rangee, expediee ni
+ *       etiquetee. Emet un AggregationEvent EPCIS au bizStep `unpacking` pour ce qu'elle portait
+ *       encore. Idempotent : rouvrir rend 200 avec zero lot detache. Le scan du SSCC continue de
+ *       restituer le dernier contenu connu, la marchandise pouvant etre encore posee dessus.
+ *     tags: [Logistics - Palettes]
+ *     security: [{ sessionAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     responses:
+ *       200: { description: "Palette ouverte (nombre de lots detaches, 0 si elle l'etait deja)" }
+ *       400: { description: "Identifiant de palette invalide" }
+ *       401: { description: "Aucune session" }
+ *       403: { description: "Role insuffisant" }
+ *       404: { description: "Palette introuvable dans l'organisation active" }
+ *       409: { description: "Palette deja partie sur une expedition, ou ouverte entre-temps" }
+ */
+router.post(
+  '/logistics/logistic-units/:id/open',
+  sessionAuth(WRITE_ROLES),
+  validateOpenLogisticUnit,
+  openLogisticUnitController
 );
 
 /**

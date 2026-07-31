@@ -248,7 +248,7 @@ jobs:
       # runner. Les jouer EN DERNIER évite qu'ils verrouillent les connexions des scénarios suivants.
       - name: 🔑 Clé API applicative — durcissement
         run: npm run e2e:api-key
-      - name: 🧱 Palette par HTTP reel + excursion qui la bloque en entier
+      - name: 🧱 Palette par HTTP reel — rangement, excursion, ouverture
         run: npm run e2e:palette-http
       - name: 📦 SSCC concurrents (pas de doublon)
         run: npm run e2e:sscc

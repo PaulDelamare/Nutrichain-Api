@@ -123,8 +123,17 @@ async function main(): Promise<void> {
 
   const lotA = await makeBatch('A');
   const lotB = await makeBatch('B');
-  const createdBatches = [lotA.id, lotB.id];
+  // Deux lots de plus, réservés à l'ouverture : les premiers finissent en quarantaine à l'étape 6,
+  // donc ils ne seraient plus repalettisables et ne pourraient pas prouver l'étape 13.
+  const lotC = await makeBatch('C');
+  const lotD = await makeBatch('D');
+  const createdBatches = [lotA.id, lotB.id, lotC.id, lotD.id];
+  // Les etapes 1 a 7 ne concernent QUE la premiere palette : y boucler sur tous les lots crees
+  // ferait echouer leurs assertions a cause des lots reserves a l ouverture.
+  const lotsPalette1 = [lotA.id, lotB.id];
   let palletId = '';
+  let palletOuvrableId = '';
+  let repalettiseId = '';
 
   try {
     console.log('\n[1] Constituer la palette — par HTTP, avec une vraie session opérateur');
@@ -149,7 +158,7 @@ async function main(): Promise<void> {
     assert(rangedBody.data?.lots_deplaces === 2, 'la réponse annonce 2 lots déplacés');
 
     const positions = await prisma.batch.findMany({
-      where: { id: { in: createdBatches } },
+      where: { id: { in: lotsPalette1 } },
       select: { id_materiel_actuel: true },
     });
     assert(
@@ -193,7 +202,7 @@ async function main(): Promise<void> {
     }
 
     const apresExcursion = await prisma.batch.findMany({
-      where: { id: { in: createdBatches } },
+      where: { id: { in: lotsPalette1 } },
       select: { lot_number: true, statut: true, statut_avant_blocage: true },
     });
     assert(
@@ -218,14 +227,230 @@ async function main(): Promise<void> {
       scanApresBody.data?.lots.every((l) => l.statut === 'BLOQUE') === true,
       'le scan montre les deux lots bloqués — l’opérateur le voit sur le quai'
     );
+
+    console.log('\n[8] Ouvrir une palette — le contenant cesse d’exister, la marchandise reste');
+    const seconde = await call('/logistics/logistic-units', 'POST', {
+      items: [
+        { id_lot: lotC.id, quantite: 25 },
+        { id_lot: lotD.id, quantite: 15 },
+      ],
+    });
+    const secondeBody = (await seconde.json()) as { data?: { id: string; sscc: string } };
+    palletOuvrableId = secondeBody.data?.id ?? '';
+    const ssccOuvrable = secondeBody.data?.sscc ?? '';
+    assert(seconde.status === 201, `seconde palette créée (reçu ${seconde.status})`);
+
+    await call(`/logistics/logistic-units/${palletOuvrableId}/location`, 'PATCH', {
+      id_materiel: fridge.id,
+    });
+
+    const ouverte = await call(`/logistics/logistic-units/${palletOuvrableId}/open`, 'POST');
+    assert(ouverte.status === 200, `POST .../open → 200 (reçu ${ouverte.status})`);
+    const ouverteBody = (await ouverte.json()) as { data?: { lots_detaches: number } };
+    assert(ouverteBody.data?.lots_detaches === 2, 'la réponse annonce 2 lots détachés');
+
+    console.log('\n[9] En base : le contenant est vidé, la marchandise n’a pas bougé');
+    const uniteOuverte = await prisma.logistic_Unit.findUniqueOrThrow({
+      where: { id: palletOuvrableId },
+      include: { contenu: true },
+    });
+    assert(uniteOuverte.contenu.length === 0, 'plus aucune ligne de contenu');
+    assert(uniteOuverte.opened_at !== null, 'l’ouverture est datée');
+    assert(uniteOuverte.opened_by === session.userId, 'l’auteur de l’ouverture est celui de la session');
+
+    const lotsApresOuverture = await prisma.batch.findMany({
+      where: { id: { in: [lotC.id, lotD.id] } },
+      select: { statut: true, id_materiel_actuel: true },
+    });
+    assert(
+      lotsApresOuverture.every((l) => l.id_materiel_actuel === fridge.id),
+      'ouvrir n’a DÉPLACÉ aucun lot : ils sont toujours dans le frigo'
+    );
+    assert(
+      lotsApresOuverture.every((l) => l.statut === 'EN_STOCK'),
+      'ouvrir n’a modifié aucun statut : ce n’est pas une décision sanitaire'
+    );
+
+    console.log('\n[10] La containment GS1 est refermée, sur le MÊME parentID que l’agrégation');
+    const evenements = await prisma.ePCIS_Event.findMany({
+      where: { related_id: palletOuvrableId },
+      orderBy: { id: 'asc' },
+    });
+    // On désigne les événements par leur ACTION, jamais par leur position : l'ordre des
+    // identifiants entre deux transactions n'est garanti par rien, et une assertion qui en dépend
+    // passe ou échoue au hasard — constaté une fois sur ce scénario même.
+    const charge = (evenement: (typeof evenements)[number] | undefined) =>
+      (evenement?.payload as { parentID?: string; action?: string } | null) ?? {};
+    const ajout = evenements.find((evenement) => charge(evenement).action === 'ADD');
+    const retrait = evenements.find((evenement) => charge(evenement).action === 'DELETE');
+    assert(evenements.length === 2, `2 événements EPCIS pour cette palette (reçu ${evenements.length})`);
+    assert(!!ajout && !!retrait, 'un ADD au packing, un DELETE à l’ouverture');
+    // Une containment ne se ferme QUE si le parentID est strictement le même : un préfixe GS1
+    // recomposé différemment laisserait les deux événements côte à côte sans jamais se répondre.
+    assert(
+      charge(ajout).parentID === charge(retrait).parentID && !!charge(retrait).parentID,
+      `le DELETE porte le même parentID que l’ADD (${charge(retrait).parentID})`
+    );
+
+    console.log('\n[11] Le geste est scellé dans le journal WORM');
+    const maillon = await prisma.audit_Log.findFirst({
+      where: { organization_id: ORG_ID, action: 'OPEN_LOGISTIC_UNIT', entity_id: palletOuvrableId },
+    });
+    assert(maillon !== null, 'un maillon OPEN_LOGISTIC_UNIT existe');
+    const valeur = maillon?.nouvelle_valeur as { lots?: { quantite: number }[] } | null;
+    assert(
+      valeur?.lots?.length === 2 && valeur.lots.every((l) => typeof l.quantite === 'number'),
+      'il conserve les quantités détachées, que la base ne porte plus'
+    );
+
+    console.log('\n[12] Rescanner l’étiquette dit ce que la palette portait — pas « rien »');
+    const scanOuverte = await call(`/logistics/logistic-units/by-sscc/${ssccOuvrable}`);
+    const scanOuverteBody = (await scanOuverte.json()) as {
+      data?: {
+        ouverture: { date: string } | null;
+        lots: { statut: string }[];
+        dernier_contenu: { quantite_a_l_ouverture: number; statut: string }[];
+      };
+    };
+    assert(scanOuverte.status === 200, 'le SSCC reste résoluble après ouverture');
+    // `!== null` serait vacu : si le champ disparaissait, `undefined !== null` vaudrait vrai et
+    // l'assertion resterait verte sur une fonctionnalité supprimée.
+    assert(
+      typeof scanOuverteBody.data?.ouverture?.date === 'string',
+      'le scan annonce la DATE d’ouverture'
+    );
+    assert(
+      scanOuverteBody.data?.lots.length === 0,
+      'la palette ne porte plus rien — `lots` est vide, et c’est exact'
+    );
+    assert(
+      scanOuverteBody.data?.dernier_contenu.length === 2,
+      'mais le dernier contenu connu reste lisible : la marchandise est encore physiquement dessus'
+    );
+    assert(
+      typeof scanOuverteBody.data?.dernier_contenu[0]?.quantite_a_l_ouverture === 'number',
+      'la quantité y porte son nom : un repère historique, pas un état de stock'
+    );
+
+    console.log('\n[13] Les lots redeviennent autonomes : repalettisables sous un NOUVEAU SSCC');
+    const repalettise = await call('/logistics/logistic-units', 'POST', {
+      items: [{ id_lot: lotC.id, quantite: 10 }],
+    });
+    const repalettiseBody = (await repalettise.json()) as { data?: { id: string; sscc: string } };
+    repalettiseId = repalettiseBody.data?.id ?? '';
+    assert(repalettise.status === 201, `le lot se repalettise (reçu ${repalettise.status})`);
+    assert(
+      repalettiseBody.data?.sscc !== ssccOuvrable && !!repalettiseBody.data?.sscc,
+      'le SSCC de la palette ouverte n’est PAS réutilisé'
+    );
+
+    // LE point : rescanner l'ANCIEN SSCC après la repalettisation. Sans le filtrage à la lecture,
+    // deux palettes revendiqueraient le même lot — l'invariant que la contrainte en base tient.
+    const scanApresRepalettisation = await call(
+      `/logistics/logistic-units/by-sscc/${ssccOuvrable}`
+    );
+    const apresRepalettisation = (await scanApresRepalettisation.json()) as {
+      data?: { dernier_contenu: { id: string }[] };
+    };
+    assert(
+      apresRepalettisation.data?.dernier_contenu.some((l) => l.id === lotC.id) === false,
+      'l’ancien SSCC ne revendique plus le lot repalettisé ailleurs'
+    );
+    assert(
+      apresRepalettisation.data?.dernier_contenu.length === 1,
+      'il ne garde que le lot qui n’a pas bougé'
+    );
+
+    console.log('\n[14] Ce qu’une palette ouverte ne permet plus');
+    // Idempotent : un double appui sur un quai en réseau faible ne doit pas signaler une erreur
+    // pour un geste qui a réussi.
+    const reouverture = await call(`/logistics/logistic-units/${palletOuvrableId}/open`, 'POST');
+    const reouvertureBody = (await reouverture.json()) as { data?: { lots_detaches: number } };
+    assert(reouverture.status === 200, `rouvrir → 200 idempotent (reçu ${reouverture.status})`);
+    assert(reouvertureBody.data?.lots_detaches === 0, 'et n’en détache aucun de plus');
+
+    const rangementApres = await call(
+      `/logistics/logistic-units/${palletOuvrableId}/location`,
+      'PATCH',
+      { id_materiel: fridge.id }
+    );
+    const rangementBody = await rangementApres.text();
+    assert(rangementApres.status === 409, `ranger → 409 (reçu ${rangementApres.status})`);
+    assert(
+      rangementBody.includes('ouverte'),
+      'le refus dit « ouverte », et non « palette vide » qui enverrait la remplir'
+    );
+
+    const etiquette = await call(`/logistics/logistic-units/${palletOuvrableId}/label`);
+    assert(etiquette.status === 409, `imprimer l’étiquette → 409 (reçu ${etiquette.status})`);
+
+    // Payload COMPLET et client REEL, sinon la requête est refusée par la validation ou en 404
+    // avant même d'atteindre la garde — l'assertion serait verte sans jamais l'exercer.
+    const client = await prisma.customer.findFirstOrThrow({
+      where: { organization_id: ORG_ID, is_active: true },
+    });
+    const chargement = await call('/logistics/shipments', 'POST', {
+      id_client: client.id,
+      shipment_id: `E2E-PAL-EXP-${stamp}`,
+      transporteur: 'E2E Transport',
+      destination_adresse: '1 rue de la Verification, 75001 Paris',
+      palettes: [ssccOuvrable],
+    });
+    const chargementBody = await chargement.text();
+    assert(chargement.status === 409, `expédier une palette ouverte → 409 (reçu ${chargement.status})`);
+    assert(chargementBody.includes('ouverte'), 'et le refus dit bien qu’elle a été ouverte');
+
+    console.log('\n[15] Un identifiant qui n’est pas un uuid est refusé avant la base');
+    const malforme = await call('/logistics/logistic-units/palette-1/open', 'POST');
+    assert(malforme.status === 400, `POST .../palette-1/open → 400 (reçu ${malforme.status})`);
+
+    console.log('\n[16] Le rôle le plus faible est refusé — en HTTP réel, pas en mock');
+    // Adresse DÉDIÉE : le helper aligne le rôle du membre sur celui demandé, donc réutiliser
+    // l'adresse de l'opérateur le rétrograderait pour tous les scénarios suivants.
+    const lecteur = await signInAsOperator(prisma, {
+      apiBase: API_URL,
+      apiKey: API_KEY,
+      organizationId: ORG_ID,
+      email: 'e2e-viewer-palette@nutrichain.local',
+      role: 'viewer',
+    });
+
+    const refusLecteur = await fetch(
+      `${API_URL}/api/logistics/logistic-units/${palletId}/open`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${lecteur.token}`,
+          'Content-Type': 'application/json',
+          'x-api-key': API_KEY,
+        },
+      }
+    );
+    assert(
+      refusLecteur.status === 403,
+      `un viewer ne peut pas ouvrir une palette → 403 (reçu ${refusLecteur.status})`
+    );
+
+    // Et il lit toujours : le refus porte sur le geste, pas sur la consultation.
+    const lectureLecteur = await fetch(
+      `${API_URL}/api/logistics/logistic-units/by-sscc/${sscc}`,
+      {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${lecteur.token}`, 'x-api-key': API_KEY },
+      }
+    );
+    assert(
+      lectureLecteur.status === 200,
+      `mais il scanne toujours la palette → 200 (reçu ${lectureLecteur.status})`
+    );
   } finally {
     // Cleanup. On ne touche PAS à Audit_Log : la chaîne est chaînée par hash, en retirer une ligne
     // la romprait pour toute l'organisation.
     await prisma.batch_Mouvement.deleteMany({ where: { id_lot: { in: createdBatches } } });
-    if (palletId) {
-      await prisma.logistic_Unit_Content.deleteMany({ where: { id_unite_logistique: palletId } });
-      await prisma.ePCIS_Event.deleteMany({ where: { related_id: palletId } });
-      await prisma.logistic_Unit.deleteMany({ where: { id: palletId } });
+    for (const id of [palletId, palletOuvrableId, repalettiseId].filter(Boolean)) {
+      await prisma.logistic_Unit_Content.deleteMany({ where: { id_unite_logistique: id } });
+      await prisma.ePCIS_Event.deleteMany({ where: { related_id: id } });
+      await prisma.logistic_Unit.deleteMany({ where: { id } });
     }
     await prisma.batch.deleteMany({ where: { id: { in: createdBatches } } });
     await prisma.alert.deleteMany({ where: { id_materiel: fridge.id } });

@@ -4,6 +4,7 @@ import { APIError } from '../../../../shared/utils/errorHandler/APIError';
 import { auditService } from '../../../../shared/utils/audit/audit.service';
 import { retryableTransaction } from '../../../../shared/utils/db/withWriteConflictRetry';
 import { gs1Utils } from '../../../../shared/utils/gs1/gs1.utils';
+import { logger } from '../../../../shared/utils/logger/logger';
 import { resolveGs1Prefix } from '../../../../shared/utils/gs1/gs1Prefix';
 import { nextSsccSerial } from '../../../../shared/utils/gs1/ssccSerial';
 import {
@@ -29,6 +30,109 @@ export const LOGISTIC_UNIT_SOURCES = {
 export interface LogisticUnitItem {
   id_lot: string;
   quantite: number;
+}
+
+/** Une ligne de la photo prise à l'ouverture d'une palette (`contenu_a_l_ouverture`). */
+interface OpeningSnapshotLine {
+  id_lot: string;
+  lot_number: string;
+  quantite: number;
+  unite: string;
+}
+
+/**
+ * Relit la photo d'ouverture, qui est du JSON libre en base.
+ *
+ * Écrite par nous, mais une colonne `Json` n'a aucune garantie de forme : une migration, une
+ * écriture manuelle ou une version antérieure du service peuvent y avoir laissé autre chose. On
+ * écarte silencieusement ce qui ne ressemble pas à une ligne plutôt que de faire échouer un scan —
+ * le scan reste utile même dégradé, et l'alternative serait un 500 au quai.
+ */
+function parseOpeningSnapshot(value: Prisma.JsonValue | null): OpeningSnapshotLine[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap((line) => {
+    if (typeof line !== 'object' || line === null || Array.isArray(line)) return [];
+    const { id_lot, lot_number, quantite, unite } = line as Record<string, unknown>;
+    if (typeof id_lot !== 'string' || typeof lot_number !== 'string') return [];
+    if (typeof quantite !== 'number' || typeof unite !== 'string') return [];
+    return [{ id_lot, lot_number, quantite, unite }];
+  });
+}
+
+/**
+ * Reconstitue ce qu'une palette ouverte portait, en n'affirmant que ce qui est encore vrai.
+ *
+ * Une colonne JSON ne se réconcilie pas : `reconcileLogisticUnitContent` n'agit que sur les lignes
+ * de contenu, et la photo, elle, est figée. La servir telle quelle ferait déclarer à cette palette
+ * de la marchandise repalettisée ailleurs — deux SSCC revendiquant le même lot, exactement ce que
+ * `@@unique([id_lot])` interdit — ou détruite depuis. On écarte donc à la lecture :
+ *
+ * - les lots posés depuis sur une AUTRE palette : ils ont un contenant, ce n'est plus celui-ci ;
+ * - les lots partis, détruits ou épuisés : il n'en reste rien à chercher sur le quai. `EXPEDIE`
+ *   compte autant que `REBUT` — un lot rappelé après son départ enverrait sinon fouiller un quai
+ *   pendant que la marchandise est en rayon.
+ *
+ * La quantité rendue est celle de l'ouverture, et son nom le dit — c'est un repère historique, pas
+ * un état de stock : elle n'est jamais réconciliée à la baisse.
+ */
+const GONE_FROM_THE_DOCK: readonly string[] = [
+  BATCH_STATUSES.SCRAPPED,
+  BATCH_STATUSES.DEPLETED,
+  BATCH_STATUSES.SHIPPED,
+];
+
+async function readOpeningSnapshot(
+  value: Prisma.JsonValue | null,
+  organizationId: string,
+  sscc: string
+) {
+  const snapshot = parseOpeningSnapshot(value);
+  // Une ligne illisible fait afficher MOINS de marchandise qu'il n'y en a. On ne casse pas le scan
+  // pour autant — il reste utile dégradé — mais un affichage sanitaire incomplet ne doit pas être
+  // silencieux.
+  const attendues = Array.isArray(value) ? value.length : 0;
+  if (attendues > snapshot.length) {
+    logger.warn(
+      `[LogisticUnit] Trace d'ouverture partiellement illisible pour le SSCC ${sscc} : ${attendues - snapshot.length} ligne(s) ecartee(s).`
+    );
+  }
+  if (snapshot.length === 0) return [];
+
+  const batches = await prisma.batch.findMany({
+    where: { id: { in: snapshot.map((line) => line.id_lot) }, organization_id: organizationId },
+    select: {
+      id: true,
+      lot_number: true,
+      statut: true,
+      date_peremption: true,
+      id_materiel_actuel: true,
+      produit: { select: { nom: true, code_gtin: true } },
+      contenus_palette: { select: { id_unite_logistique: true }, take: 1 },
+    },
+  });
+  const byId = new Map(batches.map((batch) => [batch.id, batch]));
+
+  return snapshot.flatMap((line) => {
+    const batch = byId.get(line.id_lot);
+    if (!batch) return [];
+    if (batch.contenus_palette.length > 0) return [];
+    if (GONE_FROM_THE_DOCK.includes(batch.statut)) return [];
+
+    return [
+      {
+        id: batch.id,
+        numero_lot: batch.lot_number,
+        produit: batch.produit.nom,
+        gtin: batch.produit.code_gtin,
+        quantite_a_l_ouverture: line.quantite,
+        unite: line.unite,
+        statut: batch.statut,
+        date_peremption: batch.date_peremption,
+        id_materiel_actuel: batch.id_materiel_actuel,
+      },
+    ];
+  });
 }
 
 export interface CreateLogisticUnitParams {
@@ -320,6 +424,21 @@ export const logisticUnitService = {
         });
       }
 
+      // AVANT la garde « palette vide », qui est plus bas : ouvrir vide toujours le contenu, donc
+      // sans ce test une palette ouverte serait refusée pour « ne porte plus aucun lot » — vrai,
+      // mais trompeur, et l'opérateur chercherait à la remplir alors qu'elle n'existe plus comme
+      // unité de manutention.
+      if (unit.opened_at) {
+        throw new APIError(409, {
+          error: [
+            {
+              field: 'id',
+              message: `La palette ${unit.sscc} a été ouverte : elle n'est plus une unité de manutention et ne se range plus. Rangez ses lots, ou constituez une nouvelle palette.`,
+            },
+          ],
+        });
+      }
+
       // La destination est validée AVANT toute autre chose, y compris avant le raccourci
       // d'idempotence : sans cela, une palette déjà en place répondait « Palette rangée. » sur un
       // matériel inexistant, appartenant à une autre organisation, ou sur une cuve.
@@ -488,6 +607,177 @@ export const logisticUnitService = {
   },
 
   /**
+   * Ouvre une palette : on en prélève, le contenant cesse d'exister comme unité de manutention.
+   *
+   * Ouvrir ne déplace RIEN et ne change aucun statut. `id_materiel_actuel` n'est pas touché, donc
+   * les lots restent capturés par la prochaine excursion thermique de leur emplacement — l'ouverture
+   * n'ouvre aucune échappatoire sanitaire. Le détail du modèle est sur `Logistic_Unit`.
+   */
+  async openLogisticUnit(unitId: string, activeOrgId: string, userId: string) {
+    return retryableTransaction(async (tx) => {
+      const unit = await tx.logistic_Unit.findFirst({
+        where: { id: unitId, organization_id: activeOrgId },
+        include: {
+          contenu: {
+            include: {
+              lot: {
+                select: {
+                  id: true,
+                  lot_number: true,
+                  produit: { select: { code_gtin: true } },
+                },
+              },
+            },
+          },
+          liaisons: { select: { id: true }, take: 1 },
+        },
+      });
+
+      if (!unit) {
+        throw new APIError(404, {
+          error: [{ field: 'id', message: 'Palette introuvable dans cette organisation' }],
+        });
+      }
+
+      // Idempotent, comme le rangement : sur un quai, un appui suivi d'un timeout réseau est un
+      // cas courant, et répondre « une ouverture ne se rejoue pas » à un geste qui a réussi
+      // enverrait l'opérateur chercher un problème inexistant. L'irréversibilité tient à ce que
+      // rien ne remet de contenu dessus, pas à un refus de rejeu.
+      if (unit.opened_at) {
+        return {
+          id: unit.id,
+          sscc: unit.sscc,
+          lots_detaches: 0,
+          ouverte_le: unit.opened_at,
+        };
+      }
+
+      // Une palette partie est déjà vidée par l'expédition : l'ouvrir ne retirerait rien et
+      // scellerait une décision sans objet.
+      if (unit.liaisons.length > 0) {
+        throw new APIError(409, {
+          error: [
+            {
+              field: 'id',
+              message: `La palette ${unit.sscc} est partie sur une expédition : son contenu l'a quittée au chargement, il n'y a rien à ouvrir.`,
+            },
+          ],
+        });
+      }
+
+      // Une palette VIDE s'ouvre, délibérément. La refuser laissait sans issue le contenant que
+      // l'on a vidé lot par lot : ni rangeable, ni expédiable, ni supprimable, ni remplissable —
+      // un zombie qui continue d'émettre une étiquette. Ouvrir est précisément le geste qui le
+      // clôt, et le domaine ne connaît que deux règles : où est la palette, et est-elle ouverte.
+      const snapshot = unit.contenu.map((content) => ({
+        id_lot: content.id_lot,
+        lot_number: content.lot.lot_number,
+        quantite: Number(content.quantite),
+        unite: content.unite,
+      }));
+
+      // `opened_at: null` dans le WHERE plutôt qu'une mise à jour par identifiant seul : défense en
+      // profondeur contre deux ouvertures concurrentes. Sous Serializable, le chemin réellement
+      // emprunté est un 40001 rejoué par `retryableTransaction`, après quoi le retour idempotent
+      // ci-dessus répond — ce `count` ne vaut donc que si l'isolation venait à changer.
+      const marked = await tx.logistic_Unit.updateMany({
+        where: { id: unit.id, organization_id: activeOrgId, opened_at: null },
+        data: {
+          opened_at: new Date(),
+          opened_by: userId,
+          contenu_a_l_ouverture: snapshot,
+        },
+      });
+
+      if (marked.count === 0) {
+        throw new APIError(409, {
+          error: [
+            {
+              field: 'id',
+              message: `La palette ${unit.sscc} vient d'être ouverte par quelqu'un d'autre.`,
+            },
+          ],
+        });
+      }
+
+      // Filtre par la relation, et non par le seul `id_unite_logistique` : l'identifiant seul
+      // suffirait à démonter la palette d'un tenant voisin s'il fuitait.
+      await tx.logistic_Unit_Content.deleteMany({
+        where: {
+          id_unite_logistique: unit.id,
+          unite_logistique: { organization_id: activeOrgId },
+        },
+      });
+
+      const gs1Prefix = await resolveGs1Prefix(tx, activeOrgId);
+      // L'URN SSCC n'a de sens que pour un SSCC que NOUS avons émis avec ce préfixe : la recomposer
+      // sur celui d'un fournisseur attribuerait son contenant à notre préfixe entreprise.
+      const parentID =
+        unit.source === LOGISTIC_UNIT_SOURCES.INTERNAL
+          ? gs1Utils.buildSsccUrn(gs1Prefix, unit.sscc)
+          : unit.sscc;
+
+      // Désagrège ce que la palette portait ENCORE. Elle ne referme donc que la part de containment
+      // restée ouverte : un lot sorti plus tôt par un déplacement individuel n'a jamais reçu son
+      // propre DELETE, et n'en reçoit pas ici — écart connu, commun à l'expédition, qui ne se
+      // ferme qu'en émettant l'événement depuis les trois chemins de retrait.
+      //
+      // Aucun événement si la palette était déjà vide : un AggregationEvent DELETE à liste vide
+      // n'annonce rien et polluerait la chronologie du SSCC.
+      if (unit.contenu.length > 0) {
+        await tx.ePCIS_Event.create({
+          data: {
+            organization_id: activeOrgId,
+            event_time: new Date(),
+            event_type: EPCIS_EVENT_TYPE.aggregation,
+            related_entity: EPCIS_RELATED_ENTITY.logisticUnit,
+            related_id: unit.id,
+            payload: {
+              parentID,
+              childQuantityList: unit.contenu.map((content) => ({
+                epcClass: gs1Utils.buildLgtinUrn(
+                  gs1Prefix,
+                  content.lot.produit.code_gtin,
+                  content.lot.lot_number
+                ),
+                quantity: Number(content.quantite),
+                uom: content.unite,
+              })),
+              action: EPCIS_ACTION.delete,
+              bizStep: EPCIS_BIZSTEP.unpacking,
+            },
+          },
+        });
+      }
+
+      await auditService.logAction(
+        {
+          organizationId: activeOrgId,
+          userId,
+          action: 'OPEN_LOGISTIC_UNIT',
+          entity: 'Logistic_Unit',
+          entityId: unit.id,
+          newValue: {
+            sscc: unit.sscc,
+            // Les quantités, pas seulement les identifiants : les lignes de contenu sont détruites
+            // juste au-dessus, et « combien du lot X était sur cette palette » n'existerait plus
+            // nulle part en relationnel.
+            lots: snapshot.map(({ id_lot, quantite, unite }) => ({ id_lot, quantite, unite })),
+          },
+        },
+        tx
+      );
+
+      return {
+        id: unit.id,
+        sscc: unit.sscc,
+        lots_detaches: snapshot.length,
+        ouverte_le: new Date(),
+      };
+    }, MOVE_TRANSACTION_OPTIONS);
+  },
+
+  /**
    * Résout un SSCC scanné vers sa palette et son contenu.
    *
    * Cloisonnée par organisation : une palette expose des produits, des quantités et l'état
@@ -516,9 +806,18 @@ export const logisticUnitService = {
       date_peremption: content.lot.date_peremption,
     }));
 
-    // La palette ne porte pas de position : elle se déduit de ses lots. Après avoir rangé, un
-    // rescan du SSCC doit dire OÙ elle est, sinon l'opérateur n'a aucun moyen de vérifier son
-    // geste. Si les lots divergent, on ne choisit pas — on le signale.
+    // Une palette ouverte ne porte plus RIEN : `lots` reste vide, et c'est exact. Mais sa
+    // marchandise peut être encore physiquement posée dessus, et l'un de ses lots passer sous
+    // rappel ensuite — rescanner l'étiquette au quai doit le révéler. D'où ce second champ,
+    // DISTINCT de `lots` : c'est une trace, pas un contenu. Il ne sert jamais de source à une
+    // décision de stock.
+    const lastKnownContent = unit.opened_at
+      ? await readOpeningSnapshot(unit.contenu_a_l_ouverture, organizationId, unit.sscc)
+      : [];
+
+    // La position se déduit des lots RÉELLEMENT portés — donc jamais de la trace d'ouverture, qui
+    // ferait « suivre » à la palette un lot déplacé depuis. Une palette ouverte n'a plus de
+    // position, et c'est exact : elle n'est plus une unité de manutention.
     const positions = new Set(unit.contenu.map((content) => content.lot.id_materiel_actuel));
     const positionsDivergentes = positions.size > 1;
     const position = positionsDivergentes ? null : ([...positions][0] ?? null);
@@ -530,6 +829,11 @@ export const logisticUnitService = {
       created_at: unit.created_at,
       id_materiel: position,
       positions_divergentes: positionsDivergentes,
+      // Troisième cause possible d'un contenu vide, à côté de « jamais remplie » et « déjà
+      // partie ». On ne rend que la DATE : l'identité de l'auteur est une donnée personnelle, elle
+      // vit dans le journal d'audit, dont la lecture est réservée à `PERSONAL_DATA_ROLES` — ce
+      // scan-ci est ouvert à tous les rôles.
+      ouverture: unit.opened_at ? { date: unit.opened_at } : null,
       // `null` tant que la palette n'est pas partie. Renseignée, elle explique un contenu vide.
       expedition: unit.liaisons[0]
         ? {
@@ -541,9 +845,12 @@ export const logisticUnitService = {
         : null,
       // Un lot peut passer en rappel APRÈS la palettisation : c'est précisément ce que le scan
       // doit révéler sur le quai, sinon le rappel reste une notification et ne devient jamais un
-      // geste.
-      contient_lot_rappele: lots.some((lot) => lot.statut === BATCH_STATUSES.ALERT),
+      // geste. La trace d'ouverture compte, sinon une palette ouverte serait un angle mort.
+      contient_lot_rappele:
+        lots.some((lot) => lot.statut === BATCH_STATUSES.ALERT) ||
+        lastKnownContent.some((lot) => lot.statut === BATCH_STATUSES.ALERT),
       lots,
+      dernier_contenu: lastKnownContent,
     };
   },
 
@@ -556,12 +863,26 @@ export const logisticUnitService = {
   async getSsccById(unitId: string, organizationId: string): Promise<string> {
     const unit = await prisma.logistic_Unit.findFirst({
       where: { id: unitId, organization_id: organizationId },
-      select: { sscc: true },
+      select: { sscc: true, opened_at: true },
     });
 
     if (!unit) {
       throw new APIError(404, {
         error: [{ field: 'id', message: 'Palette introuvable dans cette organisation' }],
+      });
+    }
+
+    // Réimprimer l'étiquette d'une palette ouverte fabriquerait un second support physique pour un
+    // contenant qui n'existe plus : deux cartons portant le même SSCC, dont l'un ne correspond à
+    // aucune unité de manutention. Le SSCC reste résoluble au scan, il n'est simplement plus émis.
+    if (unit.opened_at) {
+      throw new APIError(409, {
+        error: [
+          {
+            field: 'id',
+            message: `La palette ${unit.sscc} a été ouverte : son étiquette n'est plus émise. Constituez une nouvelle palette pour obtenir un SSCC.`,
+          },
+        ],
       });
     }
 

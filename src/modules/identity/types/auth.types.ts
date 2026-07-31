@@ -18,6 +18,7 @@ import type { ShipmentPayload } from '../../logistics/shipments/middlewares/ship
 import type {
   CreateLogisticUnitPayload,
   MoveLogisticUnitPayload,
+  OpenLogisticUnitParams,
   ScanLogisticUnitParams,
 } from '../../logistics/logisticUnits/middlewares/logisticUnit.schema';
 import type { TransformationPayload } from '../../traceability/transformations/middlewares/transformationPayload.schema';
@@ -101,6 +102,7 @@ export interface AuthenticatedRequest extends Request {
   validatedLogisticUnit?: CreateLogisticUnitPayload;
   validatedLogisticUnitScan?: ScanLogisticUnitParams;
   validatedLogisticUnitMove?: MoveLogisticUnitPayload;
+  validatedLogisticUnitOpen?: OpenLogisticUnitParams;
   validatedTransformation?: TransformationPayload;
   // Déclenchement d'un rappel produit (POST /traceability/batches/:id/recall)
   validatedRecall?: RecallPayload;

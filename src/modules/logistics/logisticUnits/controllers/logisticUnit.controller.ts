@@ -62,6 +62,32 @@ export const moveLogisticUnitController = catchAsync(
   }
 );
 
+export const openLogisticUnitController = catchAsync(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const params = req.validatedLogisticUnitOpen;
+    if (!params) {
+      throw new APIError(500, {
+        error: [{ field: 'id', message: 'Identifiant de palette non validé.' }],
+      });
+    }
+
+    const userId = req.auth?.user?.id;
+    if (!userId) {
+      throw new APIError(401, {
+        error: [{ field: 'auth', message: "Auteur de l'ouverture non identifié." }],
+      });
+    }
+
+    const unit = await logisticUnitService.openLogisticUnit(
+      params.id,
+      req.activeOrgId as string,
+      userId
+    );
+
+    sendSuccess(res, 200, 'Palette ouverte. Ses lots redeviennent autonomes.', unit);
+  }
+);
+
 export const resolveLogisticUnitController = catchAsync(
   async (req: AuthenticatedRequest, res: Response) => {
     const scan = req.validatedLogisticUnitScan;
