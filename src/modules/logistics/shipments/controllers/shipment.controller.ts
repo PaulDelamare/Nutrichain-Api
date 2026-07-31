@@ -49,3 +49,34 @@ export const createShipmentController = catchAsync(
     return sendSuccess(res, 201, 'Expédition créée avec succès', { shipment });
   }
 );
+
+/**
+ * Constater l'arrivée d'une expédition.
+ *
+ * L'auteur vient de la session. Le confirmant sans compte — le transporteur — passera par une autre
+ * route, avec son propre mécanisme d'accès : ce n'est pas à cette route-ci de l'accepter.
+ */
+export const confirmDeliveryController = catchAsync(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const params = req.validatedShipmentIdParam;
+    if (!params) {
+      throw new APIError(500, {
+        error: [{ field: 'id', message: "Identifiant d'expédition non validé." }],
+      });
+    }
+
+    const userId = req.auth?.user?.id;
+    if (!userId) {
+      throw new APIError(401, {
+        error: [{ field: 'auth', message: 'Auteur de la confirmation non identifié.' }],
+      });
+    }
+
+    const shipment = await shipmentService.confirmDelivery(params.id, req.activeOrgId as string, {
+      userId,
+      dateLivraison: req.validatedConfirmDelivery?.date_livraison,
+    });
+
+    sendSuccess(res, 200, 'Livraison confirmée.', shipment);
+  }
+);

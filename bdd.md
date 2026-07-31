@@ -130,7 +130,10 @@
 - `shipment_id` : Postgres `text` (UNIQUE) — Prisma `String` — Identifiant transporteur (SSCC) pour idempotence.
 - `date_envoi` : Postgres `timestamptz` — Prisma `DateTime` — Date et heure d’envoi.
 - `transporteur` : Postgres `text` — Prisma `String` — Nom du transporteur.
-- `statut_livraison` : Postgres `text` / ENUM — Prisma `String` — (PREPARATION, EN_ROUTE, LIVRE, RETOURNE).
+- `statut_livraison` : Postgres `text` — Prisma `String` — (EN_ROUTE, LIVRE), closes par une contrainte CHECK en base. PREPARATION et RETOURNE ont ete retires : aucun geste ne les atteignait.
+- `date_livraison` : Postgres `timestamp` — Prisma `DateTime?` — arrivee constatee, nulle tant que non confirmee.
+- `delivered_by` : Postgres `uuid` — Prisma `String?` — FK vers `User.id`, pour un confirmant interne.
+- `delivered_by_label` : Postgres `text` — Prisma `String?` — nom lisible d un confirmant sans compte (transporteur).
 - `created_by` : Postgres `uuid` — Prisma `String (uuid)` — FK → `User.id`.
 
 ---

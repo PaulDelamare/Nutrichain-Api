@@ -121,7 +121,18 @@ export const organizationService = {
   async listShipments(organizationId: string) {
     return prisma.shipment.findMany({
       where: { organization_id: organizationId },
-      include: {
+      // Projection EXPLICITE, et non l'entité entière : `delivered_by` désigne une personne, et
+      // cette liste est ouverte à tous les rôles de lecture. Le dépôt a déjà tranché ailleurs que
+      // l'identité de l'auteur d'un geste relève de `PERSONAL_DATA_ROLES` — un `findMany` sans
+      // `select` l'aurait exposée par le simple ajout d'une colonne.
+      select: {
+        id: true,
+        shipment_id: true,
+        date_envoi: true,
+        transporteur: true,
+        destination_adresse: true,
+        statut_livraison: true,
+        date_livraison: true,
         client: { select: { nom_enseigne: true } },
         liaisons: { select: { lot: { select: { id: true } } } },
       },

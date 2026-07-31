@@ -20,6 +20,7 @@ interface LiaisonHydrated {
     shipment_id: string;
     date_envoi: Date;
     statut_livraison: string;
+    date_livraison: Date | null;
     transporteur: string;
     id_client: string;
     client: {
@@ -46,6 +47,7 @@ export interface AffectedShipment {
   customerAddress: string;
   dateEnvoi: Date;
   statutLivraison: string;
+  dateLivraison: Date | null;
   transporteur: string;
   batchIds: string[]; // sous-ensemble des lots impactés présents dans cette expédition (dédupliqué, trié)
 }
@@ -330,6 +332,9 @@ function aggregateByShipment(liaisons: LiaisonHydrated[]): AffectedShipment[] {
           customerAddress: shipment.client.adresse_livraison,
           dateEnvoi: shipment.date_envoi,
           statutLivraison: shipment.statut_livraison,
+          // Le statut seul ne suffit pas au decideur : « livre » sans date ne dit pas si la
+          // marchandise est en rayon depuis une heure ou trois semaines.
+          dateLivraison: shipment.date_livraison,
           transporteur: shipment.transporteur,
           batchIds: [], // rempli à la finalisation
         },
