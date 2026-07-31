@@ -151,7 +151,12 @@ async function setup(): Promise<Fixtures> {
       shipment_id: `E2E-RECALL-${stamp}`,
       date_envoi: new Date(),
       transporteur: 'E2E Transporteur',
+      // Une expédition livrée porte SA date et SON auteur — la base l'exige désormais, et c'est le
+      // sens même de #283 : « livré » sans date était l'information invérifiable que le rappel
+      // remontait au décideur.
       statut_livraison: 'LIVRE',
+      date_livraison: new Date(),
+      delivered_by: member.userId,
       created_by: member.userId,
       liaisons: {
         create: {

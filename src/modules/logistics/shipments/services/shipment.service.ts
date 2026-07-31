@@ -584,7 +584,12 @@ export const shipmentService = {
     activeOrgId: string,
     confirmant: { userId?: string; label?: string; dateLivraison?: Date }
   ) {
-    const { userId, label, dateLivraison } = confirmant;
+    const { userId, dateLivraison } = confirmant;
+    // Borné ICI, et non dans un schéma de route : aucune route ne le passe encore, mais il finit
+    // dans une colonne texte ET dans un maillon WORM indélébile. Le commit qui introduit un champ
+    // est celui qui le borne. Normalisé aussi, sinon « Martin » et « Martin  » désignent deux
+    // confirmants différents et le dédoublonnage du rejeu saute.
+    const label = confirmant.label?.trim().slice(0, 120) || undefined;
 
     if (!userId && !label) {
       throw new APIError(400, {
@@ -626,7 +631,24 @@ export const shipmentService = {
             (userId && shipment.delivered_by === userId) ||
             (label && shipment.delivered_by_label === label);
 
-          if (!memeAuteur) {
+          // Un seul maillon par désaccord, pas un par appel. Sans ce dédoublonnage, n'importe quel
+          // `operator` scellait un maillon à chaque requête sur une expédition déjà livrée : la
+          // chaîne d'audit d'une organisation est unique et sérialisée, donc les écritures
+          // légitimes — scans, réceptions — auraient épuisé leurs tentatives de rejeu et fini en
+          // 500. Une opération sans effet d'état ne doit pas pouvoir remplir un journal WORM.
+          const dejaTrace =
+            !memeAuteur &&
+            (await tx.audit_Log.findFirst({
+              where: {
+                organization_id: activeOrgId,
+                action: 'CONFIRM_SHIPMENT_DELIVERY_REJOUEE',
+                entity_id: shipment.id,
+                id_user: userId ?? null,
+              },
+              select: { id: true },
+            }));
+
+          if (!memeAuteur && !dejaTrace) {
             await auditService.logAction(
               {
                 organizationId: activeOrgId,
@@ -724,7 +746,10 @@ export const shipmentService = {
               unite: ligne.unite,
               id_expedition: shipment.id,
               id_user: userId ?? null,
-              metadata: { confirmant: label ?? null },
+              // PAS le nom du confirmant : `Batch_Mouvement` est servi à tous les rôles de lecture
+              // sans projection (fiche lot, journal des mouvements). L'identité vit dans le maillon
+              // d'audit, dont la lecture est réservée — c'est la porte de côté de la fuite qu'on
+              // vient de fermer sur la liste des expéditions.
             })),
           });
         }

@@ -6,6 +6,7 @@ import { auditService } from '../../../../shared/utils/audit/audit.service';
 vi.mock('../../../../shared/configs/prismaClient.config', () => ({
   prisma: {
     shipment: { findFirst: vi.fn(), updateMany: vi.fn() },
+    audit_Log: { findFirst: vi.fn() },
     liaison_Shipment: { findMany: vi.fn() },
     batch_Mouvement: { createMany: vi.fn() },
     ePCIS_Event: { create: vi.fn() },
@@ -161,6 +162,7 @@ describe('shipmentService.confirmDelivery — constater une arrivée', () => {
      */
     it('un autre auteur laisse une trace, sans changer la date retenue', async () => {
       vi.mocked(prisma.shipment.findFirst).mockResolvedValue(dejaLivree());
+      vi.mocked(prisma.audit_Log.findFirst).mockResolvedValue(null);
 
       await shipmentService.confirmDelivery('exp-1', ORG, { userId: 'user-9' });
 
@@ -172,6 +174,34 @@ describe('shipmentService.confirmDelivery — constater une arrivée', () => {
         }),
         expect.anything()
       );
+    });
+
+    /**
+     * Un maillon par DÉSACCORD, pas un par appel. Sans dédoublonnage, n'importe quel `operator`
+     * remplissait la chaîne WORM de l'organisation à coups de requêtes sans effet — et comme cette
+     * chaîne est unique et sérialisée, les écritures légitimes finissaient par épuiser leurs
+     * tentatives de rejeu.
+     */
+    it('ne rescelle pas le même désaccord à chaque appel', async () => {
+      vi.mocked(prisma.shipment.findFirst).mockResolvedValue(dejaLivree());
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(prisma.audit_Log.findFirst).mockResolvedValue({ id: 1 } as any);
+
+      await shipmentService.confirmDelivery('exp-1', ORG, { userId: 'user-9' });
+
+      expect(auditService.logAction).not.toHaveBeenCalled();
+    });
+
+    it('borne et normalise le nom d’un confirmant sans compte', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(prisma.shipment.findFirst).mockResolvedValue(expedition() as any);
+
+      await shipmentService.confirmDelivery('exp-1', ORG, { label: `  ${'M'.repeat(200)}  ` });
+
+      const appel = vi.mocked(prisma.shipment.updateMany).mock.calls[0][0];
+      // Ce champ finit dans une colonne texte ET dans un maillon WORM indélébile : il se borne au
+      // commit qui l'introduit, pas au premier appelant qui le branchera.
+      expect((appel.data as { delivered_by_label: string }).delivered_by_label).toHaveLength(120);
     });
   });
 

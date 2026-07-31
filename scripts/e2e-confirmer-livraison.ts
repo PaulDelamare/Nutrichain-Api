@@ -122,7 +122,28 @@ async function main(): Promise<void> {
     assert(ligneAvant?.statutLivraison === 'EN_ROUTE', 'l’impact dit EN_ROUTE — c’est vrai à cet instant');
     assert(ligneAvant?.dateLivraison === null, 'et ne prétend aucune date');
 
-    console.log('\n[3] Constater l’arrivée');
+    console.log('\n[3] Les bornes de la date, sur une expédition ENCORE en route');
+    // Seul moment où elles sont atteignables : une fois livrée, le retour idempotent court-circuite
+    // tout. Sans cette étape, le chemin d'entrée de la date n'était prouvé par rien.
+    const avantDepart = await call(`/logistics/shipments/${shipmentId}/delivered`, 'POST', {
+      date_livraison: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+    });
+    const avantDepartCorps = await avantDepart.text();
+    assert(avantDepart.status === 400, `arrivée antérieure au départ → 400 (reçu ${avantDepart.status})`);
+    assert(avantDepartCorps.includes('précède'), 'et le refus dit pourquoi');
+
+    const dansLeFutur = await call(`/logistics/shipments/${shipmentId}/delivered`, 'POST', {
+      date_livraison: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+    });
+    assert(dansLeFutur.status === 400, `arrivée dans le futur → 400 (reçu ${dansLeFutur.status})`);
+
+    const toujoursEnRoute = await prisma.shipment.findUniqueOrThrow({ where: { id: shipmentId } });
+    assert(
+      toujoursEnRoute.statut_livraison === 'EN_ROUTE',
+      'aucun de ces refus n’a modifié l’expédition'
+    );
+
+    console.log('\n[4] Constater l’arrivée');
     const confirme = await call(`/logistics/shipments/${shipmentId}/delivered`, 'POST', {});
     const confirmeBody = (await confirme.json()) as {
       data?: { statut_livraison: string; date_livraison: string; lots_livres: number };
@@ -131,7 +152,7 @@ async function main(): Promise<void> {
     assert(confirmeBody.data?.statut_livraison === 'LIVRE', 'la réponse annonce LIVRE');
     assert(confirmeBody.data?.lots_livres === 1, 'et le nombre de lots concernés');
 
-    console.log('\n[4] En base : la date, l’auteur, et le mouvement du lot');
+    console.log('\n[5] En base : la date, l’auteur, et le mouvement du lot');
     const apres = await prisma.shipment.findUniqueOrThrow({ where: { id: shipmentId } });
     assert(apres.statut_livraison === 'LIVRE', 'le statut est LIVRE en base');
     assert(apres.date_livraison !== null, 'la date est renseignée');
@@ -148,7 +169,7 @@ async function main(): Promise<void> {
     });
     assert(maillon !== null, 'le geste est scellé dans le journal WORM');
 
-    console.log('\n[5] LE DÉFAUT D’ORIGINE — le rappel dit désormais la vérité');
+    console.log('\n[6] LE DÉFAUT D’ORIGINE — le rappel dit désormais la vérité');
     const rappelApres = await rappeler(lot.id, 'E2E - apres confirmation de livraison');
     const impactApres = (await rappelApres.json()) as {
       data?: { affectedShipments?: { statutLivraison: string; dateLivraison: string | null }[] };
@@ -163,7 +184,7 @@ async function main(): Promise<void> {
       'et la DATE, sans laquelle le décideur ne sait pas depuis quand c’est en rayon'
     );
 
-    console.log('\n[6] Rejeu et gardes');
+    console.log('\n[7] Rejeu et gardes');
     const rejeu = await call(`/logistics/shipments/${shipmentId}/delivered`, 'POST', {});
     const rejeuBody = (await rejeu.json()) as { data?: { lots_livres: number } };
     assert(rejeu.status === 200, `rejouer → 200 idempotent (reçu ${rejeu.status})`);
@@ -172,12 +193,17 @@ async function main(): Promise<void> {
     const futur = await call(`/logistics/shipments/${shipmentId}/delivered`, 'POST', {
       date_livraison: new Date(Date.now() + 86_400_000).toISOString(),
     });
-    assert(futur.status === 200, 'une expédition déjà livrée reste idempotente, date ignorée');
+    assert(futur.status === 200, 'une expédition déjà livrée reste idempotente');
+    const apresFutur = await prisma.shipment.findUniqueOrThrow({ where: { id: shipmentId } });
+    assert(
+      apresFutur.date_livraison?.getTime() === apres.date_livraison?.getTime(),
+      'et la date retenue n a PAS bougé — l assertion precedente l affirmait sans le verifier'
+    );
 
     const malforme = await call('/logistics/shipments/exp-1/delivered', 'POST', {});
     assert(malforme.status === 400, `identifiant non-uuid → 400 (reçu ${malforme.status})`);
 
-    console.log('\n[7] Le rôle le plus faible est refusé, en HTTP réel');
+    console.log('\n[8] Le rôle le plus faible est refusé, en HTTP réel');
     const lecteur = await signInAsOperator(prisma, {
       apiBase: API_URL,
       apiKey: API_KEY,
@@ -209,6 +235,15 @@ async function main(): Promise<void> {
     }
     await prisma.shipment.deleteMany({ where: { shipment_id: `E2E-LIV-${stamp}` } });
     await prisma.batch.deleteMany({ where: { id: lot.id } });
+    // Les comptes de scenario ne survivent pas au scenario : celui de qualite pourrait declencher
+    // un rappel produit, et son mot de passe est publie dans le depot.
+    const jetables = ['e2e-quality-livraison@nutrichain.local', 'e2e-viewer-livraison@nutrichain.local'];
+    const comptes = await prisma.user.findMany({ where: { email: { in: jetables } }, select: { id: true } });
+    const idsComptes = comptes.map((u) => u.id);
+    await prisma.member.deleteMany({ where: { userId: { in: idsComptes } } });
+    await prisma.session.deleteMany({ where: { userId: { in: idsComptes } } });
+    await prisma.account.deleteMany({ where: { userId: { in: idsComptes } } });
+    await prisma.user.deleteMany({ where: { id: { in: idsComptes } } });
     await prisma.$disconnect();
   }
 
