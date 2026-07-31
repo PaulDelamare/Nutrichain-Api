@@ -403,6 +403,46 @@ async function main(): Promise<void> {
     console.log('\n[15] Un identifiant qui n’est pas un uuid est refusé avant la base');
     const malforme = await call('/logistics/logistic-units/palette-1/open', 'POST');
     assert(malforme.status === 400, `POST .../palette-1/open → 400 (reçu ${malforme.status})`);
+
+    console.log('\n[16] Le rôle le plus faible est refusé — en HTTP réel, pas en mock');
+    // Adresse DÉDIÉE : le helper aligne le rôle du membre sur celui demandé, donc réutiliser
+    // l'adresse de l'opérateur le rétrograderait pour tous les scénarios suivants.
+    const lecteur = await signInAsOperator(prisma, {
+      apiBase: API_URL,
+      apiKey: API_KEY,
+      organizationId: ORG_ID,
+      email: 'e2e-viewer-palette@nutrichain.local',
+      role: 'viewer',
+    });
+
+    const refusLecteur = await fetch(
+      `${API_URL}/api/logistics/logistic-units/${palletId}/open`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${lecteur.token}`,
+          'Content-Type': 'application/json',
+          'x-api-key': API_KEY,
+        },
+      }
+    );
+    assert(
+      refusLecteur.status === 403,
+      `un viewer ne peut pas ouvrir une palette → 403 (reçu ${refusLecteur.status})`
+    );
+
+    // Et il lit toujours : le refus porte sur le geste, pas sur la consultation.
+    const lectureLecteur = await fetch(
+      `${API_URL}/api/logistics/logistic-units/by-sscc/${sscc}`,
+      {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${lecteur.token}`, 'x-api-key': API_KEY },
+      }
+    );
+    assert(
+      lectureLecteur.status === 200,
+      `mais il scanne toujours la palette → 200 (reçu ${lectureLecteur.status})`
+    );
   } finally {
     // Cleanup. On ne touche PAS à Audit_Log : la chaîne est chaînée par hash, en retirer une ligne
     // la romprait pour toute l'organisation.
