@@ -45,6 +45,18 @@ export const moveLogisticUnitSchema = vine.object({
   id_materiel: vine.string().trim().uuid(),
 });
 
+/**
+ * Ouverture d'une palette : rien d'autre que son identifiant, borné.
+ *
+ * `Logistic_Unit.id` est une colonne texte : un identifiant malformé n'y provoque aucune erreur de
+ * type, il rend simplement 404. Le valider ici distingue « ce n'est pas un identifiant » de « cette
+ * palette n'existe pas », et referme la requête avant qu'elle n'atteigne la base.
+ */
+export const openLogisticUnitSchema = vine.object({
+  id: vine.string().trim().uuid(),
+});
+
 export type CreateLogisticUnitPayload = Infer<typeof createLogisticUnitSchema>;
 export type ScanLogisticUnitParams = Infer<typeof scanLogisticUnitSchema>;
 export type MoveLogisticUnitPayload = Infer<typeof moveLogisticUnitSchema>;
+export type OpenLogisticUnitParams = Infer<typeof openLogisticUnitSchema>;

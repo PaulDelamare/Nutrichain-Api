@@ -5,6 +5,7 @@ import { AuthenticatedRequest } from '../../../identity/types/auth.types';
 import {
   createLogisticUnitSchema,
   moveLogisticUnitSchema,
+  openLogisticUnitSchema,
   scanLogisticUnitSchema,
 } from './logisticUnit.schema';
 
@@ -25,6 +26,13 @@ export const validateScanLogisticUnit = catchAsync(
 export const validateMoveLogisticUnit = catchAsync(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     req.validatedLogisticUnitMove = await validateData(moveLogisticUnitSchema, req.body);
+    next();
+  }
+);
+
+export const validateOpenLogisticUnit = catchAsync(
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+    req.validatedLogisticUnitOpen = await validateData(openLogisticUnitSchema, req.params);
     next();
   }
 );

@@ -164,6 +164,20 @@ async function expandPallets(
       });
     }
 
+    // Avant la garde « palette vide » : ouvrir vide toujours le contenu, donc sans ce test une
+    // palette ouverte serait refusée pour la mauvaise raison. Charger le contenant n'a plus de sens
+    // — ses lots partent désormais un par un.
+    if (unit.opened_at) {
+      throw new APIError(409, {
+        error: [
+          {
+            field: 'palettes',
+            message: `La palette ${sscc} a été ouverte : elle ne se charge plus comme un tout. Chargez ses lots.`,
+          },
+        ],
+      });
+    }
+
     if (unit.contenu.length === 0) {
       throw new APIError(409, {
         error: [

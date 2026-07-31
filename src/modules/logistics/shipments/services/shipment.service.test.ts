@@ -696,6 +696,21 @@ describe('expédier une palette', () => {
     expect(prisma.batch.updateMany).not.toHaveBeenCalled();
   });
 
+  // Le contenu d'une palette ouverte est toujours vide : sans une garde propre, ce cas tomberait
+  // sur « ne porte aucun lot », un diagnostic vrai mais qui enverrait l'opérateur la remplir.
+  it('refuse (409) une palette ouverte, et pas pour cause de contenu vide', async () => {
+    vi.mocked(prisma.logistic_Unit.findFirst).mockResolvedValue({
+      ...PALETTE,
+      opened_at: new Date('2026-07-31T08:00:00Z'),
+      contenu: [],
+    } as never);
+
+    const erreur = await expedierLaPalette().catch((e) => e);
+    expect(erreur).toMatchObject({ status: 409 });
+    expect(JSON.stringify(erreur.data ?? erreur)).toContain('ouverte');
+    expect(prisma.batch.updateMany).not.toHaveBeenCalled();
+  });
+
   it('refuse (409) une palette qui ne porte plus rien', async () => {
     vi.mocked(prisma.logistic_Unit.findFirst).mockResolvedValue({
       ...PALETTE,

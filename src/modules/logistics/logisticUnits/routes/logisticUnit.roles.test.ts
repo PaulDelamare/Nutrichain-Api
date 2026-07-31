@@ -26,6 +26,8 @@ vi.mock('../controllers/logisticUnit.controller', () => ({
     res.status(200).end(),
   getLogisticUnitLabelController: (_req: express.Request, res: express.Response) =>
     res.status(200).end(),
+  openLogisticUnitController: (_req: express.Request, res: express.Response) =>
+    res.status(200).end(),
 }));
 
 const { default: logisticUnitRoutes } = await import('./logisticUnit.routes');
@@ -128,6 +130,52 @@ describe('RBAC et câblage des routes de palette', () => {
         .patch('/api/logistics/logistic-units/palette-1/location')
         .send({});
       expect(res.status).toBe(400);
+    });
+  });
+
+  describe('POST /logistics/logistic-units/:id/open (ouvrir — geste terrain)', () => {
+    const UNIT_ID = '22222222-2222-4222-8222-222222222222';
+
+    it.each(['owner', 'admin', 'operator'])('autorise %s', async (role) => {
+      signedInAs(role);
+      const res = await request(app).post(`/api/logistics/logistic-units/${UNIT_ID}/open`);
+      expect(res.status).toBe(200);
+    });
+
+    it('refuse viewer (lecture seule)', async () => {
+      signedInAs('viewer');
+      const res = await request(app).post(`/api/logistics/logistic-units/${UNIT_ID}/open`);
+      expect(res.status).toBe(403);
+    });
+
+    // `quality` décide de l'état sanitaire d'un lot ; ouvrir une palette est de la manutention,
+    // au même titre que la palettiser. Sans ce cas, élargir la garde à ALL_ROLES ne ferait rougir
+    // que `viewer`.
+    it("refuse quality : ouvrir est de la manutention, pas une décision qualité", async () => {
+      signedInAs('quality');
+      const res = await request(app).post(`/api/logistics/logistic-units/${UNIT_ID}/open`);
+      expect(res.status).toBe(403);
+    });
+
+    it('refuse (401) sans session', async () => {
+      getSession.mockResolvedValue(null);
+      const res = await request(app).post(`/api/logistics/logistic-units/${UNIT_ID}/open`);
+      expect(res.status).toBe(401);
+    });
+
+    // Preuve que la validation est MONTÉE : `Logistic_Unit.id` est une colonne texte, donc sans
+    // ce middleware un identifiant quelconque atteindrait la base et rendrait 404 au lieu de 400.
+    it("refuse (400) un identifiant qui n'est pas un uuid", async () => {
+      signedInAs('operator');
+      const res = await request(app).post('/api/logistics/logistic-units/palette-1/open');
+      expect(res.status).toBe(400);
+    });
+
+    // L'ajout de `:id/open` ne doit pas avaler les routes voisines.
+    it("n'avale pas la route d'étiquette", async () => {
+      signedInAs('operator');
+      const res = await request(app).get(`/api/logistics/logistic-units/${UNIT_ID}/label`);
+      expect(res.status).toBe(200);
     });
   });
 

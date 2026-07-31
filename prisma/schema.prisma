@@ -30,7 +30,8 @@ model User {
   idempotencyKeys    IdempotencyKey[]
   platformAdmin      PlatformAdmin?
   rebuts             ScrapRecord[]
-  unites_logistiques Logistic_Unit[]
+  unites_logistiques Logistic_Unit[]   @relation("LogisticUnitCreatedBy")
+  unites_ouvertes    Logistic_Unit[]   @relation("LogisticUnitOpenedBy")
 
   @@map("user")
 }
@@ -626,7 +627,21 @@ model Logistic_Unit {
   source          String       @default("INTERNE")
   created_at      DateTime     @default(now())
   created_by      String
-  user            User         @relation(fields: [created_by], references: [id])
+  user            User         @relation("LogisticUnitCreatedBy", fields: [created_by], references: [id])
+
+  /// Ouverture de la palette : on en a prélevé, le contenant cesse d'exister comme unité de
+  /// manutention. IRRÉVERSIBLE — on n'y remet rien et le SSCC n'est pas réutilisé. Une palette
+  /// ouverte ne se range plus, ne s'expédie plus, et son étiquette n'est plus imprimable.
+  opened_at       DateTime?
+  opened_by       String?
+  opened_by_user  User?        @relation("LogisticUnitOpenedBy", fields: [opened_by], references: [id], onDelete: Restrict)
+
+  /// Ce que la palette portait au moment de l'ouverture. Les lignes de `contenu` sont supprimées
+  /// à l'ouverture — sans quoi `@@unique([id_lot])` retiendrait les lots prisonniers d'un
+  /// contenant mort et interdirait de les repalettiser. Mais la marchandise, elle, est encore
+  /// physiquement sur la palette : sans cette photo, rescanner le SSCC répondrait « rien à
+  /// signaler » alors qu'un des lots est peut-être sous rappel.
+  contenu_a_l_ouverture Json?
 
   contenu  Logistic_Unit_Content[]
   liaisons Liaison_Shipment[]
