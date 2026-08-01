@@ -4,14 +4,22 @@ import path from 'path';
 import mongoose from 'mongoose';
 import { sendSuccess } from '../../shared/utils/returnSuccess/returnSuccess';
 import { bdd } from '../../shared/configs/prismaClient.config';
+import { logger } from '../../shared/utils/logger/logger';
 
 type HealthCheckResult = {
   name: string;
   ok: boolean;
   durationMs: number;
   optional?: boolean;
-  error?: string;
-  details?: Record<string, unknown>;
+  /**
+   * Ce que la sonde a appris — et qui ne SORT JAMAIS dans la réponse.
+   *
+   * Cette route est le seul chemin du serveur qui ne demande ni compte, ni clé, ni session. Un
+   * message d'exception y publiait l'hôte et le port de la base, l'URI Mongo ou le chemin absolu du
+   * répertoire de logs : donc la disposition du déploiement, et jusqu'au compte système (#258).
+   * Un superviseur a besoin de savoir qu'une dépendance est tombée, pas de son adresse.
+   */
+  diagnostic?: string;
 };
 
 const toMessage = (err: unknown) => (err instanceof Error ? err.message : String(err));
@@ -52,7 +60,7 @@ const checkDatabase = async (): Promise<HealthCheckResult> => {
       name: 'database',
       ok: false,
       durationMs: Date.now() - started,
-      error: toMessage(err),
+      diagnostic: toMessage(err),
     };
   }
 };
@@ -80,7 +88,9 @@ const checkMigrations = async (): Promise<HealthCheckResult> => {
       ok: Boolean(latest),
       optional: true,
       durationMs: Date.now() - started,
-      details: latest ?? { message: 'No migration rows' },
+      diagnostic: latest
+        ? `dernière migration : ${latest.migration_name}`
+        : 'aucune ligne de migration',
     };
   } catch (err) {
     return {
@@ -88,7 +98,7 @@ const checkMigrations = async (): Promise<HealthCheckResult> => {
       ok: false,
       optional: true,
       durationMs: Date.now() - started,
-      error: toMessage(err).replace(/\n/g, ' '),
+      diagnostic: toMessage(err).replace(/\n/g, ' '),
     };
   }
 };
@@ -115,7 +125,7 @@ const checkMongo = async (): Promise<HealthCheckResult> => {
       name: 'mongodb',
       ok: false,
       durationMs: Date.now() - started,
-      error: toMessage(err),
+      diagnostic: toMessage(err),
     };
   }
 };
@@ -140,15 +150,13 @@ const checkLogs = async (): Promise<HealthCheckResult> => {
       name: 'logs',
       ok: true,
       durationMs: Date.now() - started,
-      details: { path: logsDir },
     };
   } catch (err) {
     return {
       name: 'logs',
       ok: false,
       durationMs: Date.now() - started,
-      error: toMessage(err),
-      details: { path: logsDir },
+      diagnostic: `${toMessage(err)} (répertoire : ${logsDir})`,
     };
   }
 };
@@ -183,6 +191,23 @@ const readiness: RequestHandler = async (_req, res) => {
 
   const hasBlockingFailure = checks.some((check) => !check.ok && !check.optional);
 
+  // Le diagnostic part dans le JOURNAL, jamais dans la réponse. C'est là qu'un exploitant regarde,
+  // et c'est le seul endroit qui exige déjà un accès à la machine (#258).
+  for (const check of checks) {
+    if (!check.ok && check.diagnostic) {
+      logger.error(`[Health] sonde « ${check.name} » en échec : ${check.diagnostic}`);
+    }
+  }
+
+  // Projection EXPLICITE : renvoyer `checks` tel quel republierait tout champ ajouté un jour à
+  // `HealthCheckResult`, sur la seule route sans authentification. C'est ainsi que la fuite est née.
+  const publicChecks = checks.map(({ name, ok, durationMs, optional }) => ({
+    name,
+    ok,
+    durationMs,
+    ...(optional ? { optional } : {}),
+  }));
+
   sendSuccess(res, hasBlockingFailure ? 503 : 200, hasBlockingFailure ? 'not ready' : 'ready', {
     summary: {
       ready: !hasBlockingFailure,
@@ -190,7 +215,7 @@ const readiness: RequestHandler = async (_req, res) => {
       uptimeSeconds: process.uptime(),
       totalDurationMs: Date.now() - started,
     },
-    checks,
+    checks: publicChecks,
   });
 };
 

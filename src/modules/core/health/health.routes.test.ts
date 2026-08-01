@@ -136,6 +136,15 @@ describe('Health route', () => {
     expect(mongoCheck.ok).toBe(true);
     expect(logsCheck.ok).toBe(true);
     expect(migrationsCheck.optional).toBe(true);
+
+    // #258 — La fuite n'attendait même pas une panne : en fonctionnement NOMINAL, la réponse
+    // publiait le chemin absolu du répertoire de logs — donc la disposition du déploiement et
+    // jusqu'au compte système — ainsi que le nom de la dernière migration. Sur la seule route qui
+    // ne demande ni compte, ni clé, ni session.
+    const corps = JSON.stringify(res.body);
+    expect(corps).not.toContain(tmpDir);
+    expect(corps).not.toContain('migration_name');
+    expect(corps).not.toContain('details');
   });
 
   /**
@@ -178,7 +187,10 @@ describe('Health route', () => {
     const mongoCheck = checks.find((check) => check.name === 'mongodb')!;
     expect(mongoCheck.ok).toBe(false);
     expect(mongoCheck.optional).toBeUndefined();
-    expect(mongoCheck.error).toBeDefined();
+    // #258 — le message d exception ne sort PAS : cette route est le seul chemin sans
+    // authentification, et il y publiait l URI Mongo.
+    expect(mongoCheck.error).toBeUndefined();
+    expect(JSON.stringify(res.body)).not.toContain("Mongo down");
   });
 
   it('readiness returns not ready when DB check fails', async () => {
@@ -210,7 +222,10 @@ describe('Health route', () => {
     const checks: HealthCheck[] = res.body.data.checks;
     const dbCheck = checks.find((check) => check.name === 'database')!;
     expect(dbCheck.ok).toBe(false);
-    expect(dbCheck.error).toBeDefined();
+    // #258 — « Can t reach database server at <hote>:<port> » ne doit jamais atteindre un
+    // appelant anonyme. Le superviseur apprend QU UNE dependance est tombee, pas son adresse.
+    expect(dbCheck.error).toBeUndefined();
+    expect(JSON.stringify(res.body)).not.toContain("DB down");
   });
 
   it('readiness stays ready when migrations probe fails with column missing', async () => {
@@ -245,6 +260,49 @@ describe('Health route', () => {
     const migrationsCheck = checks.find((check) => check.name === 'migrations')!;
     expect(migrationsCheck.ok).toBe(false);
     expect(migrationsCheck.optional).toBe(true);
-    expect(migrationsCheck.error).toBeDefined();
+    expect(migrationsCheck.error).toBeUndefined();
+    expect(JSON.stringify(res.body)).not.toContain("migrations column missing");
+  });
+
+  /**
+   * #258, seconde moitié : retirer le message du corps ne suffit pas. Un exploitant doit toujours
+   * pouvoir diagnostiquer une panne — sinon on a échangé une fuite contre un aveuglement. Le
+   * message technique doit donc atterrir dans le JOURNAL, le seul endroit qui exige déjà un accès
+   * à la machine.
+   */
+  it('le diagnostic atterrit dans le JOURNAL, pas dans la réponse', async () => {
+    const tmpDir = path.join(tmpDirBase, `log-${Date.now()}`);
+    process.env.LOG_DIR = tmpDir;
+
+    vi.resetModules();
+    const erreurs: string[] = [];
+    vi.doMock('../../../shared/utils/logger/logger', () => ({
+      logger: {
+        error: (message: string) => erreurs.push(message),
+        warn: vi.fn(),
+        info: vi.fn(),
+        debug: vi.fn(),
+      },
+    }));
+    vi.doMock('../../../shared/configs/prismaClient.config', () => ({
+      bdd: {
+        $queryRaw: vi.fn().mockRejectedValue(new Error("Can't reach database server at db-prod:5432")),
+        $queryRawUnsafe: vi.fn().mockRejectedValue(new Error('boom')),
+      },
+    }));
+    mockMongoConnected();
+
+    const { default: healthRoutes } = await import('./health.routes');
+    const app = express();
+    app.use(healthRoutes);
+
+    const res = await request(app).get('/health/ready');
+
+    expect(res.status).toBe(503);
+    // L'hôte et le port internes ne sortent pas...
+    expect(JSON.stringify(res.body)).not.toContain('db-prod:5432');
+    // ...mais ils sont bien quelque part, sinon la panne serait indiagnosticable.
+    expect(erreurs.some((ligne) => ligne.includes('db-prod:5432'))).toBe(true);
+    expect(erreurs.some((ligne) => ligne.includes('database'))).toBe(true);
   });
 });
