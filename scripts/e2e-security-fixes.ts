@@ -1,7 +1,7 @@
 import { prisma } from '../src/shared/configs/prismaClient.config';
 import { auditService } from '../src/shared/utils/audit/audit.service';
 import { genealogyService } from '../src/modules/traceability/transformations/services/genealogy.service';
-import crypto from 'crypto';
+import { computeAuditHash } from '../src/shared/utils/audit/auditHash.util';
 // Import manquant sur develop : le script appelait signInAsOperator sans jamais l'importer,
 // l'e2e sécurité échouait donc au setup (« signInAsOperator is not defined »).
 import { signInAsOperator } from './helpers/e2eSession';
@@ -340,22 +340,20 @@ async function scenario4_wormChain() {
 
   let prevHash = '0000000000000000000000000000000000000000000000000000000000000000';
   for (const row of logs) {
-    const recomputed = crypto
-      .createHash('sha256')
-      .update(
-        JSON.stringify({
-          organizationId: row.organization_id,
-          userId: row.id_user || 'system',
-          action: row.action,
-          entity: row.entity,
-          entityId: row.entity_id,
-          oldValue: row.ancienne_valeur,
-          newValue: row.nouvelle_valeur,
-          prevHash: row.prev_hash,
-          timestamp: row.horodatage.toISOString(),
-        })
-      )
-      .digest('hex');
+    // Le helper, jamais une copie : la formule était réécrite à la main ici, donc ce scénario
+    // aurait continué à valider l'ancienne après la canonicalisation de #294 — et il aurait
+    // reproduit le bug au premier payload à plusieurs clés.
+    const recomputed = computeAuditHash({
+      organizationId: row.organization_id,
+      userId: row.id_user,
+      action: row.action,
+      entity: row.entity,
+      entityId: row.entity_id,
+      oldValue: row.ancienne_valeur as Record<string, unknown> | null,
+      newValue: row.nouvelle_valeur as Record<string, unknown> | null,
+      prevHash: row.prev_hash,
+      timestamp: row.horodatage.toISOString(),
+    });
 
     if (recomputed !== row.signature_hash) {
       fail(`Log ${row.id} : hash recomputé ne matche pas. Chaîne brisée.`);

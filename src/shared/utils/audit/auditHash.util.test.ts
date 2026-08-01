@@ -21,6 +21,119 @@ describe('computeAuditHash', () => {
     expect(hash).toBe('4f2c622dbab041b7785fe9a2f7547ce4ed9b81e3ac0103169237fd7558170ef5');
   });
 
+  /**
+   * #294 — Le vecteur ci-dessus n'a qu'UNE clé : le trier ne change pas un octet. Il est donc resté
+   * vert pendant que la formule changeait, alors qu'il est présenté partout comme le garde-fou qui
+   * « pète bruyamment ». Celui-ci a des clés désordonnées à la racine, dans un objet imbriqué ET
+   * dans les objets d'un tableau — c'est lui qui ancre réellement la formule.
+   */
+  it('1 bis. GOLDEN VECTOR : clés désordonnées, imbriquées et en tableau', () => {
+    const hash = computeAuditHash({
+      organizationId: 'org-test',
+      userId: 'u1',
+      action: 'CREATE',
+      entity: 'Shipment',
+      entityId: 's1',
+      oldValue: null,
+      newValue: {
+        zzzz: 1,
+        a: { nested: 1, b: 2 },
+        // DEUX éléments : avec un seul, toute manipulation du tableau (une inversion, par exemple)
+        // laisserait ce vecteur inchangé — donc muet. Constaté par mutation.
+        list: [
+          { y: 1, x: 2 },
+          { b: 3, a: 4 },
+        ],
+      },
+      prevHash: GENESIS_PREV_HASH,
+      timestamp: '2026-01-01T00:00:00.000Z',
+    });
+
+    expect(hash).toBe('9fadddc100992476948dc7fc78e9087ad8273cbbc5db5017db201c08d3afa780');
+  });
+
+  it('1 ter. rend le même hash quel que soit l’ordre d’écriture des clés (#294)', () => {
+    const base = {
+      organizationId: 'org-test',
+      userId: 'u1',
+      action: 'CREATE',
+      entity: 'Shipment',
+      entityId: 's1',
+      oldValue: null,
+      prevHash: GENESIS_PREV_HASH,
+      timestamp: '2026-01-01T00:00:00.000Z',
+    };
+
+    const ecrit = computeAuditHash({
+      ...base,
+      newValue: { zzzz: 1, a: { nested: 1, b: 2 }, list: [{ y: 1, x: 2 }] },
+    });
+    // Ce que `jsonb` rendra à la relecture : clés triées par longueur puis octets, récursivement.
+    const relu = computeAuditHash({
+      ...base,
+      newValue: { a: { b: 2, nested: 1 }, list: [{ x: 2, y: 1 }], zzzz: 1 },
+    });
+
+    expect(relu).toBe(ecrit);
+  });
+
+  /**
+   * #294 — Une `Date` est un `object` sans clé énumérable : la canonicalisation naïve la réduisait
+   * à `{}`, et la signature cessait de couvrir le champ. Constaté en traçant ce que le seed hachait
+   * réellement (`"date_reception":{}`). Les charges concernées existent : `receipt.service.ts`
+   * journalise l'entité entière.
+   */
+  it('1 quinquies. couvre la VALEUR des objets à `toJSON` (Date, Decimal) — pas `{}` (#294)', () => {
+    const base = {
+      organizationId: 'org-test',
+      userId: 'u1',
+      action: 'CREATE',
+      entity: 'Receipt',
+      entityId: 'r1',
+      oldValue: null,
+      prevHash: GENESIS_PREV_HASH,
+      timestamp: '2026-01-01T00:00:00.000Z',
+    };
+
+    const janvier = computeAuditHash({
+      ...base,
+      newValue: { date_reception: new Date('2026-01-01T00:00:00.000Z') },
+    });
+    const fevrier = computeAuditHash({
+      ...base,
+      newValue: { date_reception: new Date('2026-02-01T00:00:00.000Z') },
+    });
+
+    // Sans l'appel à `toJSON`, les deux valent le hash de `{"date_reception":{}}` : identiques.
+    expect(janvier).not.toBe(fevrier);
+
+    // Et la forme retenue est bien la chaîne ISO — celle que `jsonb` rendra à la relecture.
+    const relu = computeAuditHash({
+      ...base,
+      newValue: { date_reception: '2026-01-01T00:00:00.000Z' },
+    });
+    expect(relu).toBe(janvier);
+  });
+
+  it("1 quater. distingue deux charges qui ne diffèrent que par l'ordre d'un TABLEAU (#294)", () => {
+    const base = {
+      organizationId: 'org-test',
+      userId: 'u1',
+      action: 'CREATE',
+      entity: 'Shipment',
+      entityId: 's1',
+      oldValue: null,
+      prevHash: GENESIS_PREV_HASH,
+      timestamp: '2026-01-01T00:00:00.000Z',
+    };
+
+    // L'ordre d'un tableau est une donnée : deux lots inversés ne décrivent pas la même palette.
+    const premier = computeAuditHash({ ...base, newValue: { lots: [{ id: 'a' }, { id: 'b' }] } });
+    const inverse = computeAuditHash({ ...base, newValue: { lots: [{ id: 'b' }, { id: 'a' }] } });
+
+    expect(premier).not.toBe(inverse);
+  });
+
   it('2. recomputable : mêmes inputs → même hash', () => {
     const inputs = {
       organizationId: 'org-1',

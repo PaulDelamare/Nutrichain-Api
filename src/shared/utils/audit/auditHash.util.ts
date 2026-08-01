@@ -7,9 +7,13 @@ import crypto from 'crypto';
  * cryptographique** de la hash chain WORM. Tout changement de la formule invalide
  * rétroactivement la totalité des `signature_hash` déjà persistés en DB.
  *
- * Le test "golden vector" dans `auditHash.util.test.ts` ancre la formule via un
- * SHA256 hex literal — si la formule bouge, ce test pète bruyamment et l'auteur
- * doit consciemment décider d'une migration de la chain (re-signature offline).
+ * Les tests "golden vector" de `auditHash.util.test.ts` ancrent la formule via des SHA256 hex
+ * literals — si la formule bouge, ils pètent bruyamment et l'auteur doit consciemment décider
+ * du sort des lignes déjà écrites.
+ *
+ * ⚠️ Le premier de ces vecteurs ne portait qu'UNE clé : la canonicalisation de #294 l'a laissé
+ * vert. Un vecteur aux clés désordonnées, imbriquées et en tableau a été ajouté — c'est lui qui
+ * ancre réellement la formule. Ne jamais revenir à un vecteur à clé unique.
  */
 export interface AuditHashInputs {
   organizationId: string;
@@ -41,6 +45,58 @@ export interface AuditHashInputs {
  *   `audit.service.ts` normalise `undefined → null` AVANT d'appeler ce helper, pour
  *   éviter une divergence write/verify quand Postgres persiste NULL pour undefined.
  */
+/**
+ * Réécrit une valeur JSON avec ses clés triées, récursivement.
+ *
+ * Sans ça, la signature dépendait de l'ordre d'INSERTION de l'objet en mémoire, alors que la
+ * vérification travaille sur l'objet relu depuis `jsonb` — qui réordonne les clés (par longueur
+ * puis octets, à tous les niveaux). Toute écriture dont les clés n'étaient pas déjà dans cet ordre
+ * était donc déclarée falsifiée : 222 maillons sur 257 de la base de développement (#294).
+ *
+ * Un tableau n'est PAS réordonné : son ordre est une donnée — deux lots inversés ne décrivent pas
+ * la même expédition. On descend seulement dans ses éléments, où vivent les objets réels
+ * (`lots: [{ id_lot, quantite }]`).
+ *
+ * L'ordre de tri n'a pas à imiter celui de `jsonb` : il suffit qu'il soit le même à l'écriture et
+ * à la vérification, ce qui rend la signature indépendante du stockage.
+ *
+ * ⚠️ `toJSON()` est appelé AVANT le tri, et ce n'est pas cosmétique. Une `Date` et un
+ * `Prisma.Decimal` sont des `object` sans clé énumérable : les reconstruire clé par clé les réduit
+ * à `{}`. Les charges d'audit en contiennent (`receipt.service.ts` journalise l'entité entière,
+ * avec sa `date_reception`), et la signature aurait alors cessé de couvrir ces champs — deux
+ * réceptions à des dates différentes auraient produit le même hash. Constaté en traçant la chaîne
+ * réellement hachée par le seed, pas en relisant le code.
+ *
+ * ⚠️ Le résultat de cette fonction est aussi ce que `audit.service.ts` PERSISTE, et ce n'est pas
+ * un détail d'implémentation. Mesuré contre PostgreSQL : Prisma écrit un `Prisma.Decimal` dans
+ * `jsonb` comme un **nombre** (`12.5`) alors que `JSON.stringify` en fait une **chaîne**
+ * (`"12.5"`). Hacher l'objet en mémoire en espérant que le stockage le reproduise ne pouvait donc
+ * pas tenir — c'était vrai avant même #294. On hache et on stocke la même valeur : la symétrie
+ * n'est plus une hypothèse sur Prisma, elle est construite.
+ */
+export function canonicalizeAuditValue(value: unknown): unknown {
+  return canonicalize(value);
+}
+
+function canonicalize(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(canonicalize);
+  }
+  if (value === null || typeof value !== 'object') {
+    return value;
+  }
+  const serializable = value as { toJSON?: () => unknown };
+  if (typeof serializable.toJSON === 'function') {
+    return canonicalize(serializable.toJSON());
+  }
+  const source = value as Record<string, unknown>;
+  const sorted: Record<string, unknown> = {};
+  for (const key of Object.keys(source).sort()) {
+    sorted[key] = canonicalize(source[key]);
+  }
+  return sorted;
+}
+
 export function computeAuditHash(inputs: AuditHashInputs): string {
   const dataToHash = JSON.stringify({
     organizationId: inputs.organizationId,
@@ -48,8 +104,8 @@ export function computeAuditHash(inputs: AuditHashInputs): string {
     action: inputs.action,
     entity: inputs.entity,
     entityId: inputs.entityId,
-    oldValue: inputs.oldValue,
-    newValue: inputs.newValue,
+    oldValue: canonicalize(inputs.oldValue),
+    newValue: canonicalize(inputs.newValue),
     prevHash: inputs.prevHash,
     timestamp: inputs.timestamp,
   });

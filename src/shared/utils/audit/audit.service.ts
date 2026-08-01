@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { logger } from '../logger/logger';
-import { computeAuditHash, GENESIS_PREV_HASH } from './auditHash.util';
+import { canonicalizeAuditValue, computeAuditHash, GENESIS_PREV_HASH } from './auditHash.util';
 import { retryableTransaction, isRetryableWriteConflict } from '../db/withWriteConflictRetry';
 
 export interface AuditLogParams {
@@ -57,8 +57,18 @@ export const auditService = {
       // côté write (avec `undefined` qui drop dans JSON.stringify) divergerait du
       // recompute côté verify (qui voit `null` depuis Postgres). Verrouillage du
       // contrat avant persistence.
-      const oldValueNormalized = params.oldValue ?? null;
-      const newValueNormalized = params.newValue ?? null;
+      // Canonicalisé ICI, une fois, parce que c'est exactement cette valeur qui sera hachée ET
+      // persistée. Sans ça, la symétrie reposait sur l'hypothèse que Prisma sérialise dans `jsonb`
+      // comme `JSON.stringify` — c'est faux pour `Prisma.Decimal`, stocké en NOMBRE là où
+      // `JSON.stringify` produit une CHAÎNE (mesuré contre PostgreSQL réel). Voir #294.
+      const oldValueNormalized = canonicalizeAuditValue(params.oldValue ?? null) as Record<
+        string,
+        unknown
+      > | null;
+      const newValueNormalized = canonicalizeAuditValue(params.newValue ?? null) as Record<
+        string,
+        unknown
+      > | null;
 
       const signatureHash = computeAuditHash({
         organizationId: params.organizationId,
