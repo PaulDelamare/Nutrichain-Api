@@ -35,7 +35,17 @@ export const labelService = {
   generateDigitalLink(gtin: string, lotNumber: string): string {
     const baseUrl = process.env.API_URL || 'https://api.nutrichain.fr';
     // Le standard GS1 Digital Link utilise des clés identifiées par des AI (Application Identifiers)
-    return `${baseUrl}/api/gs1/01/${gtin}/10/${lotNumber}`;
+    //
+    // La clé `01` se porte sur 14 chiffres, zéros de tête compris — l'exemple de référence de GS1
+    // est `https://id.gs1.org/01/00952432234433/10/ABC`. Or `Product.code_gtin` accepte 13 OU 14
+    // chiffres : sans ce complément, le même produit s'écrivait `03042040209789` dans l'URN EPCIS
+    // (`buildLgtinUrn`, qui complétait déjà) et `3042040209789` dans le QR. Deux écritures d'un
+    // même identifiant, à quelques fichiers d'écart.
+    //
+    // `padStart` complète mais ne TRONQUE jamais : un GTIN plus long ressort tel quel plutôt que
+    // d'être amputé en silence en un identifiant valide mais faux.
+    const gtin14 = gtin.padStart(14, '0');
+    return `${baseUrl}/api/gs1/01/${gtin14}/10/${lotNumber}`;
   },
 
   /**

@@ -201,7 +201,30 @@ describe('publicScanDigitalLink controller (GS1 Digital Link — GTIN + lot, #13
       expect.objectContaining({
         where: expect.objectContaining({
           lot_number: '260704-ABC123',
-          produit: { code_gtin: '1234567890' },
+          produit: { code_gtin: { in: expect.arrayContaining(['1234567890']) } },
+        }),
+      })
+    );
+  });
+
+  /**
+   * L'étiquette porte désormais le GTIN sur 14 chiffres (clé `01` du standard), alors que
+   * `Product.code_gtin` accepte 13 OU 14. Une comparaison littérale rendait donc 404 sur une
+   * étiquette pourtant valide — le produit existe, l'URL est correcte, et rien n'expliquait le
+   * refus. Le défaut ne vit pas dans une fonction mais dans l'écart entre l'imprimé et le stocké.
+   */
+  it('résout un produit enregistré sur 13 chiffres depuis un lien qui en porte 14', async () => {
+    vi.mocked(prisma.batch.findMany).mockResolvedValue([buildBatch()]);
+
+    const res = await request(buildApp()).get('/api/gs1/01/03042040209789/10/260704-ABC123');
+
+    expect(res.status).toBe(200);
+    expect(prisma.batch.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          produit: {
+            code_gtin: { in: expect.arrayContaining(['03042040209789', '3042040209789']) },
+          },
         }),
       })
     );

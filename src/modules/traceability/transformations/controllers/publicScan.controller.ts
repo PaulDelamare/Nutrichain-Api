@@ -149,8 +149,15 @@ export const publicScanDigitalLink = catchAsync(async (req: Request, res: Respon
   // `lot_number` est stocké en MAJUSCULES (cf. receipt.service.ts) : un lot tapé ou transmis en
   // minuscule matcherait le validateur (regex tolérant la casse) mais ne trouverait rien en base —
   // 404 silencieux sur un scan pourtant valide.
+  // Le lien imprimé porte le GTIN sur 14 chiffres (clé `01` du standard), mais `Product.code_gtin`
+  // accepte 13 OU 14 : une comparaison littérale rendrait 404 sur une étiquette pourtant valide,
+  // et personne ne verrait pourquoi — l'URL scannée est correcte, le produit existe. On compare
+  // donc les deux écritures du même identifiant. Normaliser la colonne serait plus propre, mais
+  // c'est une migration de données : à faire à part.
+  const gtinForms = [...new Set([gtin, gtin.padStart(14, '0'), gtin.replace(/^0+(?=\d{13}$)/, '')])];
+
   const batch = await resolvePublicBatch(
-    { lot_number: lot.toUpperCase(), produit: { code_gtin: gtin } },
+    { lot_number: lot.toUpperCase(), produit: { code_gtin: { in: gtinForms } } },
     'lot',
     // Le consommateur a DÉJÀ fourni la paire complète (GTIN + lot) : le lui redemander n'aurait
     // aucun sens. Cette collision (même GTIN, même lot, deux organisations) reste une coïncidence

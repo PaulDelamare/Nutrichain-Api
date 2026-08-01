@@ -30,12 +30,34 @@ describe('labelService', () => {
       expect(uri).toBe('https://api.nutrichain.fr/api/gs1/01/03400000000000/10/LOT-XYZ');
     });
 
+    /**
+     * La clé `01` d'un Digital Link se porte sur 14 chiffres, zéros de tête compris — l'exemple de
+     * référence de GS1 est `https://id.gs1.org/01/00952432234433/10/ABC`.
+     *
+     * Le dépôt acceptait un GTIN-13 à l'enregistrement et l'interpolait tel quel : le même produit
+     * s'écrivait donc `03042040209789` dans l'URN EPCIS (qui, lui, complétait déjà) et
+     * `3042040209789` dans le QR. Deux écritures d'un même identifiant, à quelques lignes d'écart.
+     */
+    it('complète le GTIN à 14 chiffres, comme l’exige la clé 01', () => {
+      const uri = labelService.generateDigitalLink('3042040209789', '260729-U7ZH8S');
+
+      expect(uri).toBe(
+        'https://api.nutrichain.fr/api/gs1/01/03042040209789/10/260729-U7ZH8S'
+      );
+    });
+
+    it('laisse intact un GTIN déjà sur 14 chiffres', () => {
+      const uri = labelService.generateDigitalLink('00952432234433', 'ABC');
+
+      expect(uri).toBe('https://api.nutrichain.fr/api/gs1/01/00952432234433/10/ABC');
+    });
+
     it('utilise API_URL comme base quand la variable est definie', () => {
       process.env.API_URL = 'https://example.test';
 
       const uri = labelService.generateDigitalLink('12345678', 'B42');
 
-      expect(uri).toBe('https://example.test/api/gs1/01/12345678/10/B42');
+      expect(uri).toBe('https://example.test/api/gs1/01/00000012345678/10/B42');
     });
 
     it('retombe sur le domaine par defaut quand API_URL est absente', () => {
