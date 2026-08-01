@@ -39,6 +39,9 @@ const PRODUCT_ID = '223e4567-e89b-12d3-a456-426614174011';
 const USER_ID = '223e4567-e89b-12d3-a456-426614174013';
 const EQUIPMENT_ID = '223e4567-e89b-12d3-a456-426614174014';
 const GTIN = '3000000000024';
+// Le lien imprime porte la cle 01 sur 14 chiffres (standard GS1, ex. id.gs1.org/01/00952432234433).
+// Le produit, lui, est enregistre sur 13 : c est cet ecart que le scan doit absorber.
+const GTIN_14 = GTIN.padStart(14, '0');
 
 let sessionToken = '';
 let passed = 0;
@@ -214,7 +217,7 @@ async function main() {
   const decoded = decodeQr(png);
   assert(decoded !== null, 'le motif est DÉCODABLE — une caméra y arriverait aussi');
   assert(
-    decoded === `${API_URL}/api/gs1/01/${GTIN}/10/${shipped.lot_number}`,
+    decoded === `${API_URL}/api/gs1/01/${GTIN_14}/10/${shipped.lot_number}`,
     `le contenu décodé est le Digital Link attendu (${decoded})`
   );
 
@@ -316,7 +319,7 @@ async function main() {
   const gtinScanne = segments[segments.length - 3];
 
   assert(lotScanne === shipped.lot_number, 'le numéro de lot extrait du QR est le bon');
-  assert(gtinScanne === GTIN, 'le GTIN extrait du QR est le bon');
+  assert(gtinScanne === GTIN_14, 'le GTIN extrait du QR est complete a 14 chiffres');
 
   const resolution = await fetch(
     `${API_URL}/api/logistics/batches/resolve?lot_number=${encodeURIComponent(lotScanne)}`,
