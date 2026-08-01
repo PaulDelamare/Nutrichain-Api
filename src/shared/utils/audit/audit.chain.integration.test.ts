@@ -94,9 +94,17 @@ describe("chaîne d'audit WORM sous écriture concurrente (PostgreSQL réel)", (
             // Chaque niveau est volontairement hors de l'ordre de `jsonb` : racine, objet imbriqué,
             // et objets À L'INTÉRIEUR d'un tableau — c'est ce dernier cas que produisent les
             // charges réelles (`lots: [{ id_lot, quantite }]`) et qu'un tri non récursif rate.
+            //
+            // Et surtout une `Date` et un `Decimal` : sans eux, cette charge ne ressemble à aucune
+            // charge réelle. Les services journalisent l'entité Prisma entière, et une
+            // canonicalisation qui reconstruit les objets clé par clé réduit ces deux types à `{}`.
+            // Un test sur des nombres seuls reste vert sur ce défaut — c'est le biais du golden
+            // vector à clé unique, reproduit.
             newValue: {
               zzzz: 1,
               a: { nested: 1, b: 2 },
+              date_reception: new Date('2026-07-31T10:00:00.000Z'),
+              quantite: new Prisma.Decimal('12.5'),
               list: [
                 { y: 1, x: 2 },
                 { y: 3, x: 4 },

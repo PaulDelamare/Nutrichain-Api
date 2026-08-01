@@ -66,7 +66,18 @@ export interface AuditHashInputs {
  * avec sa `date_reception`), et la signature aurait alors cessé de couvrir ces champs — deux
  * réceptions à des dates différentes auraient produit le même hash. Constaté en traçant la chaîne
  * réellement hachée par le seed, pas en relisant le code.
+ *
+ * ⚠️ Le résultat de cette fonction est aussi ce que `audit.service.ts` PERSISTE, et ce n'est pas
+ * un détail d'implémentation. Mesuré contre PostgreSQL : Prisma écrit un `Prisma.Decimal` dans
+ * `jsonb` comme un **nombre** (`12.5`) alors que `JSON.stringify` en fait une **chaîne**
+ * (`"12.5"`). Hacher l'objet en mémoire en espérant que le stockage le reproduise ne pouvait donc
+ * pas tenir — c'était vrai avant même #294. On hache et on stocke la même valeur : la symétrie
+ * n'est plus une hypothèse sur Prisma, elle est construite.
  */
+export function canonicalizeAuditValue(value: unknown): unknown {
+  return canonicalize(value);
+}
+
 function canonicalize(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map(canonicalize);
