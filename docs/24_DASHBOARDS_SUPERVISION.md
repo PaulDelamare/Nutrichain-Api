@@ -12,16 +12,17 @@ présentes dans le code et directement exploitables, pas un outil livré.
 | Source | Ce qu'elle donne | Limite connue |
 |---|---|---|
 | `GET /api/health` | Liveness : le process répond | Aucune information sur les dépendances |
-| `GET /api/health/ready` | Readiness : PostgreSQL, migrations appliquées, répertoire de logs inscriptible | **Ne teste pas MongoDB** — une télémétrie IoT hors service ne remonte nulle part (#158) |
+| `GET /api/health/ready` | Readiness : PostgreSQL, **MongoDB**, migrations appliquées, répertoire de logs inscriptible | Publie un **statut par sonde, et rien d'autre** : ni message d'exception, ni chemin, ni nom de migration. Cette route ne demande aucune authentification, le diagnostic part donc dans `logs/` (#258) |
 | Logs applicatifs (`logs/app-*.log`, `logs/error-*.log`) | Requêtes, erreurs, événements de sécurité inventoriés dans `22_JOURNALISATION_SIEM.md` | Format texte, local à l'hôte, pas d'expédition |
 | Job planifié de vérification d'audit (`auditChainVerify.job.ts`) | Intégrité de la chaîne WORM (`[AuditVerify] OK` / `CORROMPUE`) | Résultat seulement journalisé, pas exposé par une route |
 | `EPCIS_Event` (PostgreSQL) | Volumétrie d'événements par organisation/type/date | Jamais lue par aucun client (#159) — vaut aussi bien comme source de dashboard technique qu'agenda de démonstration |
 
 ## Panneaux recommandés, par source déjà disponible
 
-1. **Disponibilité** : statut `/health/ready` dans le temps (PostgreSQL, migrations, logs) —
-   ajouter Mongo à ce endpoint est un préalable (#158), sans quoi ce panneau ment par omission
-   sur la moitié du système (chaîne du froid).
+1. **Disponibilité** : statut `/health/ready` dans le temps (PostgreSQL, MongoDB, migrations,
+   logs). Mongo y a été ajouté depuis (#158) : le panneau ne ment plus par omission sur la chaîne
+   du froid. Pour savoir POURQUOI une sonde est tombée, il faut le journal — la réponse ne porte
+   que le statut, à dessein (#258).
 2. **Sécurité** : volumétrie des lignes `warn`/`error` de `22_JOURNALISATION_SIEM.md`, en
    particulier les deux manques identifiés (429 et verrouillage de compte, qui aujourd'hui
    n'émettent rien à afficher).

@@ -4,17 +4,35 @@ import path from 'path';
 import mongoose from 'mongoose';
 import { sendSuccess } from '../../shared/utils/returnSuccess/returnSuccess';
 import { bdd } from '../../shared/configs/prismaClient.config';
+import { logger } from '../../shared/utils/logger/logger';
 
 type HealthCheckResult = {
   name: string;
   ok: boolean;
   durationMs: number;
   optional?: boolean;
-  error?: string;
-  details?: Record<string, unknown>;
+  /**
+   * Ce que la sonde a appris — et qui ne SORT JAMAIS dans la réponse.
+   *
+   * Cette route ne demande ni compte, ni clé, ni session. Un message d'exception y publiait l'hôte
+   * et le port de la base, l'URI Mongo ou le chemin absolu du répertoire de logs : donc la
+   * disposition du déploiement, et jusqu'au compte système (#258). Un superviseur a besoin de
+   * savoir qu'une dépendance est tombée, pas de son adresse.
+   *
+   * Elle n'est pas la seule route publique — `/api/hello`, le scan public GS1 et `/api-docs` le
+   * sont aussi. Elle est en revanche la seule à interroger les dépendances, donc la seule à avoir
+   * des messages d'infrastructure à laisser fuir.
+   */
+  diagnostic?: string;
 };
 
-const toMessage = (err: unknown) => (err instanceof Error ? err.message : String(err));
+/**
+ * Aplati sur une seule ligne : le journal est déclaré « texte ligne à ligne » par
+ * `docs/22_JOURNALISATION_SIEM.md`, et une `PrismaClientInitializationError` est multi-ligne. Sans
+ * ça, un collecteur découpe un échec de base en trois pseudo-événements, dont deux sans horodatage.
+ */
+const toMessage = (err: unknown) =>
+  (err instanceof Error ? err.message : String(err)).replace(/\s*\n\s*/g, ' ').trim();
 
 const withTimeout = async <T>(promise: Promise<T>, ms: number, label: string) => {
   let timer: NodeJS.Timeout | undefined;
@@ -52,7 +70,7 @@ const checkDatabase = async (): Promise<HealthCheckResult> => {
       name: 'database',
       ok: false,
       durationMs: Date.now() - started,
-      error: toMessage(err),
+      diagnostic: toMessage(err),
     };
   }
 };
@@ -80,7 +98,9 @@ const checkMigrations = async (): Promise<HealthCheckResult> => {
       ok: Boolean(latest),
       optional: true,
       durationMs: Date.now() - started,
-      details: latest ?? { message: 'No migration rows' },
+      diagnostic: latest
+        ? `dernière migration : ${latest.migration_name}`
+        : 'aucune ligne de migration',
     };
   } catch (err) {
     return {
@@ -88,7 +108,7 @@ const checkMigrations = async (): Promise<HealthCheckResult> => {
       ok: false,
       optional: true,
       durationMs: Date.now() - started,
-      error: toMessage(err).replace(/\n/g, ' '),
+      diagnostic: toMessage(err),
     };
   }
 };
@@ -115,7 +135,7 @@ const checkMongo = async (): Promise<HealthCheckResult> => {
       name: 'mongodb',
       ok: false,
       durationMs: Date.now() - started,
-      error: toMessage(err),
+      diagnostic: toMessage(err),
     };
   }
 };
@@ -140,15 +160,13 @@ const checkLogs = async (): Promise<HealthCheckResult> => {
       name: 'logs',
       ok: true,
       durationMs: Date.now() - started,
-      details: { path: logsDir },
     };
   } catch (err) {
     return {
       name: 'logs',
       ok: false,
       durationMs: Date.now() - started,
-      error: toMessage(err),
-      details: { path: logsDir },
+      diagnostic: `${toMessage(err)} (répertoire : ${logsDir})`,
     };
   }
 };
@@ -157,31 +175,69 @@ const checkLogs = async (): Promise<HealthCheckResult> => {
  * Basic liveness check with process metadata.
  */
 const health: RequestHandler = async (_req, res) => {
-  const mem = process.memoryUsage();
-  const uptime = process.uptime();
-
+  // `pid`, `nodeVersion` et `memory` ont été retirés (#258) : cette route est publique, et
+  // `process.version` livre la version exacte du runtime — donc la liste de ses vulnérabilités
+  // connues à qui sait lire. Une bannière de version est une divulgation plus actionnable que le
+  // chemin d'un répertoire, et un test de vivacité n'en a aucun besoin.
+  //
+  // ⚠️ `timestamp` et `uptimeSeconds` RESTENT : `timestamp` est un contrat avec le mobile, qui n'a
+  // aucun autre moyen de lire l'horloge serveur et en dépend pour juger une péremption.
   sendSuccess(res, 200, 'ok', {
-    uptimeSeconds: uptime,
+    uptimeSeconds: process.uptime(),
     timestamp: new Date().toISOString(),
-    pid: process.pid,
-    nodeVersion: process.version,
-    memory: {
-      rss: mem.rss,
-      heapUsed: mem.heapUsed,
-      heapTotal: mem.heapTotal,
-    },
   });
 };
 
 /**
  * Readiness check: concurrently probes DB, MongoDB, migrations metadata and log dir writability.
  */
-const readiness: RequestHandler = async (_req, res) => {
+/**
+ * Dernier état connu de chaque sonde, pour ne journaliser que les TRANSITIONS. Voir la boucle
+ * ci-dessous : sans cette mémoire, la route devient un robinet d'écriture ouvert à tout venant.
+ */
+const failingSince = new Map<string, boolean>();
+
+const readiness: RequestHandler = async (req, res) => {
   const started = Date.now();
 
   const checks = await Promise.all([checkDatabase(), checkMongo(), checkLogs(), checkMigrations()]);
 
   const hasBlockingFailure = checks.some((check) => !check.ok && !check.optional);
+
+  // Le diagnostic part dans le JOURNAL, jamais dans la réponse : c'est là qu'un exploitant regarde,
+  // et c'est le seul canal qui exige déjà un accès à la machine (#258).
+  //
+  // ⚠️ Journalisé au CHANGEMENT D'ÉTAT, pas à chaque appel. Cette route est anonyme ET exemptée du
+  // limiteur de débit (`rateLimiter.middleware.ts`) : pendant une panne — le scénario même de ce
+  // correctif — n'importe qui la boucle et écrit autant de lignes qu'il veut dans `error-*.log`.
+  // Le fichier tourne à 5 Mo mais n'est élagué que par ÂGE : le disque se remplit, et l'API cesse
+  // d'écrire sans que rien ne le signale. On aurait échangé une divulgation en lecture contre une
+  // écriture non authentifiée dans le journal de sécurité.
+  for (const check of checks) {
+    const wasFailing = failingSince.get(check.name) === true;
+
+    if (!check.ok && !wasFailing) {
+      logger.error(
+        `[Health] sonde « ${check.name} » en échec : ${check.diagnostic ?? 'sans diagnostic'}`,
+        { requestId: req.requestId }
+      );
+    } else if (check.ok && wasFailing) {
+      logger.info(`[Health] sonde « ${check.name} » rétablie`, {
+        requestId: req.requestId,
+      });
+    }
+
+    failingSince.set(check.name, !check.ok);
+  }
+
+  // Projection EXPLICITE : renvoyer `checks` tel quel republierait tout champ ajouté un jour à
+  // `HealthCheckResult`, sur la seule route sans authentification. C'est ainsi que la fuite est née.
+  const publicChecks = checks.map(({ name, ok, durationMs, optional }) => ({
+    name,
+    ok,
+    durationMs,
+    ...(optional ? { optional } : {}),
+  }));
 
   sendSuccess(res, hasBlockingFailure ? 503 : 200, hasBlockingFailure ? 'not ready' : 'ready', {
     summary: {
@@ -190,7 +246,7 @@ const readiness: RequestHandler = async (_req, res) => {
       uptimeSeconds: process.uptime(),
       totalDurationMs: Date.now() - started,
     },
-    checks,
+    checks: publicChecks,
   });
 };
 
