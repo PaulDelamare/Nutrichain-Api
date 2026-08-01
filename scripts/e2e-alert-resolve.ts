@@ -140,12 +140,11 @@ async function setup(): Promise<Fixtures> {
 
 async function cleanup(f: Fixtures): Promise<void> {
   console.log('\n[E2E] Cleanup...');
-  await prisma.audit_Log.deleteMany({
-    where: { organization_id: ORG_ID!, action: 'ALERT_RESOLVED' },
-  });
-  await prisma.audit_Log.deleteMany({
-    where: { organization_id: ORG_ID!, action: 'TEMP_EXCURSION_DETECTED' },
-  });
+  // On ne supprime PAS les maillons d'audit : `usine-laitiere-paris` est une organisation réelle,
+  // et sa chaîne est chaînée par hash. En retirer quelques-uns rompt le `prev_hash` du suivant et
+  // fait déclarer la chaîne entière corrompue — indiscernable d'une falsification (#291). Les
+  // maillons laissés sont inoffensifs : les assertions de ce scénario sont déjà bornées par
+  // l'`entity_id` de l'alerte du jour, donc elles ne comptent que ce que cette exécution a produit.
   await prisma.alert.deleteMany({ where: { id_materiel: f.equipmentId } });
   if (f.recallAlertId) {
     await prisma.alert.deleteMany({ where: { id: f.recallAlertId } });

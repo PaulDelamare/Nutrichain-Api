@@ -165,7 +165,9 @@ async function main() {
   ok('Fournisseur réactivé');
 
   // Nettoyage
-  await prisma.audit_Log.deleteMany({ where: { entity_id: { in: [supplierId, locationId] } } });
+  // Les maillons d'audit RESTENT : les retirer amputerait au milieu la chaîne d'une organisation
+  // réelle et la ferait déclarer corrompue (#291). `entity_id` n'est pas une clé étrangère, donc
+  // rien n'empêche de supprimer les données métier en les laissant.
   await prisma.supplier.delete({ where: { id: supplierId } });
   await prisma.location.delete({ where: { id: locationId } });
   ok('Données e2e nettoyées');

@@ -127,7 +127,11 @@ async function main(): Promise<void> {
     let r2 = await auditVerifyService.verifyChain({ organizationId: fixtures.ephemeralOrgId });
     await auditVerifyService.recordCheckpoint(fixtures.ephemeralOrgId, r2);
 
-    // Maintenant on tronque
+    // Maintenant on tronque.
+    //
+    // Seule amputation volontaire du dépôt : c'est le sujet même du scénario, qui vérifie que la
+    // troncature est détectée. Elle porte sur une chaîne jetable — `ephemeralOrgId`, créée au
+    // setup et supprimée au cleanup — donc aucune organisation réelle n'est touchée (#291).
     const lastId = fixtures.initialAuditIds[2];
     await prisma.$executeRaw(
       Prisma.sql`DELETE FROM "Audit_Log" WHERE id = ${lastId}`

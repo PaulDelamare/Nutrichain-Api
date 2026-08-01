@@ -154,7 +154,9 @@ async function main() {
   ok('Révocation journalisée');
 
   // Nettoyage
-  await prisma.audit_Log.deleteMany({ where: { entity_id: { in: [mThrow.id, mQuality.id] } } });
+  // Les maillons d'audit RESTENT : les retirer amputerait au milieu la chaîne d'une organisation
+  // réelle et la ferait déclarer corrompue (#291). `id_user` porte un index mais AUCUNE clé
+  // étrangère, donc la suppression de l'utilisateur ci-dessous n'en est pas empêchée.
   await prisma.account.deleteMany({ where: { userId: u.id } });
   await prisma.user.delete({ where: { id: u.id } });
   ok('Données e2e nettoyées');
