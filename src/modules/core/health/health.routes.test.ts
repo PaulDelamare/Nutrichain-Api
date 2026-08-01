@@ -51,9 +51,12 @@ describe('Health route', () => {
     expect(res.body).toHaveProperty('data');
     expect(res.body.data).toHaveProperty('uptimeSeconds');
     expect(res.body.data).toHaveProperty('timestamp');
-    expect(res.body.data).toHaveProperty('pid');
-    expect(res.body.data).toHaveProperty('nodeVersion');
-    expect(res.body.data).toHaveProperty('memory');
+
+    // #258 — `pid`, `nodeVersion` et `memory` ont été retirés : cette route est publique, et
+    // `process.version` livre la version exacte du runtime, donc la liste de ses vulnérabilités
+    // connues à qui sait lire. Un test de vivacité n'en a aucun besoin. Le jeu de clés est exact
+    // pour qu'aucune bannière ne revienne s'y glisser.
+    expect(Object.keys(res.body.data).sort()).toEqual(['timestamp', 'uptimeSeconds']);
   });
 
   /**
@@ -107,9 +110,9 @@ describe('Health route', () => {
     vi.doMock('../../../shared/configs/prismaClient.config', () => ({
       bdd: {
         $queryRaw: vi.fn().mockResolvedValue(1),
-        $queryRawUnsafe: vi
-          .fn()
-          .mockResolvedValue([{ id: '1', finished_at: new Date().toISOString() }]),
+        $queryRawUnsafe: vi.fn().mockResolvedValue([
+          { migration_name: '20260731220000_confirmer_la_livraison', finished_at: new Date().toISOString() },
+        ]),
       },
     }));
     mockMongoConnected();
@@ -125,7 +128,7 @@ describe('Health route', () => {
     expect(res.body).toHaveProperty('message', 'ready');
     expect(res.body.data.summary.ready).toBe(true);
 
-    type HealthCheck = { name: string; ok: boolean; optional?: boolean; error?: unknown };
+    type HealthCheck = { name: string; ok: boolean; optional?: boolean; diagnostic?: unknown };
     const checks: HealthCheck[] = res.body.data.checks;
     const dbCheck = checks.find((check) => check.name === 'database')!;
     const mongoCheck = checks.find((check) => check.name === 'mongodb')!;
@@ -141,10 +144,16 @@ describe('Health route', () => {
     // publiait le chemin absolu du répertoire de logs — donc la disposition du déploiement et
     // jusqu'au compte système — ainsi que le nom de la dernière migration. Sur la seule route qui
     // ne demande ni compte, ni clé, ni session.
-    const corps = JSON.stringify(res.body);
-    expect(corps).not.toContain(tmpDir);
-    expect(corps).not.toContain('migration_name');
-    expect(corps).not.toContain('details');
+    const body = JSON.stringify(res.body);
+    expect(body).not.toContain(tmpDir);
+    expect(body).not.toContain('20260731220000_confirmer_la_livraison');
+    expect(body).not.toContain('details');
+
+    // Jeu de clés EXACT : c'est la seule assertion qui garde la projection. Sans elle, revenir à
+    // `checks: checks` republierait tout champ interne sans qu'un test ne bronche.
+    expect(Object.keys(dbCheck).sort()).toEqual(['durationMs', 'name', 'ok']);
+    expect(Object.keys(logsCheck).sort()).toEqual(['durationMs', 'name', 'ok']);
+    expect(Object.keys(migrationsCheck).sort()).toEqual(['durationMs', 'name', 'ok', 'optional']);
   });
 
   /**
@@ -160,9 +169,9 @@ describe('Health route', () => {
     vi.doMock('../../../shared/configs/prismaClient.config', () => ({
       bdd: {
         $queryRaw: vi.fn().mockResolvedValue(1),
-        $queryRawUnsafe: vi
-          .fn()
-          .mockResolvedValue([{ id: '1', finished_at: new Date().toISOString() }]),
+        $queryRawUnsafe: vi.fn().mockResolvedValue([
+          { migration_name: '20260731220000_confirmer_la_livraison', finished_at: new Date().toISOString() },
+        ]),
       },
     }));
     vi.doMock('mongoose', () => ({
@@ -182,14 +191,14 @@ describe('Health route', () => {
     expect(res.status).toBe(503);
     expect(res.body.data.summary.ready).toBe(false);
 
-    type HealthCheck = { name: string; ok: boolean; optional?: boolean; error?: unknown };
+    type HealthCheck = { name: string; ok: boolean; optional?: boolean; diagnostic?: unknown };
     const checks: HealthCheck[] = res.body.data.checks;
     const mongoCheck = checks.find((check) => check.name === 'mongodb')!;
     expect(mongoCheck.ok).toBe(false);
     expect(mongoCheck.optional).toBeUndefined();
     // #258 — le message d exception ne sort PAS : cette route est le seul chemin sans
     // authentification, et il y publiait l URI Mongo.
-    expect(mongoCheck.error).toBeUndefined();
+    expect(mongoCheck.diagnostic).toBeUndefined();
     expect(JSON.stringify(res.body)).not.toContain("Mongo down");
   });
 
@@ -218,13 +227,13 @@ describe('Health route', () => {
     expect(res.body).toHaveProperty('message', 'not ready');
     expect(res.body.data.summary.ready).toBe(false);
 
-    type HealthCheck = { name: string; ok: boolean; optional?: boolean; error?: unknown };
+    type HealthCheck = { name: string; ok: boolean; optional?: boolean; diagnostic?: unknown };
     const checks: HealthCheck[] = res.body.data.checks;
     const dbCheck = checks.find((check) => check.name === 'database')!;
     expect(dbCheck.ok).toBe(false);
     // #258 — « Can t reach database server at <hote>:<port> » ne doit jamais atteindre un
     // appelant anonyme. Le superviseur apprend QU UNE dependance est tombee, pas son adresse.
-    expect(dbCheck.error).toBeUndefined();
+    expect(dbCheck.diagnostic).toBeUndefined();
     expect(JSON.stringify(res.body)).not.toContain("DB down");
   });
 
@@ -255,12 +264,12 @@ describe('Health route', () => {
     expect(res.body).toHaveProperty('message', 'ready');
     expect(res.body.data.summary.ready).toBe(true);
 
-    type HealthCheck = { name: string; ok: boolean; optional?: boolean; error?: unknown };
+    type HealthCheck = { name: string; ok: boolean; optional?: boolean; diagnostic?: unknown };
     const checks: HealthCheck[] = res.body.data.checks;
     const migrationsCheck = checks.find((check) => check.name === 'migrations')!;
     expect(migrationsCheck.ok).toBe(false);
     expect(migrationsCheck.optional).toBe(true);
-    expect(migrationsCheck.error).toBeUndefined();
+    expect(migrationsCheck.diagnostic).toBeUndefined();
     expect(JSON.stringify(res.body)).not.toContain("migrations column missing");
   });
 
@@ -275,10 +284,10 @@ describe('Health route', () => {
     process.env.LOG_DIR = tmpDir;
 
     vi.resetModules();
-    const erreurs: string[] = [];
+    const loggedErrors: string[] = [];
     vi.doMock('../../../shared/utils/logger/logger', () => ({
       logger: {
-        error: (message: string) => erreurs.push(message),
+        error: (message: string) => loggedErrors.push(message),
         warn: vi.fn(),
         info: vi.fn(),
         debug: vi.fn(),
@@ -302,7 +311,54 @@ describe('Health route', () => {
     // L'hôte et le port internes ne sortent pas...
     expect(JSON.stringify(res.body)).not.toContain('db-prod:5432');
     // ...mais ils sont bien quelque part, sinon la panne serait indiagnosticable.
-    expect(erreurs.some((ligne) => ligne.includes('db-prod:5432'))).toBe(true);
-    expect(erreurs.some((ligne) => ligne.includes('database'))).toBe(true);
+    expect(loggedErrors.some((line) => line.includes('db-prod:5432'))).toBe(true);
+    expect(loggedErrors.some((line) => line.includes('database'))).toBe(true);
   });
+
+  /**
+   * #258 — Le correctif a failli echanger une fuite en lecture contre une ecriture non
+   * authentifiee dans le journal de securite.
+   *
+   * Cette route est anonyme ET exemptee du limiteur de debit. Journaliser a CHAQUE appel en faisait
+   * un robinet : pendant une panne — le scenario meme du correctif — n importe qui la boucle et
+   * remplit `error-*.log`, qui n est elague que par age. Le disque se remplit, et l API cesse
+   * d ecrire sans que rien ne le signale.
+   */
+  it('ne journalise QU AU CHANGEMENT d etat, pas a chaque appel', async () => {
+    const tmpDir = path.join(tmpDirBase, `flood-${Date.now()}`);
+    process.env.LOG_DIR = tmpDir;
+
+    vi.resetModules();
+    const loggedErrors: string[] = [];
+    vi.doMock('../../../shared/utils/logger/logger', () => ({
+      logger: {
+        error: (message: string) => loggedErrors.push(message),
+        warn: vi.fn(),
+        info: vi.fn(),
+        debug: vi.fn(),
+      },
+    }));
+    vi.doMock('../../../shared/configs/prismaClient.config', () => ({
+      bdd: {
+        $queryRaw: vi.fn().mockRejectedValue(new Error('DB down')),
+        $queryRawUnsafe: vi.fn().mockRejectedValue(new Error('DB down')),
+      },
+    }));
+    mockMongoConnected();
+
+    const { default: healthRoutes } = await import('./health.routes');
+    const app = express();
+    app.use(healthRoutes);
+
+    await request(app).get('/health/ready');
+    const apresPremierAppel = loggedErrors.length;
+
+    for (let i = 0; i < 20; i++) {
+      await request(app).get('/health/ready');
+    }
+
+    expect(apresPremierAppel).toBeGreaterThan(0);
+    // 20 appels de plus, zero ligne de plus : l etat n a pas change.
+    expect(loggedErrors.length).toBe(apresPremierAppel);
+  }, 20_000);
 });
