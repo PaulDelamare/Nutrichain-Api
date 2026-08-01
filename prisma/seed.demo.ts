@@ -4,9 +4,11 @@
  * S'ajoute par-dessus le seed de base (`prisma/seed.ts`) : réutilise l'organisation,
  * l'admin, le fournisseur et le client seedés, et construit une chaîne complète
  * matière → transformation → produit fini → expédition, plus des sites réels, du
- * matériel avec capteurs, une alerte froid, des contrôles qualité et un lot en
- * quarantaine. Objectif : que Traçabilité, Rappels, Chaîne du froid, etc. ne soient
- * plus vides en démo.
+ * matériel avec capteurs, des contrôles qualité et un lot en quarantaine. Objectif :
+ * que Traçabilité, Rappels, Généalogie, etc. ne soient plus vides en démo.
+ *
+ * Il ne pose AUCUNE alerte froid : elle se fabrique par `npm run simulate:sensor`,
+ * qui laisse la détection la produire (cf. étape 7).
  *
  * Les lots, réceptions, transformations et expéditions passent PAR LES SERVICES
  * métier (receiptService, transformationService, qualityControlService,
@@ -36,7 +38,7 @@ import { shipmentService } from '../src/modules/logistics/shipments/services/shi
 import { QUALITY_RESULTS, RECEIPT_STATUSES } from '../src/modules/logistics/constants/logistics.constants';
 
 // IDs fixes UNIQUEMENT pour ce que le seed crée lui-même en direct (sites, matériel,
-// produit matière première, second client, alerte) : aucun de ces modèles n'est
+// produit matière première, second client) : aucun de ces modèles n'est
 // couvert par l'issue #72, et un id figé y reste le moyen le plus simple de rester
 // idempotent (cf. règle YAGNI — ne pas réinventer une clé métier là où il en existe déjà une).
 const ID = {
@@ -49,6 +51,8 @@ const ID = {
   eqFroidSain: 'd0000000-0000-4000-8000-000000000014',
   prodLaitCru: 'd0000000-0000-4000-8000-000000000021',
   customer2: 'd0000000-0000-4000-8000-000000000061',
+  // Le seed ne pose plus cette alerte (cf. étape 7), mais l'identifiant reste : la purge doit
+  // continuer à retirer celle que les exécutions précédentes ont laissée en base.
   alertFroid: 'd0000000-0000-4000-8000-000000000071',
 };
 
@@ -171,8 +175,40 @@ async function purgePreviousDemo(orgId: string) {
     where: { id_transformation: { in: transformationIds } },
   });
   await prisma.transformation.deleteMany({ where: { id: { in: transformationIds } } });
+  // Les excursions thermiques de l'organisation partent AUSSI, y compris celles qu'une vraie
+  // détection a produites : ce seed est documenté comme rejouable, or leurs lots viennent d'être
+  // supprimés ci-dessus. Les laisser afficherait des alertes critiques sans courbe ni lot impacté.
+  //
+  // ⚠️ SAUF celles qui retiennent encore un lot hors périmètre de démonstration — typiquement un lot
+  // créé à la main pendant une répétition, rangé dans le frigo, puis bloqué par `simulate:sensor`.
+  // Supprimer leur alerte laisserait le lot `BLOQUE` avec un `id_alerte` mort : plus aucun écran
+  // n'expliquerait son blocage, et `GET /alerts/:id/batches` répondrait 404 sur sa cause. Ce serait
+  // le même écran incohérent, simplement retourné — un lot sans incident au lieu d'un incident sans
+  // lot. La levée d'une quarantaine étant une décision qualité, un seed ne la prend pas à la place
+  // d'un humain : on garde l'alerte.
+  //
+  // Les mouvements des lots de démonstration sont déjà supprimés plus haut : tout
+  // `QUARANTAINE_FROID` encore présent désigne donc, par construction, un lot hors périmètre.
+  const heldElsewhere = await prisma.batch_Mouvement.findMany({
+    where: { type_action: 'QUARANTAINE_FROID' },
+    select: { metadata: true },
+  });
+  const stillHolding = new Set(
+    heldElsewhere
+      .map((movement) => (movement.metadata as { id_alerte?: string } | null)?.id_alerte)
+      .filter((id): id is string => typeof id === 'string')
+  );
+
   await prisma.alert.deleteMany({
-    where: { OR: [{ id: ID.alertFroid }, { related_id: { in: batchIds } }] },
+    where: {
+      id: { notIn: [...stillHolding] },
+      // Cloisonné par organisation : aucun autre tenant n'est touché.
+      OR: [
+        { id: ID.alertFroid },
+        { related_id: { in: batchIds } },
+        { organization_id: orgId, type: 'TEMP_EXCURSION' },
+      ],
+    },
   });
   await prisma.shipment.deleteMany({ where: { id: { in: shipmentIds } } });
   // `ScrapRecord` référence `Batch` en RESTRICT : un lot mis au rebut entre deux exécutions bloquait
@@ -537,24 +573,26 @@ async function main() {
   // une arrivée antérieure au départ. Une livraison antidatée exigerait d'antidater l'expédition.
   await shipmentService.confirmDelivery(shipLait.id, orgId, { userId });
 
-  // 7. Alerte chaîne du froid ACTIVE (type réel émis par l'API)
-  await prisma.alert.create({
-    data: {
-      id: ID.alertFroid,
-      organization_id: orgId,
-      type: 'TEMP_EXCURSION',
-      niveau_gravite: 'CRITIQUE',
-      message: 'Excursion température Chambre froide A — 7,4 °C (seuil 4 °C) depuis 12 min.',
-      id_materiel: ID.eqFrigo,
-      statut: 'ACTIVE',
-    },
-  });
+  // 7. Aucune alerte froid n'est posée ici, à dessein.
+  //
+  // Une `Alert` écrite à la main est un fait que le système prétend DÉRIVER : `peak_temp` et
+  // `temp_seuil` restaient vides faute de détection, aucun `QUARANTAINE_FROID` ne la rattachait à un
+  // lot, et aucune télémétrie ne la précédait. L'écran affichait donc « incident critique » avec une
+  // colonne « lots impactés » à `—` et pas de courbe — l'inverse exact de ce que la surveillance
+  // promet. Elle brouillait de surcroît sa propre démonstration : on annonce une alerte qui naît en
+  // direct devant une alerte déjà là, sans rien derrière elle.
+  //
+  // La vraie alerte se fabrique par `npm run simulate:sensor`, qui joue le thermomètre sur le
+  // capteur du groupe 1 : la détection calcule le pic, bloque les lots rangés là et scelle le
+  // journal. Semer de la télémétrie serait légitime — c'est une entrée brute ; semer sa conclusion
+  // ne l'est pas.
 
   logger.info('✅ Seed DÉMO terminé.');
   logger.info(
     '   3 sites, 4 matériels, lots rattachés à leur emplacement, généalogie A+B→Lait / A→Beurre,'
   );
-  logger.info('   2 expéditions, 3 contrôles qualité, 1 lot en quarantaine, 1 alerte froid active.');
+  logger.info('   2 expéditions, 3 contrôles qualité, 1 lot en quarantaine.');
+  logger.info('   Chaîne du froid : aucune alerte — `npm run simulate:sensor` la fait naître.');
   logger.info(`   Rappel de démo à déclencher sur le lot ${lotCruA} (bloque Lait + Beurre).`);
   logger.info(`   Lot en quarantaine (contrôle non conforme) : ${lotQuarantaine}`);
 }

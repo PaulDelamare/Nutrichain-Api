@@ -122,7 +122,7 @@ Variables d'environnement requises (validées au démarrage — *fail-fast*) :
 ```bash
 npx prisma migrate deploy   # applique les migrations versionnées (non destructif)
 npx prisma db seed          # socle : organisation, comptes par rôle, catalogue, fournisseur, client
-npm run seed:demo           # jeu de démonstration : sites, capteurs, alerte froid, quarantaine,
+npm run seed:demo           # jeu de démonstration : sites, capteurs, quarantaine,
                             # transformations, expéditions
 ```
 
@@ -131,6 +131,22 @@ froid, Rappels et Généalogie **vides** : ce sont les écrans que verrait quico
 premier seed.
 
 Les deux sont **rejouables** : les relancer rétablit l'état de démonstration sans rien dupliquer.
+
+#### Faire naître l'alerte de la chaîne du froid
+
+Aucun seed n'écrit d'alerte à la main : une alerte non détectée n'a ni pic de température, ni courbe,
+ni lot bloqué — elle annoncerait un incident que rien n'étaye. L'écran Chaîne du froid est donc vide
+jusqu'à ce que le thermomètre parle.
+
+```bash
+npm run dev                 # ⚠️ D'ABORD : le simulateur POSTe sur /api/telemetry/ping
+npm run simulate:sensor     # la détection fait naître l'alerte, calcule le pic
+                            # et bloque les lots rangés dans le frigo
+```
+
+Contrairement aux seeds, **il ne se rejoue pas** : tant que l'alerte reste ouverte, le dédoublonnage
+en empêche une seconde. La résoudre depuis l'écran Non-conformités, ou rejouer `seed:demo`, qui
+remet la chaîne du froid à zéro.
 
 #### Comptes de démonstration
 
@@ -251,6 +267,10 @@ npx prisma db seed; npm run seed:demo
 
 Si l'ingestion IoT doit fonctionner dans le conteneur, enregistrer aussi la passerelle :
 `npm run iot:gateway -- --org usine-laitiere-paris --cle "$IOT_API_KEY"`.
+
+La chaîne du froid démarre **sans alerte** ici aussi : aucun seed n'en pose. Depuis l'hôte, avec le
+même `DATABASE_URL` sur `localhost:5433` que ci-dessus, `npm run simulate:sensor` vise l'API du
+conteneur (publiée sur le port 3000) et fait naître l'alerte pour de bon.
 
 ---
 
