@@ -28,9 +28,16 @@ const SECRET_ENV_VARS = ['BETTER_AUTH_SECRET', 'API_KEY', 'IOT_API_KEY'] as cons
  * les cookies de session — connu, il rend les sessions forgeables — et `IOT_API_KEY` ouvre
  * l'ingestion capteurs, donc le déclenchement ou l'étouffement d'alertes froid.
  */
+/**
+ * LA clé de la pile de démonstration, celle que `.env.demo` fournit et que les deux clients doivent
+ * recopier (#264). Distincte des marqueurs de `.env.example` ci-dessous : ceux-là ne valent rien et
+ * conseiller de les recopier serait une fausse piste de plus.
+ */
+const DEMO_API_KEY = 'cle-api-de-demo-docker-a-remplacer-en-production';
+
 const PUBLISHED_SECRET_VALUES = new Set([
   'secret-de-demo-docker-32-caracteres-minimum',
-  'cle-api-de-demo-docker-a-remplacer-en-production',
+  DEMO_API_KEY,
   'cle-capteurs-de-demo-docker-a-remplacer-en-production',
   'a-generer-voir-ci-dessus',
   'a-generer-comme-ci-dessus-mais-DIFFERENTE',
@@ -46,6 +53,22 @@ export function assertEnv(): void {
   // La démonstration locale reste possible, mais elle se DÉCLARE — `.env.demo` pose ce drapeau.
   // Sans lui, tourner avec des secrets publiés n'est plus quelque chose qu'on obtient par défaut.
   if (process.env.ALLOW_DEMO_SECRETS === '1') {
+    // La clé API de démonstration diffère de celle que porte le `.env` de chaque client. Résultat :
+    // `docker compose --env-file .env.demo up` démarre une pile que le front et le mobile
+    // rejettent en 401 — et le message ne parle que de la clé, jamais du fichier d'environnement
+    // qui a lancé la pile (#264). On le dit donc au démarrage, là où on regarde quand une
+    // connexion échoue sans raison apparente.
+    // Comparé à LA clé de démonstration, et non à l'ensemble des valeurs publiées : sur un
+    // `cp .env.example .env`, l'API annonçait « clé de démonstration active » à propos d'un simple
+    // marqueur, et invitait à recopier `a-generer-voir-ci-dessus` dans les clients. Le correctif
+    // reproduisait le défaut qu'il corrige.
+    if (process.env.API_KEY === DEMO_API_KEY) {
+      console.warn(
+        '[env] Clé API de démonstration active. Le front (API_KEY) et le mobile ' +
+          '(EXPO_PUBLIC_API_KEY) doivent porter EXACTEMENT cette valeur, sinon toute connexion ' +
+          `répond 401 « Clé API invalide ou manquante » : ${process.env.API_KEY}`
+      );
+    }
     return;
   }
 

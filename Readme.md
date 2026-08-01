@@ -176,6 +176,31 @@ qui n'est pas versionné. L'API refuse de démarrer si elle détecte une valeur 
 drapeau `ALLOW_DEMO_SECRETS=1` que pose `.env.demo` : un `cp .env.example .env` laissé en l'état
 échoue donc au boot avec un message explicite, au lieu de tourner avec des marqueurs.
 
+#### ⚠️ Les deux clients doivent porter la MÊME clé API
+
+`--env-file .env.demo` démarre l'API avec la clé publiée dans ce fichier. Si le front et le mobile
+portent une autre valeur, **toute connexion répond 401** — et le message ne parle que de la clé,
+jamais du fichier d'environnement qui a lancé la pile. On cherche longtemps du mauvais côté (#264).
+
+Avec la pile de démonstration, ces trois valeurs doivent être identiques :
+
+| Dépôt | Fichier | Variable |
+|---|---|---|
+| API | `.env.demo` | `API_KEY` |
+| Front | `.env` | `API_KEY` |
+| Mobile | `.env` | `EXPO_PUBLIC_API_KEY` |
+
+Soit, en clair : `API_KEY=cle-api-de-demo-docker-a-remplacer-en-production`. Aucun inconvénient à
+l'écrire ici — cette clé est **publique par construction**, livrée dans le bundle de l'application
+mobile. Elle identifie l'application appelante ; **aucune route métier ne l'accepte seule**, elle ne
+remplace jamais une session. Deux routes ne demandent qu'elle : `/api/auth/*` (il faut bien pouvoir
+se connecter) et la prévisualisation d'une invitation. Sur une base **vierge**, la première
+inscription passe donc avec la seule clé — c'est le démarrage assumé du tout premier compte.
+
+L'API le rappelle au démarrage lorsqu'elle tourne avec cette clé, sur sa sortie standard —
+`docker compose logs api`, ou le terminal de `npm run dev`. Elle n'apparaît pas dans `logs/` : la
+validation de l'environnement s'exécute avant que le journal de fichiers ne soit initialisé.
+
 > ⚠️ Cette pile est un **outil de démonstration locale**, pas un modèle de déploiement : elle seede
 > des comptes à mot de passe public et ses secrets de démonstration sont publiés dans `.env.demo`.
 > L'image applicative déclare `NODE_ENV=production` (`Dockerfile`), mais le compose le renverse
