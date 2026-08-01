@@ -75,18 +75,43 @@ Requêtes prêtes dans la collection Bruno (`Nutrichain.json`).
 | 3 | Étiquette du lot | `GET /api/logistics/batches/:id/label` | QR code **GS1 Digital Link** (GTIN + lot) |
 | 4 | Réception NON CONFORME — **connecté en `operator`** | `POST /api/logistics/receipts` (`statut_controle: NONCONFORME`) | Lot créé **BLOQUE** (quarantaine HACCP) — l'expédier renvoie 400 |
 | 5a | L'opérateur tente de lever SA propre quarantaine | `POST /api/logistics/batches/:id/release` | **403** : on ne libère pas le lot qu'on a enregistré (séparation des tâches) |
-| 5b | Décision qualité — **se reconnecter en `quality`** | `POST /api/logistics/batches/:id/release` (motif obligatoire) | Levée acceptée et tracée dans l'audit WORM |
+| 5b | Décision qualité — **se reconnecter en `quality`** | `POST /api/logistics/batches/:id/release` (motif obligatoire) | Levée acceptée et tracée dans l'audit WORM. ⚠️ **Sur le lot créé à l'étape 4, pas celui du seed** — voir l'avertissement sous le tableau |
 | 6 | Transformation | `POST /api/traceability/transformations` | Lot enfant + généalogie (`GET .../batches/:id/genealogy`) + TransformationEvent LGTIN |
 | 6c | Contrôle qualité de sortie — **connecté en `quality`** | `POST /api/organization/quality-controls` (`resultat: CONFORME`) | Un produit fini sort en `EN_ATTENTE_QC` : sans ce contrôle, il n'est ni transformable ni expédiable — il libère le lot en `EN_STOCK` |
-| 7 | Expédition | `POST /api/logistics/shipments` (`shipment_id: AUTO`) | **SSCC 18 chiffres** généré + AggregationEvent (palette ⊃ lots) |
-| 8 | Excursion chaîne du froid | `POST /api/telemetry/ping` (température hors seuil) | Alerte TEMP_EXCURSION < 30 s + email **ET les lots stockés dans l'équipement passent automatiquement en quarantaine (`BLOQUE`)** ; résolution `PATCH /api/alerts/:id/resolve` |
-| 9 | **Rappel produit** | `POST /api/traceability/batches/:id/recall` | Toute la descendance passe en ALERTE (chrono affiché : millisecondes), expéditions impactées listées, **clients notifiés par email automatiquement** |
-| 10 | Le consommateur scanne | `GET /api/public/scan/:id` (route publique, `:id` = numéro de lot) | `statut_sanitaire: RAPPEL_CONSOMMATEUR` — transparence B2C |
+| 6d | **Palettiser**, puis **ranger** | `POST /api/logistics/logistic-units`, puis `PATCH .../:id/location` | La palette reçoit son **SSCC dès la palettisation**, pas au départ. Un scan de palette, un scan de frigo, et **les lots suivent** |
+| 7 | Expédition | `POST /api/logistics/shipments` (`palettes: [SSCC]`) | L'expédition **reprend la palette existante** au lieu d'en fabriquer une : AggregationEvent à la palettisation, `unpacking` au départ |
+| 7b | **Confirmer l'arrivée** | `POST /api/logistics/shipments/:id/delivered` | `EN_ROUTE` → `LIVRE`, date scellée, **auteur issu de la session**. Sans ce geste, le rappel affiche « en route » indéfiniment |
+| 8 | Excursion chaîne du froid | **`npm run simulate:sensor`** (ou `POST /api/telemetry/ping`) | L'alerte **naît en direct** : `peak_temp` calculé, **les lots du frigo passent seuls en `BLOQUE`**, courriel envoyé. Mesuré : **p95 = 17 ms** (`bench:cold-chain`) ; résolution `PATCH /api/alerts/:id/resolve` |
+| 8b | **Mettre au rebut** — en `quality` | fiche lot → « Mettre au rebut » (`POST /api/logistics/batches/:id/scrap`) | Seule sortie d'un lot bloqué : quantité ramenée à zéro, `ScrapRecord` opposable en contrôle sanitaire |
+| 9 | **Rappel produit** | `POST /api/traceability/batches/:id/recall` | Toute la descendance passe en ALERTE (**~27 ms mesuré**), expéditions impactées listées **avec leur état de livraison** — « ce magasin est livré, celui-là est encore en route » — et clients notifiés par courriel |
+| 10 | Le consommateur scanne | `GET /api/public/scan/:id` (route publique, `:id` = numéro de lot) | `statut_sanitaire: RAPPEL_CONSOMMATEUR` + la trace jusqu'à la ferme. ⚠️ **Après l'étape 9 seulement** — voir l'avertissement |
 | 11 | L'ERP récupère l'historique | `GET /api/traceability/events` + `GET /api/connectors/exports/events` | Journal EPCIS filtrable + export CSV |
 | 12 | Preuve d'intégrité | `GET /api/audit/verify` | La chaîne de hash WORM est recalculée et validée |
 
+### ⚠️ Deux pièges, trouvés en répétant le scénario sur une base fraîche
+
+**1. Le lot bloqué que le seed annonce ne se lève PAS.** Sa dernière ligne affiche
+« Lot en quarantaine (contrôle non conforme) : `<uuid>` » — c'est le lot le plus visible, et c'est
+le seul qu'une levée refuse :
+
+> `409 — Ce lot a échoué un contrôle qualité : il ne se libère pas par la levée de quarantaine froid.`
+
+C'est délibéré : un échec qualité n'est pas une excursion thermique. L'étape 5b doit donc porter sur
+**le lot créé à l'étape 4**. Le lot du seed, lui, illustre très bien l'étape **8b** : sa seule issue
+est la mise au rebut.
+
+**2. L'étape 10 ne montre rien avant l'étape 9.** Le scan public ne sert que les lots `EXPEDIE` ou
+`ALERTE` — délibérément, pour ne pas divulguer le stock interne. Sur une base fraîchement seedée,
+**aucun lot de démonstration n'est dans ces états** : c'est le rappel de l'étape 9 qui les y met.
+Scanner avant, c'est un 404 en direct.
+
 **Plan B démo** (si le direct tourne mal) : chaque étape a son scénario e2e rejouable —
 `npm run e2e:quarantine | e2e:recall | e2e:epcis | e2e:iot-alert | e2e:connectors | e2e:sync | e2e:audit-verify | e2e:security`.
+
+Pour les étapes ajoutées depuis : `e2e:logistic-unit` et `e2e:expedier-palette` (palette),
+`e2e:confirmer-livraison` (arrivée), et **`e2e:label-scan`**, qui décode réellement le QR avec un
+décodeur de webcam puis appelle l'adresse trouvée **dans l'image** — c'est lui qui prouve qu'une
+étiquette imprimée est scannable, ce qu'aucun test unitaire ne sait faire.
 
 ## 6. Sécurité et conformité
 
