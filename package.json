@@ -33,6 +33,7 @@
     "e2e:transformation-idempotency": "tsx --env-file=.env scripts/e2e-transformation-idempotency.ts",
     "e2e:units-referential": "tsx --env-file=.env scripts/e2e-units-referential.ts",
     "bench:genealogy": "tsx --env-file=.env scripts/bench-genealogy.ts",
+    "bench:cold-chain": "tsx --env-file=.env scripts/bench-cold-chain.ts",
     "backup:postgres": "tsx --env-file=.env scripts/backup-postgres.ts",
     "backup:mongo": "tsx --env-file=.env scripts/backup-mongo.ts",
     "restore:postgres": "tsx --env-file=.env scripts/restore-postgres.ts",
