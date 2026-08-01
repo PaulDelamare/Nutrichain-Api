@@ -16,6 +16,10 @@ export const organizationService = {
       include: {
         user: { select: { id: true, email: true, name: true, twoFactorEnabled: true } },
       },
+      // Même raison que pour le matériel : sans tri, la liste se réordonne dès qu'une ligne est
+      // réécrite (changement de rôle, activation 2FA), et l'écran des membres change d'ordre sans
+      // qu'on ait rien demandé.
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
     });
   },
 
@@ -54,6 +58,11 @@ export const organizationService = {
     return prisma.equipment.findMany({
       where: { organization_id: organizationId },
       include: { lieu: { select: { nom: true } } },
+      // Postgres rend les lignes dans l'ordre physique tant qu'on ne trie pas : chaque mesure IoT
+      // réécrit `temp_actuelle` et déplace le matériel mesuré. La liste se réordonnait donc toute
+      // seule, et l'écran de la chaîne du froid — qui traçait « le premier capteur » — changeait de
+      // chambre au moment même où une excursion était détectée. `id` départage deux homonymes.
+      orderBy: [{ nom: 'asc' }, { id: 'asc' }],
     });
   },
 

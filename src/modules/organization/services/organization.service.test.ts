@@ -35,6 +35,7 @@ describe('OrganizationService (façade de lecture pour le front)', () => {
       include: {
         user: { select: { id: true, email: true, name: true, twoFactorEnabled: true } },
       },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
     });
   });
 
@@ -98,7 +99,23 @@ describe('OrganizationService (façade de lecture pour le front)', () => {
     expect(prisma.equipment.findMany).toHaveBeenCalledWith({
       where: { organization_id: ORG },
       include: { lieu: { select: { nom: true } } },
+      orderBy: [{ nom: 'asc' }, { id: 'asc' }],
     });
+  });
+
+  // Sans `orderBy`, Postgres rend les lignes dans l'ordre physique : écrire `temp_actuelle` sur un
+  // matériel le déplace, et une liste sans tri se réordonne toute seule à chaque mesure IoT. Un
+  // consommateur qui prend « le premier » — la courbe de la chaîne du froid le faisait — change de
+  // matériel sans qu'aucune donnée métier n'ait bougé. Le départage par `id` est nécessaire : deux
+  // matériels peuvent porter le même nom.
+  it('listEquipment : ordre déterministe, départagé par id', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(prisma.equipment.findMany).mockResolvedValue([] as any);
+
+    await organizationService.listEquipment(ORG);
+
+    const { orderBy } = vi.mocked(prisma.equipment.findMany).mock.calls[0][0] ?? {};
+    expect(Array.isArray(orderBy) && orderBy.at(-1)).toEqual({ id: 'asc' });
   });
 
   it("listMovements : cloisonné VIA le lot (Batch_Mouvement n'a pas d'organization_id direct)", async () => {

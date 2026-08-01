@@ -98,8 +98,13 @@ async function main() {
 
   // Deux acteurs distincts : la séparation des tâches interdit au producteur de lever sa propre
   // quarantaine. Le leveur (décideur qualité) doit être un autre membre.
+  //
+  // `take: 2` sans tri prenait deux lignes arbitraires : réécrire n'importe quel membre (changement
+  // de rôle, activation 2FA) déplaçait la ligne dans l'ordre physique de Postgres et pouvait
+  // intervertir producteur et leveur — le scénario testait alors autre chose sans le dire.
   const members = await prisma.member.findMany({
     where: { organizationId: ORG_ID!, role: { in: ['owner', 'admin', 'quality'] } },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
     take: 2,
   });
   if (members.length < 2) throw new Error('Il faut au moins 2 membres habilités dans le seed.');
