@@ -133,7 +133,7 @@ Justification : tolère le jitter capteur (un seul outlier ne reset pas la déte
 
 ## 8 bis. Émettre des trames — `npm run simulate:sensor`
 
-Aucun capteur physique n'existe. Sans émetteur, la courbe reste vide et la seule alerte visible est celle que `seed.demo.ts` pose à la main — ses champs `peak_temp` et `temp_seuil` valent `null`, parce qu'aucune détection ne les a calculés.
+Aucun capteur physique n'existe. Sans émetteur, la courbe reste vide et **aucune alerte n'existe** : ce script est le seul chemin qui en produit une. `seed.demo.ts` en posait une à la main ; elle a été retirée, parce que ses champs `peak_temp` et `temp_seuil` valaient `null` faute de détection, qu'aucune télémétrie ne la précédait et qu'aucun lot ne lui était rattaché — une alerte que personne n'avait vue naître.
 
 `scripts/simulate-sensor.ts` joue le thermomètre et **rien d'autre** : il envoie des mesures sur le vrai `POST /api/telemetry/ping` avec la clé de la passerelle. C'est aussi le seul harnais qui exerce ce chemin HTTP de bout en bout.
 
