@@ -138,7 +138,9 @@ async function main() {
           temp_seuil_max: { not: null },
           organization_id: organizationId,
         },
-    orderBy: { nom: 'asc' },
+    // `id` départage deux matériels homonymes : sans lui, le capteur choisi par défaut peut changer
+    // d'une exécution à l'autre, et la démonstration ne joue pas deux fois la même chambre.
+    orderBy: [{ nom: 'asc' }, { id: 'asc' }],
   });
 
   if (!equipment?.sensor_id || equipment.temp_seuil_max === null) {
