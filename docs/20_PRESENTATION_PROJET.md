@@ -42,7 +42,7 @@ organisation** (multi-tenancy en défense en profondeur).
 |---|---|---|---|
 | 01/03 | Auth + MFA + contrôle d'accès | ⚠️ partiel (ABAC reporté, cf. §7 — MFA TOTP livrée end-to-end) | Better-Auth sessions, invitations, organisations, RBAC 5 rôles, 2FA TOTP (front + mobile web) |
 | 10/03 | CI/CD industrielle | ✅ | GitHub Actions (build, lint, tests, migrations) |
-| 15/03 | Alerte chaîne du froid < 30 s p95 | ⚠️ partiel | `e2e:iot-alert` prouve l'enchaînement excursion → alerte, mais ne chronomètre pas ; le seuil 30 s n'est pas mesuré automatiquement |
+| 15/03 | Alerte chaîne du froid < 30 s p95 | ✅ | **p95 = 12 ms, p50 = 9 ms** sur 30 excursions réelles (`bench:cold-chain`) — de la trame qui franchit le critère à l'alerte présente en base, mise en quarantaine des lots comprise. Objectif tenu avec un facteur ~2 500 |
 | 10/06 | Mobile : scan rapide, mode offline | ⚠️ partiel | Sync idempotente prouvée (HTTP 207, `clientOpId`, `e2e:sync`) ; la latence de scan n'est pas mesurée |
 | 20/06 | Traçabilité EPCIS conforme GS1 | ✅ | ObjectEvent / TransformationEvent / AggregationEvent en URN LGTIN/SSCC, `e2e:epcis` 24/24 |
 | 22/06 | Rappel produit complet < 15 min | ✅ | **~21 ms pour 4 645 lots descendants** (`bench:genealogy`) |
@@ -160,8 +160,8 @@ Documenter honnêtement ce qui n'est **pas** fait vaut mieux que de le laisser d
 | Indicateur | Valeur |
 |---|---|
 | Rappel produit (généalogie + blocage) | **~21 ms** pour 4 645 lots (budget : 15 min) |
-| Alerte chaîne du froid | seuil visé **< 30 s** ; enchaînement excursion → alerte prouvé (`e2e:iot-alert`), délai non chronométré |
-| Tests automatisés | **870** verts (88,86 % de couverture de lignes) + suites e2e |
+| Alerte chaîne du froid | **p95 = 12 ms** (budget : 30 s), sur 30 excursions réelles (`bench:cold-chain`) |
+| Tests automatisés | **1 264** verts (91,18 % de couverture de lignes, 92,55 % de branches) + suites e2e |
 | Modules métier | 10 (+ noyau partagé `core`), 31 modèles de données |
 | Standards | GS1 : GTIN, AI(10), SSCC, URN LGTIN/SSCC, Digital Link · EPCIS : Object/Transformation/AggregationEvent |
 | Conformité visée | HACCP, ISO 22000, RPO 15 min / RTO 60-120 min (PCA/PRA, cf. `18_PCA_PRA.md`) |
@@ -174,10 +174,10 @@ Sélection des 7 KPI les plus représentatifs parmi les ~25 suivis (liste compl�
 
 | KPI | Baseline | Cible M6 | Cible M12 |
 |---|---|---|---|
-| Temps p95 ingest → alerte (chaîne du froid) | non chronométré (`e2e:iot-alert` prouve l'enchaînement, pas la latence) | < 20 s, mesuré | < 15 s, mesuré |
+| Temps p95 ingest → alerte (chaîne du froid) | **12 ms** en local (`bench:cold-chain`, 30 excursions) | < 20 s, mesuré en conditions réelles | < 15 s, mesuré en conditions réelles |
 | Temps médian rappel produit (généalogie + blocage) | ~21 ms pour 4 645 lots (`bench:genealogy`) | < 5 min en prod | < 15 min en prod (seuil contractuel) |
 | Taux d'évènements EPCIS conformes GS1 | 100 % (`e2e:epcis`, 24/24) | > 99 % en prod | > 99,5 % en prod |
-| Couverture de tests (lignes) | 88,86 % (870 tests) | 90 % | 92 % |
+| Couverture de tests (lignes) | 91,18 % (1 264 tests) | 92 % | 94 % |
 | Comptes sensibles avec MFA actif | 0 % (fonctionnalité livrée, adoption non mesurée) | 50 % | 100 % |
 | Disponibilité du service | non mesurée (pas d'environnement déployé) | 99 % | 99,9 % (NFR) |
 | Taux de perte de messages IoT | non mesuré (pas de flux réel en continu) | < 0,5 % | < 0,1 % |
