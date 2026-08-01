@@ -129,7 +129,25 @@ Justification : tolère le jitter capteur (un seul outlier ne reset pas la déte
 
 - **Unit** `excursionDetection.service.test.ts` : 9 cas (boundaries, ratio 80%, minPoints, ordre)
 - **Unit** `iotAlert.service.test.ts` : 14 cas (cache, advisory lock, cross-tenant, dédup, audit tx, email)
-- **E2E** `scripts/e2e-iot-alert.ts` : `npm run e2e:iot-alert` — 5 scénarios sur vraie DB Mongo+Postgres
+- **E2E** `scripts/e2e-iot-alert.ts` : `npm run e2e:iot-alert` — 5 scénarios sur vraie DB Mongo+Postgres. ⚠️ Il appelle `iotAlertService.checkAndAlert` **directement** : il ne passe pas par HTTP et ne prouve donc rien du câblage de la route.
+
+## 8 bis. Émettre des trames — `npm run simulate:sensor`
+
+Aucun capteur physique n'existe. Sans émetteur, la courbe reste vide et la seule alerte visible est celle que `seed.demo.ts` pose à la main — ses champs `peak_temp` et `temp_seuil` valent `null`, parce qu'aucune détection ne les a calculés.
+
+`scripts/simulate-sensor.ts` joue le thermomètre et **rien d'autre** : il envoie des mesures sur le vrai `POST /api/telemetry/ping` avec la clé de la passerelle. C'est aussi le seul harnais qui exerce ce chemin HTTP de bout en bout.
+
+```bash
+npm run simulate:sensor -- [--sensor SENSOR-FROID-A1] [--nominal 10] [--excursion N] [--interval 2] [--cooldown]
+```
+
+**Prérequis** : serveur démarré, `npx prisma db seed` **puis** `npm run seed:demo`, et `IOT_API_KEY` présente **au moment du seed** — sinon aucune passerelle n'est enregistrée et toutes les trames prennent 401.
+
+**Le piège du ratio.** Le critère est « ≥ 80 % des points de la fenêtre au-dessus du seuil », pas « 5 points chauds ». Les trames nominales qu'on vient d'envoyer restent dans la fenêtre et comptent **contre** l'alerte : 3 froides suivies de 6 chaudes font 67 %, et rien ne se déclenche. Le script calcule le nombre nécessaire et l'annonce avant de commencer.
+
+**Effets réels, en partie irréversibles** : les lots du matériel passent en `BLOQUE` et ne se libèrent que par une levée qualité ; l'alerte reste `ACTIVE` et le dédoublonnage interdit alors toute nouvelle alerte ; un courriel part aux responsables. Le script refuse donc de tourner en `NODE_ENV=production`, et sur une `API_URL` distante sans `--allow-remote`. `--cooldown` ne referme rien : redescendre la température ne résout pas l'alerte.
+
+⚠️ `scripts/` n'est ni typé ni linté par la CI (`tsconfig.json` et `eslint.config.mjs` ne couvrent que `src/`) : une CI verte ne dit rien de ce fichier.
 
 ## 9. Exemple manuel via Bruno
 
