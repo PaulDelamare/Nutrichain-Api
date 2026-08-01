@@ -3,9 +3,12 @@
   //
   // Le `tsconfig.json` de compilation ne regarde que `src/` : ni les scripts, ni les tests, ni le
   // seed n'étaient typés par quoi que ce soit — Vitest transpile sans vérifier. Ce fichier existe
-  // pour élargir ce périmètre au fur et à mesure qu'il devient vert (cf. #78) ; il couvre pour
-  // l'instant le même périmètre que la compilation, que la CI ne vérifiait pas du tout.
+  // pour élargir ce périmètre au fur et à mesure qu'il devient vert (cf. #78).
+  //
+  // `scripts/` y est entré avec #294 : ces scripts écrivent en base et échappaient à toute
+  // vérification de types — un scénario e2e cassé passait la CI sans un mot.
   "extends": "./tsconfig.json",
+  "include": ["src/**/*.ts", "scripts/**/*.ts"],
   "compilerOptions": {
     "noEmit": true
   }

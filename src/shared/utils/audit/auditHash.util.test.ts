@@ -21,6 +21,81 @@ describe('computeAuditHash', () => {
     expect(hash).toBe('4f2c622dbab041b7785fe9a2f7547ce4ed9b81e3ac0103169237fd7558170ef5');
   });
 
+  /**
+   * #294 — Le vecteur ci-dessus n'a qu'UNE clé : le trier ne change pas un octet. Il est donc resté
+   * vert pendant que la formule changeait, alors qu'il est présenté partout comme le garde-fou qui
+   * « pète bruyamment ». Celui-ci a des clés désordonnées à la racine, dans un objet imbriqué ET
+   * dans les objets d'un tableau — c'est lui qui ancre réellement la formule.
+   */
+  it('1 bis. GOLDEN VECTOR : clés désordonnées, imbriquées et en tableau', () => {
+    const hash = computeAuditHash({
+      organizationId: 'org-test',
+      userId: 'u1',
+      action: 'CREATE',
+      entity: 'Shipment',
+      entityId: 's1',
+      oldValue: null,
+      newValue: {
+        zzzz: 1,
+        a: { nested: 1, b: 2 },
+        // DEUX éléments : avec un seul, toute manipulation du tableau (une inversion, par exemple)
+        // laisserait ce vecteur inchangé — donc muet. Constaté par mutation.
+        list: [
+          { y: 1, x: 2 },
+          { b: 3, a: 4 },
+        ],
+      },
+      prevHash: GENESIS_PREV_HASH,
+      timestamp: '2026-01-01T00:00:00.000Z',
+    });
+
+    expect(hash).toBe('9fadddc100992476948dc7fc78e9087ad8273cbbc5db5017db201c08d3afa780');
+  });
+
+  it('1 ter. rend le même hash quel que soit l’ordre d’écriture des clés (#294)', () => {
+    const base = {
+      organizationId: 'org-test',
+      userId: 'u1',
+      action: 'CREATE',
+      entity: 'Shipment',
+      entityId: 's1',
+      oldValue: null,
+      prevHash: GENESIS_PREV_HASH,
+      timestamp: '2026-01-01T00:00:00.000Z',
+    };
+
+    const ecrit = computeAuditHash({
+      ...base,
+      newValue: { zzzz: 1, a: { nested: 1, b: 2 }, list: [{ y: 1, x: 2 }] },
+    });
+    // Ce que `jsonb` rendra à la relecture : clés triées par longueur puis octets, récursivement.
+    const relu = computeAuditHash({
+      ...base,
+      newValue: { a: { b: 2, nested: 1 }, list: [{ x: 2, y: 1 }], zzzz: 1 },
+    });
+
+    expect(relu).toBe(ecrit);
+  });
+
+  it("1 quater. distingue deux charges qui ne diffèrent que par l'ordre d'un TABLEAU (#294)", () => {
+    const base = {
+      organizationId: 'org-test',
+      userId: 'u1',
+      action: 'CREATE',
+      entity: 'Shipment',
+      entityId: 's1',
+      oldValue: null,
+      prevHash: GENESIS_PREV_HASH,
+      timestamp: '2026-01-01T00:00:00.000Z',
+    };
+
+    // L'ordre d'un tableau est une donnée : deux lots inversés ne décrivent pas la même palette.
+    const premier = computeAuditHash({ ...base, newValue: { lots: [{ id: 'a' }, { id: 'b' }] } });
+    const inverse = computeAuditHash({ ...base, newValue: { lots: [{ id: 'b' }, { id: 'a' }] } });
+
+    expect(premier).not.toBe(inverse);
+  });
+
   it('2. recomputable : mêmes inputs → même hash', () => {
     const inputs = {
       organizationId: 'org-1',

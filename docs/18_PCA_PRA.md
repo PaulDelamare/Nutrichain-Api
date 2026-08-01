@@ -75,7 +75,9 @@ model Audit_Checkpoint {
 - `auditService.logAction` (écriture)
 - `auditVerifyService.verifyChain` (vérification)
 
-Garantit que la formule reste byte-identique entre les 2 usages. Un test "**golden vector**" verrouille la stabilité — inputs canoniques figés → SHA256 hex literal exact. Si la formule bouge, le test pète bruyamment et l'auteur doit consciemment décider d'une **migration de la chain** (re-signature offline de toutes les lignes existantes — opération hors scope, à concevoir si jamais nécessaire).
+Garantit que la formule reste byte-identique entre les 2 usages. Des tests "**golden vector**" verrouillent la stabilité — inputs figés → SHA256 hex literal exact. Si la formule bouge, ils pètent bruyamment et l'auteur doit consciemment décider du sort des lignes déjà écrites (cf. §9.0).
+
+⚠️ **Le premier de ces vecteurs ne portait qu'une seule clé** (`newValue: { x: 1 }`), donc la canonicalisation de #294 l'a laissé vert : le garde-fou décrit ici était muet pour exactement le changement qu'il devait attraper. Un second vecteur, aux clés désordonnées à la racine, dans un objet imbriqué et dans les objets d'un tableau, a été ajouté. Ne jamais se reposer sur un vecteur à clé unique.
 
 ## 5. Backup / Restore — Scripts npm
 
@@ -134,31 +136,34 @@ Si après un restore, `GET /api/audit/verify` ou `npm run verify:audit-chain` re
 
 1. **NE PAS** réouvrir le trafic. La chaîne d'audit est notre garantie de conformité.
 2. Lire `brokenAtId` et `brokenAtReason` :
-   - `prev_hash_mismatch` ou `signature_mismatch` → le dump est lui-même corrompu (peut-être que le tampering a précédé le backup). Rejouer le restore avec un dump **antérieur** au tampering présumé.
+   - `prev_hash_mismatch` → un maillon a été inséré, supprimé ou réordonné. C'est structurel : le dump est vraisemblablement corrompu. Rejouer le restore avec un dump **antérieur** au tampering présumé.
+   - `signature_mismatch` → **ne rien détruire avant d'avoir écarté le faux positif.** Ce motif seul, sur une chaîne dont les `prev_hash` s'enchaînent tous, désigne bien plus souvent une divergence entre la formule d'écriture et celle de vérification qu'une falsification. C'est arrivé (#294 : la signature était calculée sur l'ordre d'insertion des clés, la vérification sur l'ordre rendu par `jsonb`), et **222 maillons authentiques sur 257 étaient déclarés falsifiés**. Contrôler d'abord que le premier maillon porte le `prev_hash` GENESIS et que la séquence est continue : si oui, la chaîne est structurellement intacte et le défaut est dans le code de vérification. Un restore effacerait des données saines.
    - `truncation` → le dump est plus court que le checkpoint persistant. **Solution** : 
      - Vérifier que le dump est bien le dernier complet.
      - Si oui (par ex. backup pris en pleine écriture), supprimer le `Audit_Checkpoint` corrompu (`DELETE FROM "Audit_Checkpoint" WHERE organization_id = '...'`) puis re-verify : si la chaîne est valide intrinsèquement, accepter la perte et recréer un checkpoint propre.
 3. Documenter dans une investigation interne. Impact RTO : peut dépasser 120 min — à arbitrer avec le métier.
 
-## 9.0 ⚠️ Backward-compat de la formule de hash (à lire avant le 1er cron en prod)
+## 9.0 ⚠️ Changement de la formule de hash — ce qu'il faut faire des lignes antérieures
 
-Cette PR corrige un bug latent du hash WORM : **avant** cette PR, `auditService.logAction` passait `params.oldValue` et `params.newValue` directement au hash. Quand un caller omettait l'un d'eux (`undefined`), `JSON.stringify` le droppait du hash, mais Postgres persistait `NULL`. La relecture renvoyait alors `null`, ce qui donnait un hash *différent* lors d'un recompute → **toute ligne `Audit_Log` écrite pré-PR sans `oldValue` ou `newValue` est désormais détectée comme `signature_mismatch` par le verify**.
+La formule sérialise désormais `ancienne_valeur` / `nouvelle_valeur` de manière **canonique** : clés triées récursivement, tableaux non réordonnés (#294). Sans ça, la signature dépendait de l'ordre d'insertion de l'objet en mémoire alors que la vérification travaille sur l'objet relu de `jsonb`, qui réordonne les clés.
 
-La PR normalise `undefined → null` à l'écriture pour bloquer la divergence sur les nouveaux logs. Le helper et les rows futurs sont cohérents.
+**Conséquence** : toute ligne écrite avant ce changement dont les clés n'étaient pas déjà triées ne peut plus être vérifiée. Ce sont des **faux positifs** sur des données jamais altérées.
 
-**Conséquence opérationnelle** : la première exécution du cron `auditChainVerify` après déploiement signalera CORROMPUE toute org qui contient des lignes pré-PR avec ce profil. C'est un **faux positif** technique sur des données qui n'ont jamais été altérées.
+**Aucun script de re-signature n'est livré, et c'est délibéré.** Deux raisons :
 
-**Procédure de migration recommandée** :
+1. **Il ne pourrait pas prouver ce qu'il prétend.** Pour re-signer sans risquer de sceller une ligne falsifiée, il faudrait retrouver l'ordre d'écriture d'origine. Cet ordre est irrécupérable autrement que par recherche exhaustive, et plusieurs services journalisent l'entité Prisma entière (`receipt.service.ts`), voire `oldValue` **et** `newValue` (les imports) : l'espace de recherche est le produit des factorielles, soit ~10¹¹ candidats pour une seule ligne d'import client.
+2. **Ce serait le premier `UPDATE` sur `Audit_Log`.** Le modèle de menace ci-dessous repose sur le fait qu'aucun code ne réécrit ce journal. Un script de re-signature versionné dans le dépôt est un outil de falsification prêt à l'emploi — qui, en prime, remettrait le voyant d'intégrité au vert.
 
-1. AVANT le 1er cron post-deploy, exécuter un script offline `re-sign-legacy-audit.ts` (P3 — non livré dans cette PR) qui :
-   - Itère chaque `Audit_Log` row,
-   - Normalise `ancienne_valeur`/`nouvelle_valeur` `null → null` (no-op si déjà),
-   - Recompute `signature_hash` avec la nouvelle formule + persiste,
-   - Met à jour `prev_hash` de la ligne suivante en cascade.
-2. OU accepter le bruit : laisser la première exécution du cron tirer `logger.error` sur les orgs concernées, traiter manuellement (purger Audit_Log si dev/MVP).
-3. OU désactiver temporairement le cron (commenter `startAuditChainVerifyJob()` dans `src/server.ts`) le temps d'auditer.
+**Ce qu'on fait à la place :**
 
-En dev/MVP Nutrichain, la DB est régulièrement reset via `prisma db push` — la migration est implicite (les anciennes lignes disparaissent avec le reset). En prod réelle, **scripter la re-signature avant la première verify est obligatoire** pour ne pas crier au loup.
+- **Environnement de développement** : `npx prisma migrate reset` puis `npx prisma db seed && npm run seed:demo`. Les anciennes lignes disparaissent avec le reset. C'est le seul environnement concerné aujourd'hui.
+- **Si de l'historique devait un jour être conservé** : colonne **additive** `signature_hash_v2` + `signature_version`, `signature_hash` jamais touché, et la borne « lignes ≤ N non vérifiables sous v2 » consignée explicitement. La preuve d'origine survit — c'est la définition du WORM.
+
+⚠️ **Ne pas utiliser `prisma db push`** pour réinitialiser : les migrations sont versionnées (règle 7 de `CLAUDE.md`).
+
+### Limite connue du vérificateur
+
+`Audit_Checkpoint.last_signature_hash` est **écrit** à chaque vérification (`auditVerify.service.ts`) mais **jamais relu pour comparaison** : seul `last_row_count` sert, contre la troncature. Une réécriture intégrale et cohérente d'une chaîne resterait donc indétectable — le nombre de lignes ne bouge pas et la seule empreinte qui la trahirait n'est pas confrontée. À fermer séparément.
 
 ## 9. Threat model assumé
 
@@ -170,7 +175,7 @@ En dev/MVP Nutrichain, la DB est régulièrement reset via `prisma db push` — 
 ## 10. Tests
 
 - **Unit** :
-  - `auditHash.util.test.ts` (7 cas dont 1 golden vector)
+  - `auditHash.util.test.ts` (10 cas dont 2 golden vectors — celui a cle unique ne prouve rien, cf. 9.0)
   - `auditVerify.service.test.ts` (12 cas dont truncation + checkpoint)
   - `auditVerify.controller.test.ts` (3 cas dont Cache-Control no-store + broken shape complet)
   - `audit.routes.test.ts` (4 cas supertest)

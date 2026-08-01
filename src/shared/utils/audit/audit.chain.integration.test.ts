@@ -61,4 +61,60 @@ describe("chaîne d'audit WORM sous écriture concurrente (PostgreSQL réel)", (
     expect(verify.valid).toBe(true);
     expect(verify.rowsChecked).toBe(CONCURRENCY);
   }, 30_000);
+
+  /**
+   * #294 — La signature était calculée sur l'objet en mémoire, dans l'ordre d'insertion, et
+   * recalculée sur l'objet relu de `jsonb`, qui réordonne les clés (par longueur puis octets, et
+   * récursivement). Toute charge dont les clés n'étaient pas déjà dans cet ordre était déclarée
+   * falsifiée. Sur la base de développement, 222 maillons sur 257 étaient dans ce cas.
+   *
+   * Ce test ne peut pas être unitaire : c'est l'aller-retour `jsonb` qui est en cause, et le mocker
+   * reviendrait à comparer la formule à elle-même.
+   */
+  it('vérifie une charge dont les clés ne sont pas dans l’ordre de `jsonb` (#294)', async () => {
+    const orgDesordre = `audit-it-desordre-${Date.now()}`;
+    await prisma.organization.create({
+      data: {
+        id: orgDesordre,
+        name: 'Audit IT desordre',
+        slug: orgDesordre,
+        createdAt: new Date(),
+        metadata: '{}',
+      },
+    });
+
+    try {
+      await retryableTransaction((tx) =>
+        auditService.logAction(
+          {
+            organizationId: orgDesordre,
+            action: 'IT_KEY_ORDER',
+            entity: 'Test',
+            entityId: 'e-1',
+            // Chaque niveau est volontairement hors de l'ordre de `jsonb` : racine, objet imbriqué,
+            // et objets À L'INTÉRIEUR d'un tableau — c'est ce dernier cas que produisent les
+            // charges réelles (`lots: [{ id_lot, quantite }]`) et qu'un tri non récursif rate.
+            newValue: {
+              zzzz: 1,
+              a: { nested: 1, b: 2 },
+              list: [
+                { y: 1, x: 2 },
+                { y: 3, x: 4 },
+              ],
+            },
+          },
+          tx
+        )
+      );
+
+      const verify = await auditVerifyService.verifyChain({ organizationId: orgDesordre });
+      expect(verify.valid).toBe(true);
+      expect(verify.rowsChecked).toBe(1);
+    } finally {
+      await prisma.audit_Log.deleteMany({ where: { organization_id: orgDesordre } });
+      await prisma.audit_Checkpoint.deleteMany({ where: { organization_id: orgDesordre } });
+      await prisma.organization.deleteMany({ where: { id: orgDesordre } });
+    }
+  }, 30_000);
+
 });
