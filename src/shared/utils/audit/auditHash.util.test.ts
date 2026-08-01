@@ -77,6 +77,44 @@ describe('computeAuditHash', () => {
     expect(relu).toBe(ecrit);
   });
 
+  /**
+   * #294 — Une `Date` est un `object` sans clé énumérable : la canonicalisation naïve la réduisait
+   * à `{}`, et la signature cessait de couvrir le champ. Constaté en traçant ce que le seed hachait
+   * réellement (`"date_reception":{}`). Les charges concernées existent : `receipt.service.ts`
+   * journalise l'entité entière.
+   */
+  it('1 quinquies. couvre la VALEUR des objets à `toJSON` (Date, Decimal) — pas `{}` (#294)', () => {
+    const base = {
+      organizationId: 'org-test',
+      userId: 'u1',
+      action: 'CREATE',
+      entity: 'Receipt',
+      entityId: 'r1',
+      oldValue: null,
+      prevHash: GENESIS_PREV_HASH,
+      timestamp: '2026-01-01T00:00:00.000Z',
+    };
+
+    const janvier = computeAuditHash({
+      ...base,
+      newValue: { date_reception: new Date('2026-01-01T00:00:00.000Z') },
+    });
+    const fevrier = computeAuditHash({
+      ...base,
+      newValue: { date_reception: new Date('2026-02-01T00:00:00.000Z') },
+    });
+
+    // Sans l'appel à `toJSON`, les deux valent le hash de `{"date_reception":{}}` : identiques.
+    expect(janvier).not.toBe(fevrier);
+
+    // Et la forme retenue est bien la chaîne ISO — celle que `jsonb` rendra à la relecture.
+    const relu = computeAuditHash({
+      ...base,
+      newValue: { date_reception: '2026-01-01T00:00:00.000Z' },
+    });
+    expect(relu).toBe(janvier);
+  });
+
   it("1 quater. distingue deux charges qui ne diffèrent que par l'ordre d'un TABLEAU (#294)", () => {
     const base = {
       organizationId: 'org-test',

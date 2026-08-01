@@ -59,6 +59,13 @@ export interface AuditHashInputs {
  *
  * L'ordre de tri n'a pas à imiter celui de `jsonb` : il suffit qu'il soit le même à l'écriture et
  * à la vérification, ce qui rend la signature indépendante du stockage.
+ *
+ * ⚠️ `toJSON()` est appelé AVANT le tri, et ce n'est pas cosmétique. Une `Date` et un
+ * `Prisma.Decimal` sont des `object` sans clé énumérable : les reconstruire clé par clé les réduit
+ * à `{}`. Les charges d'audit en contiennent (`receipt.service.ts` journalise l'entité entière,
+ * avec sa `date_reception`), et la signature aurait alors cessé de couvrir ces champs — deux
+ * réceptions à des dates différentes auraient produit le même hash. Constaté en traçant la chaîne
+ * réellement hachée par le seed, pas en relisant le code.
  */
 function canonicalize(value: unknown): unknown {
   if (Array.isArray(value)) {
@@ -66,6 +73,10 @@ function canonicalize(value: unknown): unknown {
   }
   if (value === null || typeof value !== 'object') {
     return value;
+  }
+  const serializable = value as { toJSON?: () => unknown };
+  if (typeof serializable.toJSON === 'function') {
+    return canonicalize(serializable.toJSON());
   }
   const source = value as Record<string, unknown>;
   const sorted: Record<string, unknown> = {};
