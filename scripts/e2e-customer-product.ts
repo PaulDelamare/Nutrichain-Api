@@ -140,7 +140,8 @@ async function main() {
   ok('Client et produit réactivés');
 
   // Nettoyage
-  await prisma.audit_Log.deleteMany({ where: { entity_id: { in: [customerId, productId] } } });
+  // Les maillons d'audit RESTENT : les retirer amputerait au milieu la chaîne d'une organisation
+  // réelle et la ferait déclarer corrompue (#291). `entity_id` n'est pas une clé étrangère.
   await prisma.customer.delete({ where: { id: customerId } });
   await prisma.product.delete({ where: { id: productId } });
   ok('Données e2e nettoyées');
