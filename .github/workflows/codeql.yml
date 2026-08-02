@@ -1,0 +1,49 @@
+name: Analyse statique de securite (CodeQL)
+
+# `26_LIMITES_CONNUES.md` listait « aucune analyse statique de securite du code » parmi les trous
+# assumes. Celui-ci se ferme pour le prix d'un fichier : le depot est public, CodeQL y est gratuit.
+#
+# Ce que ce workflow N'EST PAS : un remplacant du lint. ESLint juge le style et quelques pieges de
+# langage ; CodeQL suit les DONNEES — d'une entree de requete jusqu'a une requete SQL, un appel
+# systeme ou un rendu. Ce sont deux lectures differentes du meme code.
+#
+# Il ne bloque pas la PR : les alertes remontent dans l'onglet Security et en annotations. Un
+# garde-fou qui bloque des le premier faux positif finit desactive — celui-ci doit d'abord etre lu.
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+    branches: [develop]
+  # Une faille peut etre publiee sur un motif de code sans qu'une seule ligne bouge ici : la
+  # relecture hebdomadaire rattrape ce que les PR ne declenchent pas.
+  schedule:
+    - cron: '0 5 * * 1'
+
+jobs:
+  analyse:
+    name: CodeQL — JavaScript/TypeScript
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      # Exigees par l'action pour deposer ses resultats.
+      security-events: write
+      actions: read
+      contents: read
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🧭 Initialiser CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          # `security-and-quality` ajoute des regles de qualite qui noieraient les alertes de
+          # securite au premier passage. On commence par ce qui doit etre traite.
+          queries: security-extended
+
+      - name: 🔬 Analyser
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: '/language:javascript-typescript'
