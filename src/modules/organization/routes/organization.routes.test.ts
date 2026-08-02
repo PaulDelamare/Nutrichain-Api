@@ -91,6 +91,44 @@ describe('Organization routes (façade de lecture front)', () => {
     expect(organizationService.listMovements).not.toHaveBeenCalled();
   });
 
+  it('GET /organization/shipments : 400 sur un statut hors énumération, sans atteindre le service', async () => {
+    authAs('org-1');
+
+    const res = await request(buildApp()).get('/api/organization/shipments?statut=PEUT_ETRE');
+
+    expect(res.status).toBe(400);
+    expect(organizationService.listShipments).not.toHaveBeenCalled();
+  });
+
+  it('GET /organization/shipments : 400 sur une date malformée', async () => {
+    authAs('org-1');
+
+    const res = await request(buildApp()).get('/api/organization/shipments?date=31-07-2026');
+
+    expect(res.status).toBe(400);
+    expect(organizationService.listShipments).not.toHaveBeenCalled();
+  });
+
+  it('GET /organization/shipments : transmet les filtres de colonnes au service', async () => {
+    authAs('org-1');
+
+    const res = await request(buildApp()).get(
+      '/api/organization/shipments?ref=BL-9&client=cli-1&statut=LIVRE&date=2026-07-31&page=2'
+    );
+
+    expect(res.status).toBe(200);
+    expect(organizationService.listShipments).toHaveBeenCalledWith(
+      'org-1',
+      expect.objectContaining({
+        ref: 'BL-9',
+        client: 'cli-1',
+        statut: 'LIVRE',
+        date: '2026-07-31',
+        page: 2,
+      })
+    );
+  });
+
   it('GET /organization/movements : un opérateur ne révèle PAS l’auteur des mouvements', async () => {
     authAs('org-1', 'operator');
     const lotId = '11111111-1111-4111-8111-111111111111';

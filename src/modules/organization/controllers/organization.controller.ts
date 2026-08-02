@@ -8,6 +8,7 @@ import {
   PERSONAL_DATA_ROLES,
   type Role,
 } from '../../identity/constants/roles.constants';
+import { SHIPMENT_PAGE_DEFAULTS } from '../middlewares/shipmentQuery.schema';
 
 const DEFAULT_AUDIT_LOGS_LIMIT = 30;
 
@@ -96,7 +97,23 @@ export const listCustomersController = catchAsync(
 
 export const listShipmentsController = catchAsync(
   async (req: AuthenticatedRequest, res: Response) => {
-    const shipments = await organizationService.listShipments(req.activeOrgId as string);
+    const {
+      page = SHIPMENT_PAGE_DEFAULTS.page,
+      limit = SHIPMENT_PAGE_DEFAULTS.limit,
+      ref,
+      client,
+      statut,
+      date,
+    } = req.validatedShipmentQuery ?? {};
+
+    const shipments = await organizationService.listShipments(req.activeOrgId as string, {
+      page,
+      limit,
+      ref,
+      client,
+      statut,
+      date,
+    });
     sendSuccess(res, 200, 'Expéditions récupérées', shipments);
   }
 );

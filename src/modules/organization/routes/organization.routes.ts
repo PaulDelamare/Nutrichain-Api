@@ -8,6 +8,7 @@ import {
   PERSONAL_DATA_ROLES,
 } from '../../identity/constants/roles.constants';
 import { validateOrganizationQuery } from '../middlewares/validateOrganizationQuery.middleware';
+import { validateShipmentQuery } from '../middlewares/validateShipmentQuery.middleware';
 import { validateCreateEquipment } from '../middlewares/validateEquipment.middleware';
 import { validateCreateQualityControl } from '../middlewares/validateQualityControl.middleware';
 import {
@@ -343,7 +344,12 @@ router.get('/organization/customers', sessionAuth(READ_ROLES), listCustomersCont
  *       401:
  *         description: Aucune session
  */
-router.get('/organization/shipments', sessionAuth(READ_ROLES), listShipmentsController);
+router.get(
+  '/organization/shipments',
+  sessionAuth(READ_ROLES),
+  validateShipmentQuery,
+  listShipmentsController
+);
 
 /**
  * @swagger

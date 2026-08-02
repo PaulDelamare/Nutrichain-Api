@@ -13,7 +13,10 @@ vi.mock('../../../shared/configs/prismaClient.config', () => ({
     batch_Mouvement: { findMany: vi.fn() },
     supplier: { findMany: vi.fn() },
     customer: { findMany: vi.fn() },
-    shipment: { findMany: vi.fn() },
+    shipment: { findMany: vi.fn(), count: vi.fn() },
+    // Forme tableau (lectures paginées comme listShipments) ⇒ Promise.all.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    $transaction: vi.fn((ops: any[]) => Promise.all(ops)),
   },
 }));
 
@@ -242,5 +245,47 @@ describe('OrganizationService (façade de lecture pour le front)', () => {
     expect(appel?.select).toBeDefined();
     expect(appel?.select).not.toHaveProperty('delivered_by');
     expect(appel?.select).not.toHaveProperty('delivered_by_label');
+  });
+
+  it('listShipments : pagine (skip/take) et renvoie { data, pagination }', async () => {
+    vi.mocked(prisma.shipment.count).mockResolvedValue(42 as never);
+    vi.mocked(prisma.shipment.findMany).mockResolvedValue([] as never);
+
+    const res = await organizationService.listShipments(ORG, { page: 3, limit: 10 });
+
+    expect(prisma.shipment.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ skip: 20, take: 10 })
+    );
+    expect(res.pagination).toEqual({ page: 3, limit: 10, total: 42, totalPages: 5 });
+  });
+
+  it('listShipments : filtre par référence, client et statut', async () => {
+    vi.mocked(prisma.shipment.count).mockResolvedValue(0 as never);
+    vi.mocked(prisma.shipment.findMany).mockResolvedValue([] as never);
+
+    await organizationService.listShipments(ORG, { ref: 'BL-9', client: 'cli-1', statut: 'LIVRE' });
+
+    expect(prisma.shipment.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          shipment_id: { contains: 'BL-9', mode: 'insensitive' },
+          id_client: 'cli-1',
+          statut_livraison: 'LIVRE',
+        }),
+      })
+    );
+  });
+
+  it('listShipments : filtre « un jour » sur date_envoi, borne [jour, lendemain[ UTC', async () => {
+    vi.mocked(prisma.shipment.count).mockResolvedValue(0 as never);
+    vi.mocked(prisma.shipment.findMany).mockResolvedValue([] as never);
+
+    await organizationService.listShipments(ORG, { date: '2026-07-31' });
+
+    const where = vi.mocked(prisma.shipment.findMany).mock.calls.at(-1)?.[0]?.where as unknown as {
+      date_envoi?: { gte: Date; lt: Date };
+    };
+    expect(where.date_envoi?.gte.toISOString()).toBe('2026-07-31T00:00:00.000Z');
+    expect(where.date_envoi?.lt.toISOString()).toBe('2026-08-01T00:00:00.000Z');
   });
 });
