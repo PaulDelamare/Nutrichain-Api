@@ -13,6 +13,10 @@ import type { ReceiptPayload } from '../../logistics/receipts/middlewares/receip
 import type { QuarantineLiftPayload } from '../../logistics/receipts/middlewares/quarantineLift.schema';
 import type { MoveBatchPayload } from '../../logistics/receipts/middlewares/moveBatch.schema';
 import type { ScrapPayload } from '../../logistics/receipts/middlewares/scrap.schema';
+import type {
+  WithdrawalRequest,
+  WithdrawalListParams,
+} from '../../logistics/withdrawals/middlewares/withdrawal.schema';
 import type { BatchResolveQuery } from '../../logistics/receipts/middlewares/validateBatchResolve.middleware';
 import type {
   ShipmentPayload,
@@ -104,6 +108,9 @@ export interface AuthenticatedRequest extends Request {
   validatedMoveBatch?: MoveBatchPayload;
   // Mise au rebut d'un lot (POST /logistics/batches/:id/scrap)
   validatedScrap?: ScrapPayload;
+  // Retrait d'un lot du rayon d'un magasin (POST/GET /logistics/batches/:id/withdrawals)
+  validatedWithdrawal?: WithdrawalRequest;
+  validatedWithdrawalList?: WithdrawalListParams;
   validatedShipment?: ShipmentPayload;
   validatedConfirmDelivery?: ConfirmDeliveryPayload;
   validatedShipmentIdParam?: ShipmentIdParam;

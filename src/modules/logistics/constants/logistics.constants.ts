@@ -146,6 +146,12 @@ export const MOVEMENT_TYPES = {
    * rappel ne saurait pas si la marchandise est arrivée.
    */
   DELIVERY: 'LIVRAISON',
+  /**
+   * Retrait du rayon d'un magasin. Distinct de la mise au rebut : ce sont deux gestes, et le
+   * client qui retire n'est pas nous. Rien ne bouge dans notre stock — la marchandise en a ete
+   * deduite a l'expedition — mais la boucle du rappel ne se ferme pas sans lui.
+   */
+  SHELF_WITHDRAWAL: 'RETRAIT_MAGASIN',
 } as const;
 
 /**
