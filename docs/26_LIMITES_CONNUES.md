@@ -101,11 +101,16 @@ arrivent seules, chaque lundi, par `.github/dependabot.yml`, regroupées pour re
 dépendance transitive d’outillage bloquerait toutes les PR sans rien protéger, et un garde-fou qui
 bloque tout finit désactivé. Les avis bas restent affichés dans le journal du job.
 
-**Ce qui manque toujours** : aucune analyse statique de sécurité du code (SAST), aucune détection
-de secrets commités. Une clé collée dans un fichier passerait l’intégration sans un mot.
+**Ce qui manque, et ce qui existe déjà.** La détection de secrets de GitHub est **active**, avec
+protection au push : un jeton reconnu est bloqué avant d’entrer dans l’historique. Mais elle ne
+couvre que les **formats connus** — l’option « motifs hors fournisseurs » est désactivée, or nos
+propres secrets (`API_KEY`, `IOT_API_KEY`) sont des chaînes aléatoires sans format identifiable.
+**Une clé NutriChain collée dans un fichier passerait donc sans un mot.**
 
-**Conséquence** : la classe de failles « dépendance vulnérable » est couverte ; celle « secret
-commité » ne l’est pas.
+Il n’y a par ailleurs **aucune analyse statique de sécurité du code (SAST)**.
+
+**Conséquence** : la classe « dépendance vulnérable » est couverte, « secret d’un fournisseur
+tiers » aussi ; « secret maison » et « défaut de code » ne le sont pas.
 
 ### 🟧 Les journaux ne sortent pas de la machine
 
