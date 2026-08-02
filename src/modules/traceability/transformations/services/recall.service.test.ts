@@ -1,8 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { recallService, LIAISON_IN_CHUNK_SIZE } from './recall.service';
+import {
+  recallService,
+  LIAISON_IN_CHUNK_SIZE,
+  SIMULATION_IDS_CAP,
+  SIMULATION_SHIPMENTS_CAP,
+} from './recall.service';
 import { MAX_GENEALOGY_DEPTH } from './genealogy.service';
 import { prisma } from '../../../../shared/configs/prismaClient.config';
-import { Batch } from '@prisma/client';
+import { Batch, Prisma } from '@prisma/client';
 import { auditService } from '../../../../shared/utils/audit/audit.service';
 import { logger } from '../../../../shared/utils/logger/logger';
 import { notifyOrgAdmins } from '../../../../shared/utils/mailer/notifyOrgAdmins';
@@ -340,5 +345,150 @@ describe('RecallService', () => {
       expect(warnArgs).not.toContain('+33612345678');
       expect(warnArgs).not.toContain('50 av Distribution');
     });
+  });
+});
+
+describe('recallService.simulateRecall — chemin lecture seule', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(prisma.$transaction).mockImplementation((cb: (tx: unknown) => Promise<unknown>) =>
+      cb(prisma)
+    );
+    // La production ne sélectionne que l'id : un mock plus riche ferait passer un test sur un
+    // état qui n'existe nulle part.
+    vi.mocked(prisma.batch.findFirst).mockResolvedValue({ id: batchId } as unknown as Batch);
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([
+      { impacted_ids: [batchId], max_depth: 0 },
+    ] as never);
+    vi.mocked(prisma.liaison_Shipment.findMany).mockResolvedValue([]);
+  });
+
+  it("rend 404 sur un lot d'une autre organisation, comme le rappel réel", async () => {
+    // Sans ce 404, un id étranger rendrait 200 + liste vide : le bouton « simuler » et le bouton
+    // « rappeler » raconteraient deux histoires différentes sur le même lot.
+    vi.mocked(prisma.batch.findFirst).mockResolvedValue(null);
+
+    await expect(recallService.simulateRecall(batchId, orgId)).rejects.toMatchObject({
+      status: 404,
+    });
+  });
+
+  it("rend 404 plutôt que d'annoncer « un seul lot » quand l'agrégat revient vide", async () => {
+    // Se replier sur le lot source ferait dire « 1 lot impacté » sur le seul chiffre qui ne doit
+    // jamais mentir.
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([
+      { impacted_ids: null, max_depth: null },
+    ] as never);
+
+    await expect(recallService.simulateRecall(batchId, orgId)).rejects.toMatchObject({
+      status: 404,
+    });
+  });
+
+  it("n'expose ni le contact ni l'e-mail du client à un rôle en lecture", async () => {
+    // Le jeu de clés est asserté en entier : `not.toHaveProperty` laisserait passer un champ
+    // ajouté plus tard par un `...spread` sur l'agrégation du rappel réel.
+    vi.mocked(prisma.liaison_Shipment.findMany).mockResolvedValue([buildLiaison() as never]);
+
+    const result = await recallService.simulateRecall(batchId, orgId);
+
+    expect(Object.keys(result.affectedShipments[0]).sort()).toEqual([
+      'batchIds',
+      'customerName',
+      'dateEnvoi',
+      'dateLivraison',
+      'shipmentId',
+      'shipmentRef',
+      'statutLivraison',
+      'transporteur',
+    ]);
+  });
+
+  it("n'écrit rien : ni audit, ni alerte, ni courriel", async () => {
+    vi.mocked(prisma.liaison_Shipment.findMany).mockResolvedValue([buildLiaison() as never]);
+
+    await recallService.simulateRecall(batchId, orgId);
+
+    expect(auditService.logAction).not.toHaveBeenCalled();
+    expect(prisma.alert.create).not.toHaveBeenCalled();
+    expect(notifyOrgAdmins).not.toHaveBeenCalled();
+    expect(notifyRecallCustomers).not.toHaveBeenCalled();
+  });
+
+  it('borne la liste des ids rendus et le signale, sans fausser le compte', async () => {
+    const ids = Array.from({ length: SIMULATION_IDS_CAP + 5 }, (_, i) => `lot-${i}`);
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([
+      { impacted_ids: ids, max_depth: 1 },
+    ] as never);
+
+    const result = await recallService.simulateRecall(batchId, orgId);
+
+    expect(result.impactedCount).toBe(SIMULATION_IDS_CAP + 5);
+    expect(result.impactedBatchIds).toHaveLength(SIMULATION_IDS_CAP);
+    expect(result.impactedBatchIdsTruncated).toBe(true);
+  });
+
+  it('borne aussi la liste des expéditions, sans fausser leur compte', async () => {
+    const liaisons = Array.from({ length: SIMULATION_SHIPMENTS_CAP + 3 }, (_, i) =>
+      buildLiaison({ id_expedition: `ship-${i}`, shipmentRef: `SHIP-REF-${i}` })
+    );
+    vi.mocked(prisma.liaison_Shipment.findMany).mockResolvedValue(liaisons as never);
+
+    const result = await recallService.simulateRecall(batchId, orgId);
+
+    expect(result.affectedShipmentsCount).toBe(SIMULATION_SHIPMENTS_CAP + 3);
+    expect(result.affectedShipments).toHaveLength(SIMULATION_SHIPMENTS_CAP);
+    expect(result.affectedShipmentsTruncated).toBe(true);
+  });
+
+  it("rend les magasins dans un ordre stable, quel que soit l ordre des lignes lues", async () => {
+    // Postgres rend les lignes dans l'ordre physique : réécrire une expédition la déplace. Sans
+    // tri final, la liste des magasins touchés change d'un appel à l'autre — et, dès qu'elle est
+    // tronquée, un magasin passe de « affiché » à « caché » sans qu'aucune donnée n'ait bougé.
+    vi.mocked(prisma.liaison_Shipment.findMany).mockResolvedValue([
+      buildLiaison({ id_expedition: 'ship-z', shipmentRef: 'SHIP-REF-Z' }) as never,
+      buildLiaison({ id_expedition: 'ship-a', shipmentRef: 'SHIP-REF-A' }) as never,
+    ]);
+
+    const result = await recallService.simulateRecall(batchId, orgId);
+
+    expect(result.affectedShipments.map((s) => s.shipmentRef)).toEqual([
+      'SHIP-REF-A',
+      'SHIP-REF-Z',
+    ]);
+  });
+
+  it("demande les liaisons dans un ordre déterministe", async () => {
+    // Le tri final ne suffit pas : les lots rattachés à une même expédition sont agrégés dans
+    // l'ordre de lecture, et c'est cet ordre qui décide quels lots survivent à une troncature.
+    await recallService.simulateRecall(batchId, orgId);
+
+    expect(prisma.liaison_Shipment.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: { id: 'asc' } })
+    );
+  });
+  it('lit tout dans un seul instantané, avec le même budget de temps que le rappel réel', async () => {
+    // Le défaut de Prisma est de 5 s : une descendance massive — le cas qu'on veut chiffrer avant
+    // de décider — aurait échoué en 500 pendant que le rappel réel, lui, aboutissait. Ce test
+    // prouve que le budget est DEMANDÉ, pas qu'il suffit : aucun jeu de données ici n'atteint 5 s.
+    await recallService.simulateRecall(batchId, orgId);
+
+    expect(prisma.$transaction).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({
+        timeout: 30000,
+        isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+      })
+    );
+  });
+
+  it('signale la saturation de profondeur au lieu de la taire', async () => {
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([
+      { impacted_ids: [batchId], max_depth: MAX_GENEALOGY_DEPTH },
+    ] as never);
+
+    const result = await recallService.simulateRecall(batchId, orgId);
+
+    expect(result.depthSaturated).toBe(true);
   });
 });

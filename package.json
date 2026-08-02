@@ -20,6 +20,7 @@
     "e2e:sync": "tsx --env-file=.env scripts/e2e-mobile-sync.ts",
     "e2e:mobile": "tsx --env-file=.env scripts/e2e-mobile-client.ts",
     "e2e:recall": "tsx --env-file=.env scripts/e2e-recall-impact.ts",
+    "e2e:recall-simulation": "tsx --env-file=.env scripts/e2e-recall-simulation.ts",
     "e2e:iot-alert": "tsx --env-file=.env scripts/e2e-iot-alert.ts",
     "e2e:iot-advisory-lock": "tsx --env-file=.env scripts/e2e-iot-advisory-lock.ts",
     "e2e:alert-resolve": "tsx --env-file=.env scripts/e2e-alert-resolve.ts",

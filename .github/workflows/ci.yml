@@ -252,6 +252,8 @@ jobs:
         run: npm run e2e:palette-http
       - name: 🚚 Confirmation de livraison, et le rappel qui cesse de mentir
         run: npm run e2e:confirmer-livraison
+      - name: 🔎 Simulation de rappel — même impact que le rappel réel, sans écrire
+        run: npm run e2e:recall-simulation
       - name: 📦 SSCC concurrents (pas de doublon)
         run: npm run e2e:sscc
       - name: 🏷️ Événements EPCIS (Object/Transformation/Aggregation)

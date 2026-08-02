@@ -26,7 +26,10 @@ import type {
   ScanLogisticUnitParams,
 } from '../../logistics/logisticUnits/middlewares/logisticUnit.schema';
 import type { TransformationPayload } from '../../traceability/transformations/middlewares/transformationPayload.schema';
-import type { RecallPayload } from '../../traceability/transformations/middlewares/recallPayload.schema';
+import type {
+  RecallPayload,
+  RecallSimulationParams,
+} from '../../traceability/transformations/middlewares/recallPayload.schema';
 import type {
   CreateOrganizationPayload,
   InviteOwnerPayload,
@@ -112,6 +115,8 @@ export interface AuthenticatedRequest extends Request {
   validatedTransformation?: TransformationPayload;
   // Déclenchement d'un rappel produit (POST /traceability/batches/:id/recall)
   validatedRecall?: RecallPayload;
+  // Simulation d'un rappel (GET /traceability/batches/:id/recall-simulation)
+  validatedRecallSimulation?: RecallSimulationParams;
   // Sync mobile offline-first
   validatedSyncScans?: SyncScansPayload;
   // Trame de télémétrie IoT (POST /telemetry/ping)
