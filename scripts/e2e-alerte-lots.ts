@@ -109,20 +109,14 @@ async function setup(): Promise<Fixtures> {
 
   // L'INTRUS : bloqué par un contrôle qualité, bien avant toute excursion. Il est dans le frigo,
   // mais il n'a rien à voir avec la chaîne du froid.
-  await prisma.batch_Mouvement.create({
-    data: {
-      id_lot: intruderQc.id,
-      type_action: MOVEMENT_TYPES.QUALITY_CONTROL,
-      quantite: 10,
-      unite: product.unite_reference,
-      metadata: {
-        resultat: QUALITY_RESULTS.NON_CONFORM,
-        type_test: 'CORPS_ETRANGER',
-        statut_precedent: BATCH_STATUSES.IN_STOCK,
-        statut_resultant: BATCH_STATUSES.BLOCKED,
-      },
-    },
-  });
+  await recordControl(
+    intruderQc.id,
+    QUALITY_RESULTS.NON_CONFORM,
+    'CORPS_ETRANGER',
+    user.userId,
+    product.unite_reference,
+    { statut_precedent: BATCH_STATUSES.IN_STOCK, statut_resultant: BATCH_STATUSES.BLOCKED }
+  );
 
   console.log(`  → frigo=${equipment.id} | 3 lots posés (dont 1 intrus bloqué qualité)`);
   return {
@@ -132,11 +126,49 @@ async function setup(): Promise<Fixtures> {
     coldStock: coldStock.id,
     coldQc: coldQc.id,
     intruderQc: intruderQc.id,
+    userId: user.userId,
+    unite: product.unite_reference,
   };
+}
+
+/**
+ * Un contrôle qualité tel que la PRODUCTION l'écrit : la ligne `QualityControl` ET son mouvement,
+ * dans le même geste (`qualityControlService.createQualityControl`). Fabriquer le seul mouvement
+ * simulait un monde impossible — un verdict sans contrôle — et les services qui lisent les contrôles
+ * réels n'y voyaient rien.
+ */
+async function recordControl(
+  batchId: string,
+  resultat: string,
+  typeTest: string,
+  userId: string,
+  unite: string,
+  meta: Record<string, unknown> = {}
+) {
+  await prisma.qualityControl.create({
+    data: {
+      organization_id: ORG_ID!,
+      id_lot: batchId,
+      type_test: typeTest,
+      resultat,
+      id_user_labo: userId,
+      date_test: new Date(),
+    },
+  });
+  await prisma.batch_Mouvement.create({
+    data: {
+      id_lot: batchId,
+      type_action: MOVEMENT_TYPES.QUALITY_CONTROL,
+      quantite: 10,
+      unite,
+      metadata: { resultat, type_test: typeTest, ...meta },
+    },
+  });
 }
 
 async function cleanup(f: Fixtures) {
   await prisma.batch_Mouvement.deleteMany({ where: { id_lot: { in: f.batchIds } } });
+  await prisma.qualityControl.deleteMany({ where: { id_lot: { in: f.batchIds } } });
   await prisma.batch.deleteMany({ where: { id: { in: f.batchIds } } });
   await prisma.alert.deleteMany({ where: { id_materiel: f.equipmentId } });
   // ⚠️ On ne touche PAS à `Audit_Log` : c'est une chaîne de hachage WORM. En retirer un maillon la
@@ -240,15 +272,13 @@ async function main() {
     );
 
     console.log('\n[3] Le labo déclare le lot EN_STOCK non conforme, APRÈS son isolement');
-    await prisma.batch_Mouvement.create({
-      data: {
-        id_lot: fixtures.coldStock,
-        type_action: MOVEMENT_TYPES.QUALITY_CONTROL,
-        quantite: 10,
-        unite: batches[0]!.unite_code,
-        metadata: { resultat: QUALITY_RESULTS.NON_CONFORM, type_test: 'LISTERIA' },
-      },
-    });
+    await recordControl(
+      fixtures.coldStock,
+      QUALITY_RESULTS.NON_CONFORM,
+      'LISTERIA',
+      fixtures.userId,
+      fixtures.unite
+    );
 
     batches = await alertBatchService.listBatchesIsolatedByAlert(alert);
     const condemned = batches.find((b) => b.id === fixtures!.coldStock);
