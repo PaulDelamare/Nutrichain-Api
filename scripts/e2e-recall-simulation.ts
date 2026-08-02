@@ -57,6 +57,18 @@ interface Simulation {
 async function main(): Promise<void> {
   if (!ORG_ID) throw new Error('API_KEY_ORG_ID manquant dans .env');
 
+  // Ce scénario parle à un serveur, contrairement à `e2e:recall` qui appelle le service. Sans cette
+  // sonde, l'absence de serveur se manifeste par une pile `ECONNREFUSED` levée dans le helper de
+  // connexion — un symptôme qui ressemble à un défaut d'authentification. C'est ce qui a fait
+  // rougir la CI la première fois, l'étape ayant été placée avant le démarrage de l'API.
+  const health = await fetch(`${API_URL}/api/health`).catch(() => null);
+  if (!health?.ok) {
+    throw new Error(
+      `Aucune API ne répond sur ${API_URL}. Démarrer le serveur avant ce scénario ` +
+        `(en CI : placer l'étape APRÈS « Démarrer l'API en arrière-plan »).`
+    );
+  }
+
   const stamp = Date.now().toString().slice(-9);
   const unit = await prisma.unit.findFirstOrThrow();
   const product = await prisma.product.findFirstOrThrow({ where: { organization_id: ORG_ID } });
