@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../../../shared/configs/prismaClient.config';
 import { APIError } from '../../../shared/utils/errorHandler/APIError';
 import { auditService } from '../../../shared/utils/audit/audit.service';
@@ -104,5 +105,35 @@ export const equipmentService = {
         : { organization_id: organizationId, is_active: true },
       orderBy: { nom: 'asc' },
     });
+  },
+
+  // Chemin paginé de l'écran Configuration (le tableau + ses filtres). Le chemin non paginé
+  // ci-dessus reste pour les sélecteurs de l'app, qui n'envoient pas de `page`.
+  async listLocationsPaginated(
+    organizationId: string,
+    options: {
+      page?: number;
+      limit?: number;
+      nom?: string;
+      type?: string;
+      statut?: 'actif' | 'archive';
+    } = {}
+  ) {
+    const { page = 1, limit = 20, nom, type, statut } = options;
+    const skip = (page - 1) * limit;
+
+    const where: Prisma.LocationWhereInput = {
+      organization_id: organizationId,
+      nom: nom ? { contains: nom, mode: 'insensitive' } : undefined,
+      type: type || undefined,
+      is_active: statut === 'actif' ? true : statut === 'archive' ? false : undefined,
+    };
+
+    const [total, data] = await prisma.$transaction([
+      prisma.location.count({ where }),
+      prisma.location.findMany({ where, orderBy: { nom: 'asc' }, skip, take: limit }),
+    ]);
+
+    return { data, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
   },
 };

@@ -12,6 +12,7 @@ import { validateShipmentQuery } from '../middlewares/validateShipmentQuery.midd
 import { validateMemberQuery } from '../middlewares/validateMemberQuery.middleware';
 import { validateRecallQuery } from '../middlewares/validateRecallQuery.middleware';
 import { validateAuditLogQuery } from '../middlewares/validateAuditLogQuery.middleware';
+import { validateLocationQuery } from '../middlewares/validateLocationQuery.middleware';
 import { validateCreateEquipment } from '../middlewares/validateEquipment.middleware';
 import { validateCreateQualityControl } from '../middlewares/validateQualityControl.middleware';
 import {
@@ -411,7 +412,12 @@ router.get(
  *       401:
  *         description: Aucune session
  */
-router.get('/organization/locations', sessionAuth(READ_ROLES), listLocationsController);
+router.get(
+  '/organization/locations',
+  sessionAuth(READ_ROLES),
+  validateLocationQuery,
+  listLocationsController
+);
 
 /**
  * Écriture : le plan d'usine (où sont les frigos, les cuves) est une donnée de configuration.

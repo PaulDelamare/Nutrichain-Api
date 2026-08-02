@@ -4,11 +4,12 @@ import { prisma } from '../../../shared/configs/prismaClient.config';
 
 vi.mock('../../../shared/configs/prismaClient.config', () => {
   const prisma = {
-    location: { findFirst: vi.fn() },
+    location: { findFirst: vi.fn(), findMany: vi.fn(), count: vi.fn() },
     equipment: { create: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
-    // Exécute le callback avec le mock lui-même comme `tx` : la création et l'audit sont
-    // désormais atomiques (retryableTransaction). `tx.equipment.create` === `prisma.equipment.create`.
-    $transaction: vi.fn((cb: (tx: unknown) => unknown) => cb(prisma)),
+    // Callback (retryableTransaction, création + audit atomiques) OU tableau (lectures paginées
+    // comme listLocationsPaginated ⇒ Promise.all).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    $transaction: vi.fn((arg: any) => (Array.isArray(arg) ? Promise.all(arg) : arg(prisma))),
   };
   return { prisma };
 });
@@ -126,5 +127,47 @@ describe('equipmentService.getScannableLabel', () => {
     await expect(equipmentService.getScannableLabel(ORG, 'eq-inconnu')).rejects.toMatchObject({
       status: 404,
     });
+  });
+});
+
+describe('equipmentService.listLocationsPaginated', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('pagine (skip/take), trie par nom et renvoie { data, pagination }', async () => {
+    vi.mocked(prisma.location.count).mockResolvedValue(42 as never);
+    vi.mocked(prisma.location.findMany).mockResolvedValue([] as never);
+
+    const res = await equipmentService.listLocationsPaginated(ORG, { page: 3, limit: 10 });
+
+    expect(prisma.location.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ organization_id: ORG }),
+        orderBy: { nom: 'asc' },
+        skip: 20,
+        take: 10,
+      })
+    );
+    expect(res.pagination).toEqual({ page: 3, limit: 10, total: 42, totalPages: 5 });
+  });
+
+  it('filtre par nom (contains insensible), type (exact) et statut (is_active)', async () => {
+    vi.mocked(prisma.location.count).mockResolvedValue(0 as never);
+    vi.mocked(prisma.location.findMany).mockResolvedValue([] as never);
+
+    await equipmentService.listLocationsPaginated(ORG, {
+      nom: 'froid',
+      type: 'Chambre froide',
+      statut: 'archive',
+    });
+
+    expect(prisma.location.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          nom: { contains: 'froid', mode: 'insensitive' },
+          type: 'Chambre froide',
+          is_active: false,
+        }),
+      })
+    );
   });
 });
