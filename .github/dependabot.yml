@@ -35,6 +35,10 @@ updates:
         update-types:
           - minor
           - patch
-    # Les MAJEURES restent une PR par paquet, à dessein : ce sont des migrations à décider, pas des
-    # correctifs à empiler. `nodemailer` 8 → 9 l'a montré — il a fallu vérifier chaque appel.
-    ignore: []
+    # Les MAJEURES ne sont volontairement pas regroupées : ce sont des migrations à décider, pas des
+    # correctifs à empiler — `nodemailer` 8 → 9 l'a montré, il a fallu vérifier chaque appel. Elles
+    # arrivent donc en une PR par paquet.
+    #
+    # ⚠️ Ne pas ajouter `ignore: []` pour porter ce commentaire : la propriété exige au moins une
+    # entrée, et vide elle invalide TOUT le fichier — Dependabot ne tourne alors pas du tout, et ne
+    # le dit que dans Insights → Dependency graph.
