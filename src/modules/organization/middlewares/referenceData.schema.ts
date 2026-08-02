@@ -33,7 +33,8 @@ const longitudeRule = () => vine.number().min(-180).max(180);
 
 const createLocationSchema = vine.object({
   nom: vine.string().trim().minLength(2).maxLength(120),
-  type: vine.string().trim().minLength(2).maxLength(60),
+  // Facultatif : simple label de catégorisation, il ne pilote aucune logique.
+  type: vine.string().trim().minLength(2).maxLength(60).optional(),
   description: vine.string().trim().maxLength(300).optional(),
   latitude: latitudeRule().optional().requiredIfExists('longitude'),
   longitude: longitudeRule().optional().requiredIfExists('latitude'),
@@ -41,7 +42,8 @@ const createLocationSchema = vine.object({
 
 const updateLocationSchema = vine.object({
   nom: vine.string().trim().minLength(2).maxLength(120).optional(),
-  type: vine.string().trim().minLength(2).maxLength(60).optional(),
+  // `null` efface le type (label facultatif), comme la description.
+  type: vine.string().trim().minLength(2).maxLength(60).nullable().optional(),
   description: vine.string().trim().maxLength(300).nullable().optional(),
   // `null` sur les DEUX efface la position (le lieu redevient sans carte). La cohérence du couple
   // face à l'état déjà en base est vérifiée par le service, qui seul connaît cet état.

@@ -243,7 +243,10 @@ model Location {
   organization_id String
   organization    Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
   nom             String
-  type            String
+  // Label de catégorisation libre et FACULTATIF : ne pilote aucune logique (la surveillance froid
+  // porte sur le matériel, pas ici), on ne force donc pas de valeur. Un enum fermé invaliderait les
+  // valeurs déjà saisies par les organisations à l'édition.
+  type            String?
   description     String?
   // Position réelle du lieu, saisie par l'organisation — jamais déduite du nom (cf. #23 : le front
   // devinait « Loire » → Nantes et affichait ce point comme une donnée de la base).

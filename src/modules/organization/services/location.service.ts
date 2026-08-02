@@ -4,7 +4,8 @@ import { retryableTransaction } from '../../../shared/utils/db/withWriteConflict
 
 export interface LocationInput {
   nom: string;
-  type: string;
+  // Facultatif : label de catégorisation libre, ne pilote aucune logique. `null` (à l'update) efface.
+  type?: string | null;
   description?: string;
   latitude?: number | null;
   longitude?: number | null;
