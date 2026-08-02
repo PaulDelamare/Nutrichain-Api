@@ -105,13 +105,55 @@ describe('createQualityControl — la table d’états', () => {
     ).rejects.toThrow(APIError);
   });
 
-  it('un contrôle CONFORME ne lève PAS une quarantaine (elle a sa propre décision, avec motif)', async () => {
+  /**
+   * La contre-analyse d'un lot en quarantaine s'ENREGISTRE — c'est la preuve que la levée exigera —
+   * mais elle ne libère rien : la levée est une décision distincte, tracée avec son motif.
+   */
+  it('un contrôle CONFORME s’enregistre sur un lot bloqué sans lever la quarantaine', async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     vi.mocked(prisma.batch.findFirst).mockResolvedValue(lot('BLOQUE') as any);
 
-    await expect(
-      qualityControlService.createQualityControl({ ...input, resultat: 'CONFORME' })
-    ).rejects.toThrow(APIError);
+    const res = await qualityControlService.createQualityControl({
+      ...input,
+      resultat: 'CONFORME',
+    });
+
+    expect(res.statut_lot).toBe('BLOQUE');
+    expect(prisma.qualityControl.create).toHaveBeenCalled();
+    expect(prisma.batch.updateMany).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Une SECONDE non-conformité sur un lot déjà bloqué ne doit rien réécrire : mémoriser `BLOQUE`
+   * comme statut d'avant ferait restaurer le lot… en quarantaine, à la levée suivante.
+   */
+  it('ne réécrit pas le statut d’avant blocage sur un lot déjà bloqué', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(prisma.batch.findFirst).mockResolvedValue(lot('BLOQUE') as any);
+
+    const res = await qualityControlService.createQualityControl({
+      ...input,
+      resultat: 'NON_CONFORME',
+    });
+
+    expect(res.statut_lot).toBe('BLOQUE');
+    expect(prisma.batch.updateMany).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Sans ce champ, la levée qualité ne sait pas où rendre le lot : un produit fini qui attendait son
+   * contrôle de sortie repartirait EN_STOCK, donc expédiable sans avoir franchi la barrière HACCP.
+   */
+  it('mémorise le statut d’avant blocage quand un contrôle non conforme met en quarantaine', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(prisma.batch.findFirst).mockResolvedValue(lot('EN_ATTENTE_QC') as any);
+
+    await qualityControlService.createQualityControl({ ...input, resultat: 'NON_CONFORME' });
+
+    expect(vi.mocked(prisma.batch.updateMany).mock.calls[0][0].data).toMatchObject({
+      statut: 'BLOQUE',
+      statut_avant_blocage: 'EN_ATTENTE_QC',
+    });
   });
 
   it('sur un lot déjà en stock, le contrôle est enregistré sans changer son statut', async () => {

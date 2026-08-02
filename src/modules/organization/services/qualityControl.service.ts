@@ -58,16 +58,11 @@ function nextStatus(current: string, resultat: QualityResult): string | null {
     return BATCH_STATUSES.IN_STOCK;
   }
 
+  // Contre-analyse d'un lot en quarantaine : elle s'ENREGISTRE sans rien libérer. C'est la preuve
+  // que la levée exigera — refuser sa saisie, comme avant, rendait la levée impossible à justifier,
+  // et condamnait donc définitivement un lot déclaré non conforme par erreur.
   if (current === BATCH_STATUSES.BLOCKED) {
-    throw new APIError(409, {
-      error: [
-        {
-          field: 'id_lot',
-          message:
-            "Ce lot est en quarantaine : sa levée est une décision qualité tracée à part (avec motif), elle ne passe pas par la saisie d'un contrôle.",
-        },
-      ],
-    });
+    return null;
   }
 
   // EN_STOCK, EXPEDIE, EPUISE… : le contrôle est enregistré, le statut ne bouge pas.
@@ -128,7 +123,15 @@ export const qualityControlService = {
               // froid…), on refuse plutôt que d'écraser une décision plus récente.
               version: batch.version,
             },
-            data: { statut: target, version: { increment: 1 } },
+            data: {
+              statut: target,
+              // Mémorise l'état d'AVANT la quarantaine, comme le fait déjà l'alerte froid. Sans
+              // lui, la levée qualité ne sait pas où rendre le lot : un produit fini qui attendait
+              // son contrôle de sortie repartirait EN_STOCK, donc expédiable sans avoir jamais
+              // franchi la barrière HACCP. Effacé à la levée.
+              ...(target === BATCH_STATUSES.BLOCKED ? { statut_avant_blocage: batch.statut } : {}),
+              version: { increment: 1 },
+            },
           });
 
           if (updated.count === 0) {

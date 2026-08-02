@@ -5,13 +5,14 @@ import { auditService } from '../../../../shared/utils/audit/audit.service';
 import { retryableTransaction } from '../../../../shared/utils/db/withWriteConflictRetry';
 import { gs1Utils } from '../../../../shared/utils/gs1/gs1.utils';
 import { enforceSeparationOfDuties, SELF_RELEASE_TRACE } from '../utils/separationOfDuties';
+import { loadQualityVerdicts, readQualityCondemnation } from '../utils/qualityCondemnation';
+import { COLD_CHAIN_ALERT_TYPE } from '../../../alerts/constants/alert.constants';
 import { reconcileLogisticUnitContent } from '../utils/reconcileLogisticUnitContent';
 import {
   BATCH_STATUSES,
   BatchStatus,
   MOVABLE_BATCH_STATUSES,
   MOVEMENT_TYPES,
-  QUALITY_RESULTS,
   SCRAPPABLE_BATCH_STATUSES,
 } from '../../constants/logistics.constants';
 import { STORAGE_EQUIPMENT_TYPES } from '../../../organization/middlewares/equipment.schema';
@@ -169,26 +170,21 @@ export const batchService = {
           });
         }
 
-        // La levée de quarantaine ne traite QUE l'incident froid. Si le dernier verdict qualité du
-        // lot est « non conforme », il ne se libère pas par ce canal : réparer la chambre froide ne
-        // rend pas consommable un produit contaminé. La garde vaut pour tout lot BLOQUE condamné,
-        // qu'il ait ou non subi une excursion — un contrôle non conforme laisse le lot BLOQUE
-        // (nextStatus, qualityControl.service) et un tel lot n'a, à ce stade du modèle, pas d'autre
-        // issue que le rebut : on refuse de le remettre en circulation, on ne promet pas de retour.
-        // Tiebreak par `id` : à date_test égale, l'ordre reste déterministe.
-        const lastQualityControl = await tx.qualityControl.findFirst({
-          where: { id_lot: id, organization_id: activeOrgId },
-          orderBy: [{ date_test: 'desc' }, { id: 'desc' }],
-          select: { resultat: true },
-        });
+        // La levée de quarantaine ne traite QUE l'incident froid : réparer la chambre froide ne
+        // rend pas consommable un produit contaminé. Tant que la qualité retient le lot, ce canal
+        // refuse — sinon il devient une porte dérobée sur la quarantaine qualité, avec une
+        // séparation des tâches évaluée sur le mauvais signataire et un repli plus permissif.
+        const condemnation = readQualityCondemnation(
+          await loadQualityVerdicts(tx, id, activeOrgId)
+        );
 
-        if (lastQualityControl?.resultat === QUALITY_RESULTS.NON_CONFORM) {
+        if (condemnation && !condemnation.counterAnalysis) {
           throw new APIError(409, {
             error: [
               {
                 field: 'statut',
                 message:
-                  'Ce lot a échoué un contrôle qualité : il ne se libère pas par la levée de quarantaine froid.',
+                  'Ce lot a échoué un contrôle qualité : il ne se libère pas par la levée de quarantaine froid. Enregistrez la contre-analyse conforme, puis levez la quarantaine qualité.',
               },
             ],
           });
@@ -373,6 +369,211 @@ export const batchService = {
             entityId: id,
             oldValue: { id_materiel_actuel: batch.id_materiel_actuel },
             newValue: { id_materiel_actuel: equipmentId },
+          },
+          tx
+        );
+
+        return tx.batch.findFirst({ where: { id, organization_id: activeOrgId } });
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+    );
+  },
+
+  /**
+   * Lève une quarantaine QUALITÉ — celle qu'un contrôle non conforme a posée.
+   *
+   * Elle n'existait pas : un lot déclaré non conforme n'avait aucun retour, et les deux canaux
+   * existants se renvoyaient l'un à l'autre. Un contrôle saisi par erreur condamnait donc
+   * définitivement de la marchandise saine, dont la seule issue était le rebut.
+   *
+   * La preuve exigée n'est pas un motif libre mais une **contre-analyse conforme postérieure** au
+   * dernier verdict non conforme : on ne lève pas une non-conformité par déclaration, on la lève
+   * parce qu'un second contrôle l'a démentie. Le motif accompagne, il ne remplace pas.
+   */
+  async liftQualityQuarantine(id: string, activeOrgId: string, userId: string, motif: string) {
+    return retryableTransaction(
+      async (tx) => {
+        const batch = await tx.batch.findFirst({
+          where: { id, organization_id: activeOrgId },
+        });
+
+        if (!batch) {
+          throw new APIError(404, {
+            error: [{ field: 'batch', message: 'Lot introuvable dans cette organisation' }],
+          });
+        }
+
+        if (batch.statut !== BATCH_STATUSES.BLOCKED) {
+          throw new APIError(409, {
+            error: [
+              {
+                field: 'statut',
+                message: `Seul un lot en quarantaine (BLOQUE) peut être levé. Statut actuel : ${batch.statut}.`,
+              },
+            ],
+          });
+        }
+
+        // Même lecture que la levée froid et que l'écran d'alerte : la condamnation se lit à la
+        // dernière non-conformité NON démentie, jamais au dernier verdict.
+        const condemnation = readQualityCondemnation(
+          await loadQualityVerdicts(tx, id, activeOrgId)
+        );
+
+        if (!condemnation) {
+          throw new APIError(409, {
+            error: [
+              {
+                field: 'statut',
+                message:
+                  "Ce lot n'est pas en quarantaine qualité : aucun contrôle non conforme ne le retient. S'il est bloqué par une excursion de température, sa levée passe par la levée de quarantaine froid.",
+              },
+            ],
+          });
+        }
+
+        // La preuve : un contrôle conforme POSTÉRIEUR à la condamnation. Une levée par simple
+        // déclaration ne serait pas une levée : c'est un second contrôle qui dément le premier.
+        const counterAnalysis = condemnation.counterAnalysis;
+
+        if (!counterAnalysis) {
+          throw new APIError(409, {
+            error: [
+              {
+                field: 'statut',
+                message:
+                  'Une contre-analyse conforme est requise avant de lever cette quarantaine : enregistrez le contrôle qui dément la non-conformité, puis levez.',
+              },
+            ],
+          });
+        }
+
+        // Un lot peut être retenu par DEUX causes à la fois. Le libérer ici alors qu'une excursion
+        // de température est en vigueur le sortirait d'un frigo en panne.
+        //
+        // Deux lectures sont nécessaires, et l'une seule ne suffit pas : les mouvements ne disent
+        // rien d'un lot qui était DÉJÀ `BLOQUE` quand l'excursion l'a frappé — `iotAlert.service`
+        // ne re-marque pas un lot bloqué (cf. `COLD_QUARANTINABLE_STATUSES`), il n'y a donc aucun
+        // `QUARANTAINE_FROID` à trouver. C'est précisément le lot qui nous occupe ici.
+        const movements = await tx.batch_Mouvement.findMany({
+          where: {
+            id_lot: id,
+            type_action: {
+              in: [MOVEMENT_TYPES.COLD_QUARANTINE, MOVEMENT_TYPES.QUARANTINE_LIFTED],
+            },
+          },
+          select: { id: true, type_action: true },
+          orderBy: { id: 'asc' },
+        });
+
+        const coldIsolation = [...movements]
+          .reverse()
+          .find((m) => m.type_action === MOVEMENT_TYPES.COLD_QUARANTINE);
+        const coldLifted =
+          coldIsolation !== undefined &&
+          movements.some(
+            (m) => m.id > coldIsolation.id && m.type_action === MOVEMENT_TYPES.QUARANTINE_LIFTED
+          );
+
+        // L'angle mort se comble par l'état RÉEL : une excursion non résolue, DÉTECTÉE APRÈS la
+        // condamnation, sur l'équipement où le lot se trouve encore. La borne de date fait tout le
+        // travail : sans elle, une vieille alerte jamais résolue retiendrait indéfiniment des lots
+        // que le froid n'a jamais isolés — ceux que le froid a réellement isolés, eux, portent un
+        // mouvement `QUARANTAINE_FROID` et sont traités juste au-dessus.
+        const openColdAlert = batch.id_materiel_actuel
+          ? await tx.alert.findFirst({
+              where: {
+                organization_id: activeOrgId,
+                id_materiel: batch.id_materiel_actuel,
+                type: COLD_CHAIN_ALERT_TYPE,
+                statut: 'ACTIVE',
+                created_at: { gt: condemnation.nonConformity.date_test },
+              },
+              select: { id: true },
+            })
+          : null;
+
+        if ((coldIsolation && !coldLifted) || openColdAlert) {
+          throw new APIError(409, {
+            error: [
+              {
+                field: 'statut',
+                message:
+                  "Ce lot est aussi retenu par une excursion de température non levée : traitez l'incident froid avant la levée qualité.",
+              },
+            ],
+          });
+        }
+
+        // La séparation des tâches porte sur le SIGNATAIRE de la non-conformité, pas sur le
+        // créateur du lot : sans cela, la personne qui condamne peut décondamner seule, et la
+        // garde ne verrait rien.
+        const autoSigned = await enforceSeparationOfDuties(tx, {
+          organizationId: activeOrgId,
+          batchCreatedBy: condemnation.nonConformity.id_user_labo,
+          actorUserId: userId,
+          field: 'batch',
+          message:
+            'Vous avez signé la non-conformité de ce lot : sa levée doit être signée par une autre personne habilitée (séparation des tâches).',
+        });
+
+        // On rend le lot à l'état d'AVANT le blocage. Faute de statut mémorisé (lots bloqués
+        // avant que le contrôle qualité ne l'écrive), on retombe sur l'état le plus PRUDENT :
+        // le lot repasse par un contrôle de sortie plutôt que de devenir expédiable.
+        const restoredStatus = batch.statut_avant_blocage ?? BATCH_STATUSES.PENDING_QC;
+
+        const updated = await tx.batch.updateMany({
+          where: { id, organization_id: activeOrgId, version: batch.version },
+          data: {
+            statut: restoredStatus,
+            statut_avant_blocage: null,
+            version: { increment: 1 },
+          },
+        });
+
+        if (updated.count === 0) {
+          throw new APIError(409, {
+            error: [
+              {
+                field: 'statut',
+                message:
+                  "L'état du lot a changé pendant la levée. Rechargez sa fiche avant de réessayer.",
+              },
+            ],
+          });
+        }
+
+        await tx.batch_Mouvement.create({
+          data: {
+            id_lot: id,
+            type_action: MOVEMENT_TYPES.QUALITY_QUARANTINE_LIFTED,
+            quantite: batch.quantite_actuelle,
+            unite: batch.unite_code,
+            id_user: userId,
+            metadata: {
+              motif,
+              statut_restaure: restoredStatus,
+              id_contre_analyse: counterAnalysis.id,
+              ...(autoSigned ? { separation_des_taches: SELF_RELEASE_TRACE } : {}),
+            },
+          },
+        });
+
+        await auditService.logAction(
+          {
+            organizationId: activeOrgId,
+            userId,
+            action: 'LIFT_QUALITY_QUARANTINE',
+            entity: 'Batch',
+            entityId: id,
+            oldValue: { statut: batch.statut },
+            newValue: {
+              statut: restoredStatus,
+              motif,
+              id_contre_analyse: counterAnalysis.id,
+              signataire_non_conformite: condemnation.nonConformity.id_user_labo,
+              ...(autoSigned ? { separation_des_taches: SELF_RELEASE_TRACE } : {}),
+            },
           },
           tx
         );

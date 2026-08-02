@@ -133,6 +133,33 @@ export const liftBatchQuarantineController = catchAsync(
 );
 
 /**
+ * Lève la quarantaine QUALITÉ d'un lot, celle qu'un contrôle non conforme a posée.
+ * Canal distinct de la levée froid : la preuve exigée n'est pas la même.
+ */
+export const liftQualityQuarantineController = catchAsync(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const id = req.params.id as string;
+    const activeOrgId = req.activeOrgId as string;
+    const userId = req.auth?.user?.id ?? req.user?.id;
+    const motif = req.validatedQuarantineLift?.motif;
+
+    if (!userId) {
+      throw new APIError(401, {
+        error: [{ field: 'user', message: 'Utilisateur requis pour lever une quarantaine.' }],
+      });
+    }
+    if (!motif) {
+      throw new APIError(400, {
+        error: [{ field: 'motif', message: 'Motif de levée de quarantaine manquant.' }],
+      });
+    }
+
+    const batch = await batchService.liftQualityQuarantine(id, activeOrgId, userId, motif);
+    sendSuccess(res, 200, 'Quarantaine qualité levée', batch);
+  }
+);
+
+/**
  * Déplace un lot vers un autre emplacement de stockage (met à jour sa position physique).
  */
 export const moveBatchController = catchAsync(

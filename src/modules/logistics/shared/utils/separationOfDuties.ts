@@ -35,6 +35,12 @@ export async function enforceSeparationOfDuties(
     actorUserId: string;
     /** Champ auquel le front doit rattacher le message. */
     field: string;
+    /**
+     * Message du refus. Le défaut parle du créateur du lot : il devient faux dès que le sujet de la
+     * règle est quelqu'un d'autre — le signataire d'une non-conformité, par exemple, qui n'a
+     * peut-être jamais touché à la réception.
+     */
+    message?: string;
   }
 ): Promise<boolean> {
   if (params.batchCreatedBy !== params.actorUserId) return false;
@@ -55,6 +61,7 @@ export async function enforceSeparationOfDuties(
       {
         field: params.field,
         message:
+          params.message ??
           "Vous avez enregistré ce lot : sa libération doit être signée par une autre personne habilitée (séparation des tâches). Vous pouvez en revanche le déclarer non conforme.",
       },
     ],
