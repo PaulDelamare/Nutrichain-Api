@@ -5,6 +5,7 @@ import type { TelemetryHistoryQuery } from '../../iot/middlewares/telemetryHisto
 import type { ReceiptQuery } from '../../logistics/receipts/middlewares/receiptQuery.schema';
 import type { CatalogQuery } from '../../traceability/catalog/middlewares/catalogQuery.schema';
 import type { ShipmentQuery } from '../../organization/middlewares/shipmentQuery.schema';
+import type { MemberQuery } from '../../organization/middlewares/memberQuery.schema';
 import { SyncScansPayload } from '../../sync/types/sync.types';
 import { EventsQuery } from '../../traceability/events/middlewares/eventsQuery.schema';
 import type { OrganizationQuery } from '../../organization/middlewares/organizationQuery.schema';
@@ -134,6 +135,7 @@ export interface AuthenticatedRequest extends Request {
   validatedReceiptQuery?: ReceiptQuery;
   validatedCatalogQuery?: CatalogQuery;
   validatedShipmentQuery?: ShipmentQuery;
+  validatedMemberQuery?: MemberQuery;
   // Alert resolve endpoint (PATCH /api/alerts/:id/resolve) — typé proprement
   validatedResolveAlert?: { note?: string };
   // Query params validés de GET /api/traceability/events — typé via Infer du schéma VineJS

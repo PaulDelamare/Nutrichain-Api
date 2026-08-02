@@ -10,18 +10,57 @@ import { BATCH_STATUSES } from '../../logistics/constants/logistics.constants';
  * cloisonnée par organisation.
  */
 export const organizationService = {
-  async listMembers(organizationId: string) {
-    return prisma.member.findMany({
+  async listMembers(
+    organizationId: string,
+    options: {
+      page?: number;
+      limit?: number;
+      // Filtres de colonnes appliqués dans la requête (et non plus sur la page reçue côté front) :
+      // chacun restreint sur TOUTE l'organisation. Absents (undefined) ⇒ Prisma les ignore.
+      email?: string;
+      role?: string;
+      mfa?: boolean;
+    } = {}
+  ) {
+    const { page = 1, limit = 20, email, role, mfa } = options;
+    const skip = (page - 1) * limit;
+
+    // Filtres portés par le compte joint (email, MFA). `twoFactorEnabled` est nullable (jamais
+    // configuré) : « sans MFA » doit donc inclure `null`, pas seulement `false`, sinon un compte
+    // neuf échapperait au filtre censé le désigner.
+    let userFilter: Prisma.UserWhereInput | undefined;
+    if (email || mfa !== undefined) {
+      userFilter = {
+        email: email ? { contains: email, mode: 'insensitive' } : undefined,
+        ...(mfa === true ? { twoFactorEnabled: true } : {}),
+        ...(mfa === false ? { OR: [{ twoFactorEnabled: false }, { twoFactorEnabled: null }] } : {}),
+      };
+    }
+
+    const where: Prisma.MemberWhereInput = {
       // Modèle Better-Auth : la clé de tenant est organizationId (camelCase).
-      where: { organizationId },
-      include: {
-        user: { select: { id: true, email: true, name: true, twoFactorEnabled: true } },
-      },
-      // Même raison que pour le matériel : sans tri, la liste se réordonne dès qu'une ligne est
-      // réécrite (changement de rôle, activation 2FA), et l'écran des membres change d'ordre sans
-      // qu'on ait rien demandé.
-      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-    });
+      organizationId,
+      role: role || undefined,
+      user: userFilter,
+    };
+
+    const [total, data] = await prisma.$transaction([
+      prisma.member.count({ where }),
+      prisma.member.findMany({
+        where,
+        include: {
+          user: { select: { id: true, email: true, name: true, twoFactorEnabled: true } },
+        },
+        // Même raison que pour le matériel : sans tri, la liste se réordonne dès qu'une ligne est
+        // réécrite (changement de rôle, activation 2FA), et l'écran des membres change d'ordre sans
+        // qu'on ait rien demandé.
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        skip,
+        take: limit,
+      }),
+    ]);
+
+    return { data, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
   },
 
   async listAlerts(organizationId: string) {

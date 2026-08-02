@@ -4,7 +4,7 @@ import { prisma } from '../../../shared/configs/prismaClient.config';
 
 vi.mock('../../../shared/configs/prismaClient.config', () => ({
   prisma: {
-    member: { findMany: vi.fn() },
+    member: { findMany: vi.fn(), count: vi.fn() },
     alert: { findMany: vi.fn() },
     audit_Log: { findMany: vi.fn() },
     qualityControl: { findMany: vi.fn() },
@@ -28,18 +28,63 @@ describe('OrganizationService (façade de lecture pour le front)', () => {
   });
 
   it('listMembers : cloisonné par organizationId (camelCase Better-Auth) avec l utilisateur joint', async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    vi.mocked(prisma.member.findMany).mockResolvedValue([] as any);
+    vi.mocked(prisma.member.count).mockResolvedValue(0 as never);
+    vi.mocked(prisma.member.findMany).mockResolvedValue([] as never);
 
     await organizationService.listMembers(ORG);
 
-    expect(prisma.member.findMany).toHaveBeenCalledWith({
-      where: { organizationId: ORG },
-      include: {
-        user: { select: { id: true, email: true, name: true, twoFactorEnabled: true } },
-      },
-      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-    });
+    expect(prisma.member.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ organizationId: ORG }),
+        include: {
+          user: { select: { id: true, email: true, name: true, twoFactorEnabled: true } },
+        },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      })
+    );
+  });
+
+  it('listMembers : pagine (skip/take) et renvoie { data, pagination }', async () => {
+    vi.mocked(prisma.member.count).mockResolvedValue(42 as never);
+    vi.mocked(prisma.member.findMany).mockResolvedValue([] as never);
+
+    const res = await organizationService.listMembers(ORG, { page: 3, limit: 10 });
+
+    expect(prisma.member.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ skip: 20, take: 10 })
+    );
+    expect(res.pagination).toEqual({ page: 3, limit: 10, total: 42, totalPages: 5 });
+  });
+
+  it('listMembers : filtre par e-mail (contains insensible) et par rôle', async () => {
+    vi.mocked(prisma.member.count).mockResolvedValue(0 as never);
+    vi.mocked(prisma.member.findMany).mockResolvedValue([] as never);
+
+    await organizationService.listMembers(ORG, { email: 'ana', role: 'operator' });
+
+    expect(prisma.member.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          organizationId: ORG,
+          role: 'operator',
+          user: expect.objectContaining({
+            email: { contains: 'ana', mode: 'insensitive' },
+          }),
+        }),
+      })
+    );
+  });
+
+  it('listMembers : « sans MFA » inclut les comptes jamais configurés (twoFactorEnabled null)', async () => {
+    vi.mocked(prisma.member.count).mockResolvedValue(0 as never);
+    vi.mocked(prisma.member.findMany).mockResolvedValue([] as never);
+
+    await organizationService.listMembers(ORG, { mfa: false });
+
+    const where = vi.mocked(prisma.member.findMany).mock.calls.at(-1)?.[0]?.where as unknown as {
+      user?: { OR?: unknown[] };
+    };
+    expect(where.user?.OR).toEqual([{ twoFactorEnabled: false }, { twoFactorEnabled: null }]);
   });
 
   it('listAlerts : cloisonné, triées les plus récentes d abord (le front filtre type/statut lui-même)', async () => {
