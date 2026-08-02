@@ -76,7 +76,7 @@ Requêtes prêtes dans la collection Bruno (`Nutrichain.json`).
 | 4 | Réception NON CONFORME — **connecté en `operator`** | `POST /api/logistics/receipts` (`statut_controle: NONCONFORME`) | Lot créé **BLOQUE** (quarantaine HACCP) — l'expédier renvoie 400 |
 | 5a | L'opérateur tente de lever SA propre quarantaine | `POST /api/logistics/batches/:id/release` | **403** : on ne libère pas le lot qu'on a enregistré (séparation des tâches) |
 | 5b | Décision qualité — **se reconnecter en `quality`** | `POST /api/logistics/batches/:id/release` (motif obligatoire) | Levée acceptée et tracée dans l'audit WORM. ⚠️ **Sur le lot créé à l'étape 4, pas celui du seed** — voir l'avertissement sous le tableau |
-| 5c | **Racheter un lot condamné par erreur** — contre-analyse en `quality`, puis levée en `admin.demo` | `POST /api/organization/quality-controls` (`CONFORME`) puis `POST /api/logistics/batches/:id/quality-release` | Sur le **lot bloqué du seed**. Sans contre-analyse : 409. Par le signataire de la non-conformité : 403. Le lot revient à son statut d'**avant** le blocage, pas en stock |
+| 5c | **Racheter un lot condamné par erreur** — en `quality` | `POST /api/organization/quality-controls` (`CONFORME`) puis `POST /api/logistics/batches/:id/quality-release` | Sur le lot du seed **condamné par un contrôle** (les trois autres bloqués le sont par le froid). Sans contre-analyse : 409. Par le signataire de la non-conformité : 403. Le lot revient à `EN_ATTENTE_QC`, son statut d'**avant** le blocage — pas en stock |
 | 6 | Transformation | `POST /api/traceability/transformations` | Lot enfant + généalogie (`GET .../batches/:id/genealogy`) + TransformationEvent LGTIN |
 | 6c | Contrôle qualité de sortie — **connecté en `quality`** | `POST /api/organization/quality-controls` (`resultat: CONFORME`) | Un produit fini sort en `EN_ATTENTE_QC` : sans ce contrôle, il n'est ni transformable ni expédiable — il libère le lot en `EN_STOCK` |
 | 6d | **Palettiser**, puis **ranger** | `POST /api/logistics/logistic-units`, puis `PATCH .../:id/location` | La palette reçoit son **SSCC dès la palettisation**, pas au départ. Un scan de palette, un scan de frigo, et **les lots suivent** |
@@ -104,10 +104,16 @@ même preuve. L'étape 5b doit donc porter sur **le lot créé à l'étape 4**.
 Le lot du seed, lui, illustre le **second canal** : enregistrer une contre-analyse `CONFORME`
 (étape 6c, sur ce lot-là), puis `POST /api/logistics/batches/:id/quality-release` — ou, depuis la
 fiche lot, le bouton « Lever la quarantaine qualité ». Il revient alors à son statut d'AVANT le
-blocage, pas en stock. ⚠️ **La levée doit être signée par quelqu'un d'autre que le signataire de la
-non-conformité** : connectez-vous en `admin.demo` pour lever ce que `quality` a déclaré, sinon
-c'est un 403 (séparation des tâches). La mise au rebut (**8b**) reste l'issue des lots qu'aucune
-contre-analyse ne rachète.
+blocage — ici `EN_ATTENTE_QC`, **pas** `EN_STOCK` : la barrière du contrôle de sortie tient.
+
+⚠️ **La levée est refusée au signataire de la non-conformité** (séparation des tâches). Sur ce
+lot-là, `seed:demo` la fait signer par le compte d'**administration** : la levée passe donc en
+`quality`, et c'est l'administrateur qui obtiendrait le 403. Sur un lot condamné en `quality`,
+c'est l'inverse — d'où l'intérêt de le montrer.
+
+La mise au rebut (**8b**) reste l'issue des lots qu'aucune contre-analyse ne rachète : les trois
+autres lots bloqués du seed le sont par le **froid**, et la levée qualité les refuse en disant
+pourquoi.
 
 **2. L'étape 10 ne montre rien avant l'étape 9.** Le scan public ne sert que les lots `EXPEDIE` ou
 `ALERTE` — délibérément, pour ne pas divulguer le stock interne. Sur une base fraîchement seedée,
