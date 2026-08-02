@@ -76,6 +76,7 @@ Requêtes prêtes dans la collection Bruno (`Nutrichain.json`).
 | 4 | Réception NON CONFORME — **connecté en `operator`** | `POST /api/logistics/receipts` (`statut_controle: NONCONFORME`) | Lot créé **BLOQUE** (quarantaine HACCP) — l'expédier renvoie 400 |
 | 5a | L'opérateur tente de lever SA propre quarantaine | `POST /api/logistics/batches/:id/release` | **403** : on ne libère pas le lot qu'on a enregistré (séparation des tâches) |
 | 5b | Décision qualité — **se reconnecter en `quality`** | `POST /api/logistics/batches/:id/release` (motif obligatoire) | Levée acceptée et tracée dans l'audit WORM. ⚠️ **Sur le lot créé à l'étape 4, pas celui du seed** — voir l'avertissement sous le tableau |
+| 5c | **Racheter un lot condamné par erreur** — contre-analyse en `quality`, puis levée en `admin.demo` | `POST /api/organization/quality-controls` (`CONFORME`) puis `POST /api/logistics/batches/:id/quality-release` | Sur le **lot bloqué du seed**. Sans contre-analyse : 409. Par le signataire de la non-conformité : 403. Le lot revient à son statut d'**avant** le blocage, pas en stock |
 | 6 | Transformation | `POST /api/traceability/transformations` | Lot enfant + généalogie (`GET .../batches/:id/genealogy`) + TransformationEvent LGTIN |
 | 6c | Contrôle qualité de sortie — **connecté en `quality`** | `POST /api/organization/quality-controls` (`resultat: CONFORME`) | Un produit fini sort en `EN_ATTENTE_QC` : sans ce contrôle, il n'est ni transformable ni expédiable — il libère le lot en `EN_STOCK` |
 | 6d | **Palettiser**, puis **ranger** | `POST /api/logistics/logistic-units`, puis `PATCH .../:id/location` | La palette reçoit son **SSCC dès la palettisation**, pas au départ. Un scan de palette, un scan de frigo, et **les lots suivent** |
@@ -90,15 +91,23 @@ Requêtes prêtes dans la collection Bruno (`Nutrichain.json`).
 
 ### ⚠️ Deux pièges, trouvés en répétant le scénario sur une base fraîche
 
-**1. Le lot bloqué que le seed annonce ne se lève PAS.** Sa dernière ligne affiche
-« Lot en quarantaine (contrôle non conforme) : `<uuid>` » — c'est le lot le plus visible, et c'est
-le seul qu'une levée refuse :
+**1. Le lot bloqué que le seed annonce ne se lève pas par le canal FROID.** Sa dernière ligne
+affiche « Lot en quarantaine (contrôle non conforme) : `<uuid>` » — c'est le lot le plus visible, et
+c'est le seul que l'étape 5b refuse :
 
-> `409 — Ce lot a échoué un contrôle qualité : il ne se libère pas par la levée de quarantaine froid.`
+> `409 — Ce lot a échoué un contrôle qualité : il ne se libère pas par la levée de quarantaine
+> froid. Enregistrez la contre-analyse conforme, puis levez la quarantaine qualité.`
 
-C'est délibéré : un échec qualité n'est pas une excursion thermique. L'étape 5b doit donc porter sur
-**le lot créé à l'étape 4**. Le lot du seed, lui, illustre très bien l'étape **8b** : sa seule issue
-est la mise au rebut.
+C'est délibéré : un échec qualité n'est pas une excursion thermique, et les deux n'exigent pas la
+même preuve. L'étape 5b doit donc porter sur **le lot créé à l'étape 4**.
+
+Le lot du seed, lui, illustre le **second canal** : enregistrer une contre-analyse `CONFORME`
+(étape 6c, sur ce lot-là), puis `POST /api/logistics/batches/:id/quality-release` — ou, depuis la
+fiche lot, le bouton « Lever la quarantaine qualité ». Il revient alors à son statut d'AVANT le
+blocage, pas en stock. ⚠️ **La levée doit être signée par quelqu'un d'autre que le signataire de la
+non-conformité** : connectez-vous en `admin.demo` pour lever ce que `quality` a déclaré, sinon
+c'est un 403 (séparation des tâches). La mise au rebut (**8b**) reste l'issue des lots qu'aucune
+contre-analyse ne rachète.
 
 **2. L'étape 10 ne montre rien avant l'étape 9.** Le scan public ne sert que les lots `EXPEDIE` ou
 `ALERTE` — délibérément, pour ne pas divulguer le stock interne. Sur une base fraîchement seedée,
@@ -109,9 +118,10 @@ Scanner avant, c'est un 404 en direct.
 `npm run e2e:quarantine | e2e:recall | e2e:epcis | e2e:iot-alert | e2e:connectors | e2e:sync | e2e:audit-verify | e2e:security`.
 
 Pour les étapes ajoutées depuis : `e2e:logistic-unit` et `e2e:expedier-palette` (palette),
-`e2e:confirmer-livraison` (arrivée), et **`e2e:label-scan`**, qui décode réellement le QR avec un
-décodeur de webcam puis appelle l'adresse trouvée **dans l'image** — c'est lui qui prouve qu'une
-étiquette imprimée est scannable, ce qu'aucun test unitaire ne sait faire.
+`e2e:confirmer-livraison` (arrivée), `e2e:levee-qualite` (étape 5c), et **`e2e:label-scan`**, qui
+décode réellement le QR avec un décodeur de webcam puis appelle l'adresse trouvée **dans l'image** —
+c'est lui qui prouve qu'une étiquette imprimée est scannable, ce qu'aucun test unitaire ne sait
+faire.
 
 ## 6. Sécurité et conformité
 
