@@ -364,6 +364,17 @@ unités. Fermeture : une table de correspondance dans `units.constants.ts`, appl
 **Pas de GS1 DataMatrix ni d'EAN-13 imprimable.** Seul le QR Digital Link est produit. `bwip-js`
 sait générer les deux autres, mais aucune route ne les expose.
 
+**Trois de nos propres gestes n'émettent aucun événement.** Le rappel produit, la mise en
+quarantaine (excursion de température comme non-conformité) et la mise au rebut ne laissent
+qu'un `Batch_Mouvement` et un maillon d'audit. Contrairement aux écarts ci-dessus, il ne s'agit
+pas d'un choix de représentation : ce sont des décisions qui nous appartiennent, et le
+vocabulaire CBV sait les dire (marchandise rappelée, retenue, détruite). Conséquence : un
+partenaire qui lit notre journal voit la marchandise partir et n'apprend jamais qu'elle a été
+rappelée — le rappel n'existe que dans notre historique interne. C'est aussi pourquoi les écrans
+ne présentent plus ces mouvements comme des événements EPCIS (front #83). Fermeture : émettre un
+`ObjectEvent` porteur de la disposition CBV correspondante, dans la transaction qui écrit déjà le
+mouvement — le chemin existe, il est suivi par la réception et par l’expédition.
+
 **Pas de niveau instance (SGTIN).** Décision de conception assumée (§2), pas une dette : la
 traçabilité de l'agroalimentaire de volume s'exerce au lot.
 
