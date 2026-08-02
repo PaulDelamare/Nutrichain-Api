@@ -9,10 +9,12 @@ vi.mock('../../../shared/configs/prismaClient.config', () => ({
     audit_Log: { findMany: vi.fn(), count: vi.fn() },
     qualityControl: { findMany: vi.fn() },
     batch: { findMany: vi.fn() },
-    equipment: { findMany: vi.fn() },
+    equipment: { findMany: vi.fn(), count: vi.fn() },
     batch_Mouvement: { findMany: vi.fn() },
-    supplier: { findMany: vi.fn() },
-    customer: { findMany: vi.fn() },
+    supplier: { findMany: vi.fn(), count: vi.fn() },
+    customer: { findMany: vi.fn(), count: vi.fn() },
+    product: { count: vi.fn() },
+    location: { count: vi.fn() },
     shipment: { findMany: vi.fn(), count: vi.fn() },
     // Forme tableau (lectures paginées comme listShipments) ⇒ Promise.all.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -97,6 +99,19 @@ describe('OrganizationService (façade de lecture pour le front)', () => {
       where: { organization_id: ORG },
       orderBy: { created_at: 'desc' },
     });
+  });
+
+  it('configReferentialCounts : compte les 5 référentiels de l organisation en un appel', async () => {
+    vi.mocked(prisma.location.count).mockResolvedValue(3 as never);
+    vi.mocked(prisma.supplier.count).mockResolvedValue(5 as never);
+    vi.mocked(prisma.customer.count).mockResolvedValue(7 as never);
+    vi.mocked(prisma.product.count).mockResolvedValue(11 as never);
+    vi.mocked(prisma.equipment.count).mockResolvedValue(2 as never);
+
+    const res = await organizationService.configReferentialCounts(ORG);
+
+    expect(res).toEqual({ locations: 3, suppliers: 5, customers: 7, products: 11, equipment: 2 });
+    expect(prisma.supplier.count).toHaveBeenCalledWith({ where: { organization_id: ORG } });
   });
 
   it('listRecalls : borne à la famille RAPPEL, pagine et renvoie { data, pagination }', async () => {

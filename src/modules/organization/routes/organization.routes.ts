@@ -25,6 +25,7 @@ import {
   listLocationsController,
 } from '../controllers/equipment.controller';
 import {
+  configCountsController,
   listAlertsController,
   listRecallsController,
   listAuditLogsController,
@@ -418,6 +419,20 @@ router.get(
   validateLocationQuery,
   listLocationsController
 );
+
+/**
+ * @swagger
+ * /api/organization/config-counts:
+ *   get:
+ *     summary: Compteurs des référentiels (badges d'onglets de la page Configuration)
+ *     tags: [Organisation]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Compteurs par référentiel
+ */
+router.get('/organization/config-counts', sessionAuth(ADMIN_ROLES), configCountsController);
 
 /**
  * Écriture : le plan d'usine (où sont les frigos, les cuves) est une donnée de configuration.

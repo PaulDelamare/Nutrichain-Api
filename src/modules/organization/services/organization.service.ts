@@ -64,6 +64,20 @@ export const organizationService = {
     return { data, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
   },
 
+  // Compteurs des référentiels pour les badges d'onglets de la page Configuration. Un seul appel :
+  // la page ne charge que l'onglet actif, mais chaque badge affiche le total de son référentiel.
+  async configReferentialCounts(organizationId: string) {
+    const where = { organization_id: organizationId };
+    const [locations, suppliers, customers, products, equipment] = await prisma.$transaction([
+      prisma.location.count({ where }),
+      prisma.supplier.count({ where }),
+      prisma.customer.count({ where }),
+      prisma.product.count({ where }),
+      prisma.equipment.count({ where }),
+    ]);
+    return { locations, suppliers, customers, products, equipment };
+  },
+
   async listAlerts(organizationId: string) {
     return prisma.alert.findMany({
       where: { organization_id: organizationId },

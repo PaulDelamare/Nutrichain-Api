@@ -34,6 +34,13 @@ export const listMembersController = catchAsync(
   }
 );
 
+export const configCountsController = catchAsync(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const counts = await organizationService.configReferentialCounts(req.activeOrgId as string);
+    sendSuccess(res, 200, 'Compteurs de configuration récupérés', counts);
+  }
+);
+
 export const listAlertsController = catchAsync(async (req: AuthenticatedRequest, res: Response) => {
   const alerts = await organizationService.listAlerts(req.activeOrgId as string);
   sendSuccess(res, 200, 'Alertes récupérées', alerts);
