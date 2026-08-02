@@ -109,12 +109,51 @@ export const organizationService = {
     return { data, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
   },
 
-  async listAuditLogs(organizationId: string, limit: number) {
-    return prisma.audit_Log.findMany({
-      where: { organization_id: organizationId },
-      orderBy: { horodatage: 'desc' },
-      take: limit,
-    });
+  async listAuditLogs(
+    organizationId: string,
+    options: {
+      page?: number;
+      limit?: number;
+      // Filtres de colonnes appliqués dans la requête. Absents (undefined) ⇒ Prisma les ignore.
+      action?: string;
+      entity?: string;
+      entityId?: string;
+      from?: string;
+      to?: string;
+    } = {}
+  ) {
+    const { page = 1, limit = 20, action, entity, entityId, from, to } = options;
+    const skip = (page - 1) * limit;
+
+    // Créneau sur l'horodatage : bornes `datetime-local` (`YYYY-MM-DDTHH:mm`) validées en amont.
+    let horodatage: { gte?: Date; lte?: Date } | undefined;
+    if (from || to) {
+      horodatage = {};
+      if (from) horodatage.gte = new Date(from);
+      if (to) horodatage.lte = new Date(to);
+    }
+
+    const where: Prisma.Audit_LogWhereInput = {
+      organization_id: organizationId,
+      // `action` et `entity` viennent de selects bornés : correspondance exacte. `entity_id` est une
+      // recherche libre (un UUID complet ne se retrouve pas par erreur dans un autre).
+      action: action || undefined,
+      entity: entity || undefined,
+      entity_id: entityId ? { contains: entityId, mode: 'insensitive' } : undefined,
+      horodatage,
+    };
+
+    const [total, data] = await prisma.$transaction([
+      prisma.audit_Log.count({ where }),
+      prisma.audit_Log.findMany({
+        where,
+        orderBy: { horodatage: 'desc' },
+        skip,
+        take: limit,
+      }),
+    ]);
+
+    return { data, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
   },
 
   async listQualityControls(organizationId: string) {

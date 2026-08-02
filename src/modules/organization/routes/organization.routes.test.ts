@@ -24,7 +24,10 @@ vi.mock('../services/organization.service', () => ({
       data: [{ id: 'a-1', type: 'PRODUCT_RECALL' }],
       pagination: { page: 1, limit: 20, total: 1, totalPages: 1 },
     }),
-    listAuditLogs: vi.fn().mockResolvedValue([]),
+    listAuditLogs: vi.fn().mockResolvedValue({
+      data: [{ id: 1, action: 'CREATE_SHIPMENT' }],
+      pagination: { page: 1, limit: 20, total: 1, totalPages: 1 },
+    }),
     listQualityControls: vi.fn().mockResolvedValue([]),
     listQuarantineBatches: vi.fn().mockResolvedValue([]),
     listEquipment: vi.fn().mockResolvedValue([]),
@@ -142,21 +145,54 @@ describe('Organization routes (façade de lecture front)', () => {
     expect(organizationService.listRecalls).not.toHaveBeenCalled();
   });
 
-  it('GET /organization/audit-logs : le limit validé est transmis, défaut 30 sinon', async () => {
+  it("GET /organization/audit-logs : 200 avec l'enveloppe paginée { data, pagination }", async () => {
     authAs('org-1');
-    const app = buildApp();
 
-    await request(app).get('/api/organization/audit-logs?limit=50');
-    expect(organizationService.listAuditLogs).toHaveBeenCalledWith('org-1', 50);
+    const res = await request(buildApp()).get('/api/organization/audit-logs');
 
-    await request(app).get('/api/organization/audit-logs');
-    expect(organizationService.listAuditLogs).toHaveBeenLastCalledWith('org-1', 30);
+    expect(res.status).toBe(200);
+    expect(res.body.data.data).toEqual([{ id: 1, action: 'CREATE_SHIPMENT' }]);
+    expect(res.body.data.pagination).toMatchObject({ page: 1, limit: 20, total: 1 });
+    expect(organizationService.listAuditLogs).toHaveBeenCalledWith(
+      'org-1',
+      expect.objectContaining({ page: 1, limit: 20 })
+    );
+  });
+
+  it('GET /organization/audit-logs : transmet les filtres de colonnes et le créneau au service', async () => {
+    authAs('org-1');
+
+    const res = await request(buildApp()).get(
+      '/api/organization/audit-logs?action=CREATE_SHIPMENT&entity=Shipment&entity_id=ab12&from=2026-08-01T00:00&to=2026-08-02T12:30&page=2'
+    );
+
+    expect(res.status).toBe(200);
+    expect(organizationService.listAuditLogs).toHaveBeenCalledWith(
+      'org-1',
+      expect.objectContaining({
+        action: 'CREATE_SHIPMENT',
+        entity: 'Shipment',
+        entityId: 'ab12',
+        from: '2026-08-01T00:00',
+        to: '2026-08-02T12:30',
+        page: 2,
+      })
+    );
   });
 
   it('GET /organization/audit-logs : 400 si limit dépasse le plafond de volumétrie (500)', async () => {
     authAs('org-1');
 
     const res = await request(buildApp()).get('/api/organization/audit-logs?limit=9999');
+
+    expect(res.status).toBe(400);
+    expect(organizationService.listAuditLogs).not.toHaveBeenCalled();
+  });
+
+  it('GET /organization/audit-logs : 400 sur un créneau malformé (from non datetime-local)', async () => {
+    authAs('org-1');
+
+    const res = await request(buildApp()).get('/api/organization/audit-logs?from=2026-08-01');
 
     expect(res.status).toBe(400);
     expect(organizationService.listAuditLogs).not.toHaveBeenCalled();

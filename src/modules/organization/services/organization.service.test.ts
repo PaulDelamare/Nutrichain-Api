@@ -6,7 +6,7 @@ vi.mock('../../../shared/configs/prismaClient.config', () => ({
   prisma: {
     member: { findMany: vi.fn(), count: vi.fn() },
     alert: { findMany: vi.fn(), count: vi.fn() },
-    audit_Log: { findMany: vi.fn() },
+    audit_Log: { findMany: vi.fn(), count: vi.fn() },
     qualityControl: { findMany: vi.fn() },
     batch: { findMany: vi.fn() },
     equipment: { findMany: vi.fn() },
@@ -149,17 +149,55 @@ describe('OrganizationService (façade de lecture pour le front)', () => {
     );
   });
 
-  it('listAuditLogs : cloisonné, limité, du plus récent au plus ancien', async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    vi.mocked(prisma.audit_Log.findMany).mockResolvedValue([] as any);
+  it('listAuditLogs : cloisonné, du plus récent au plus ancien, pagine et renvoie { data, pagination }', async () => {
+    vi.mocked(prisma.audit_Log.count).mockResolvedValue(42 as never);
+    vi.mocked(prisma.audit_Log.findMany).mockResolvedValue([] as never);
 
-    await organizationService.listAuditLogs(ORG, 50);
+    const res = await organizationService.listAuditLogs(ORG, { page: 3, limit: 10 });
 
-    expect(prisma.audit_Log.findMany).toHaveBeenCalledWith({
-      where: { organization_id: ORG },
-      orderBy: { horodatage: 'desc' },
-      take: 50,
+    expect(prisma.audit_Log.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ organization_id: ORG }),
+        orderBy: { horodatage: 'desc' },
+        skip: 20,
+        take: 10,
+      })
+    );
+    expect(res.pagination).toEqual({ page: 3, limit: 10, total: 42, totalPages: 5 });
+  });
+
+  it('listAuditLogs : filtre par action/entité (exact) et identifiant (contains insensible)', async () => {
+    vi.mocked(prisma.audit_Log.count).mockResolvedValue(0 as never);
+    vi.mocked(prisma.audit_Log.findMany).mockResolvedValue([] as never);
+
+    await organizationService.listAuditLogs(ORG, {
+      action: 'CREATE_SHIPMENT',
+      entity: 'Shipment',
+      entityId: 'ab12',
     });
+
+    expect(prisma.audit_Log.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          action: 'CREATE_SHIPMENT',
+          entity: 'Shipment',
+          entity_id: { contains: 'ab12', mode: 'insensitive' },
+        }),
+      })
+    );
+  });
+
+  it('listAuditLogs : borne le créneau [from, to] sur horodatage', async () => {
+    vi.mocked(prisma.audit_Log.count).mockResolvedValue(0 as never);
+    vi.mocked(prisma.audit_Log.findMany).mockResolvedValue([] as never);
+
+    await organizationService.listAuditLogs(ORG, { from: '2026-08-01T00:00', to: '2026-08-02T12:30' });
+
+    const where = vi.mocked(prisma.audit_Log.findMany).mock.calls.at(-1)?.[0]?.where as unknown as {
+      horodatage?: { gte: Date; lte: Date };
+    };
+    expect(where.horodatage?.gte.getTime()).toBe(new Date('2026-08-01T00:00').getTime());
+    expect(where.horodatage?.lte.getTime()).toBe(new Date('2026-08-02T12:30').getTime());
   });
 
   it('listQualityControls : cloisonné, lot et produit joints (forme attendue par le front)', async () => {
