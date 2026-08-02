@@ -97,10 +97,23 @@ export const listReceiptsController = catchAsync(
   async (req: AuthenticatedRequest, res: Response) => {
     const activeOrgId = req.activeOrgId as string;
     // Bornés en amont par `validateReceiptQuery` : ni `NaN`, ni page négative, ni limite illimitée.
-    const { page = RECEIPT_PAGE_DEFAULTS.page, limit = RECEIPT_PAGE_DEFAULTS.limit } =
-      req.validatedReceiptQuery ?? {};
+    const {
+      page = RECEIPT_PAGE_DEFAULTS.page,
+      limit = RECEIPT_PAGE_DEFAULTS.limit,
+      ref,
+      fournisseur,
+      statut,
+      date,
+    } = req.validatedReceiptQuery ?? {};
 
-    const result = await receiptService.listReceipts(activeOrgId, page, limit);
+    const result = await receiptService.listReceipts(activeOrgId, {
+      page,
+      limit,
+      ref,
+      fournisseur,
+      statut,
+      date,
+    });
     sendSuccess(res, 200, 'Réceptions récupérées', result);
   }
 );

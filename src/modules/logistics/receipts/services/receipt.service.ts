@@ -309,13 +309,43 @@ export const receiptService = {
   /**
    * Lister les réceptions filtrées par organisation
    */
-  async listReceipts(activeOrgId: string, page = 1, limit = 20) {
+  async listReceipts(
+    activeOrgId: string,
+    options: {
+      page?: number;
+      limit?: number;
+      // Filtres de colonnes appliqués dans la requête (et non plus sur la page reçue côté front) :
+      // chacun restreint sur TOUTE l'organisation. Absents (undefined) ⇒ Prisma les ignore.
+      ref?: string;
+      fournisseur?: string;
+      statut?: string;
+      date?: string;
+    } = {}
+  ) {
+    const { page = 1, limit = 20, ref, fournisseur, statut, date } = options;
     const skip = (page - 1) * limit;
 
+    // Filtre « un jour » : borne [jour 00:00 UTC, lendemain 00:00 UTC[. `date` est validée `YYYY-MM-DD`.
+    let dateReception: { gte: Date; lt: Date } | undefined;
+    if (date) {
+      const start = new Date(`${date}T00:00:00.000Z`);
+      const end = new Date(start);
+      end.setUTCDate(end.getUTCDate() + 1);
+      dateReception = { gte: start, lt: end };
+    }
+
+    const where: Prisma.ReceiptWhereInput = {
+      organization_id: activeOrgId,
+      shipment_id: ref ? { contains: ref, mode: 'insensitive' } : undefined,
+      id_fournisseur: fournisseur || undefined,
+      statut_controle: statut || undefined,
+      date_reception: dateReception,
+    };
+
     const [total, receipts] = await prisma.$transaction([
-      prisma.receipt.count({ where: { organization_id: activeOrgId } }),
+      prisma.receipt.count({ where }),
       prisma.receipt.findMany({
-        where: { organization_id: activeOrgId },
+        where,
         include: { fournisseur: true },
         orderBy: { date_reception: 'desc' },
         skip,
