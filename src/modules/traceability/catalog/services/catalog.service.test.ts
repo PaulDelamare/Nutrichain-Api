@@ -167,5 +167,86 @@ describe('CatalogService', () => {
       const args = vi.mocked(prisma.batch.findMany).mock.calls[0][0];
       expect(args?.where?.organization_id).toBe('org-1');
     });
+
+    /**
+     * Les filtres de colonnes restreignent dans la requête (ET), sur TOUTE l'organisation — et non
+     * plus sur la page reçue côté front, où un lot correspondant en page 2+ échappait au filtre.
+     */
+    describe('filtres de colonnes', () => {
+      it('filtre par statut (égalité exacte)', async () => {
+        mockBatchPage(0);
+        await catalogService.getAllBatches('org-1', { statut: 'BLOQUE' });
+        expect(prisma.batch.findMany).toHaveBeenCalledWith(
+          expect.objectContaining({ where: expect.objectContaining({ statut: 'BLOQUE' }) })
+        );
+      });
+
+      it('filtre par produit (id_produit)', async () => {
+        mockBatchPage(0);
+        await catalogService.getAllBatches('org-1', { produit: 'prod-1' });
+        expect(prisma.batch.findMany).toHaveBeenCalledWith(
+          expect.objectContaining({ where: expect.objectContaining({ id_produit: 'prod-1' }) })
+        );
+      });
+
+      it('filtre par site via l emplacement du matériel qui stocke le lot', async () => {
+        mockBatchPage(0);
+        await catalogService.getAllBatches('org-1', { site: 'loc-1' });
+        expect(prisma.batch.findMany).toHaveBeenCalledWith(
+          expect.objectContaining({ where: expect.objectContaining({ materiel: { id_lieu: 'loc-1' } }) })
+        );
+      });
+
+      it('filtre par numéro de lot (contains, insensible à la casse)', async () => {
+        mockBatchPage(0);
+        await catalogService.getAllBatches('org-1', { lot: '000201' });
+        expect(prisma.batch.findMany).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: expect.objectContaining({
+              lot_number: { contains: '000201', mode: 'insensitive' },
+            }),
+          })
+        );
+      });
+
+      it('filtre par GTIN (contains sur le produit)', async () => {
+        mockBatchPage(0);
+        await catalogService.getAllBatches('org-1', { gtin: '3042' });
+        expect(prisma.batch.findMany).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: expect.objectContaining({
+              produit: { code_gtin: { contains: '3042', mode: 'insensitive' } },
+            }),
+          })
+        );
+      });
+
+      it('ignore un filtre vide (produit: "") plutôt que de filtrer sur une chaîne vide', async () => {
+        mockBatchPage(0);
+        await catalogService.getAllBatches('org-1', { produit: '' });
+        const args = vi.mocked(prisma.batch.findMany).mock.calls[0][0];
+        expect(args?.where?.id_produit).toBeUndefined();
+      });
+
+      it('combine plusieurs filtres, et compte le total sur le MÊME where', async () => {
+        mockBatchPage(0);
+        await catalogService.getAllBatches('org-1', {
+          statut: 'EN_STOCK',
+          produit: 'prod-1',
+          site: 'loc-1',
+        });
+        const findArgs = vi.mocked(prisma.batch.findMany).mock.calls[0][0];
+        const countArgs = vi.mocked(prisma.batch.count).mock.calls[0][0];
+        expect(findArgs?.where).toEqual(
+          expect.objectContaining({
+            organization_id: 'org-1',
+            statut: 'EN_STOCK',
+            id_produit: 'prod-1',
+            materiel: { id_lieu: 'loc-1' },
+          })
+        );
+        expect(countArgs?.where).toEqual(findArgs?.where);
+      });
+    });
   });
 });

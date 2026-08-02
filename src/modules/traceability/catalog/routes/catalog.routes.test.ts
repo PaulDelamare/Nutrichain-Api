@@ -163,4 +163,41 @@ describe('Catalog Routes Integration', () => {
       );
     });
   });
+
+  /**
+   * Verrouille le CÂBLAGE des filtres de colonnes : ils doivent atteindre le service (donc la
+   * requête Prisma), et un statut hors énumération est une requête malformée (400), pas un filtre
+   * muet. Un test de schéma isolé resterait vert si l'on débranchait le middleware de la route.
+   */
+  describe('GET /api/traceability/batches — filtres de colonnes', () => {
+    it('transmet statut/produit/site/lot/gtin au service', async () => {
+      vi.mocked(catalogService.getAllBatches).mockResolvedValue({
+        data: [],
+        pagination: { page: 1, limit: 100, total: 0, totalPages: 0 },
+      } as never);
+
+      const res = await request(app).get(
+        '/api/traceability/batches?statut=BLOQUE&produit=prod-1&site=loc-1&lot=000201&gtin=3042'
+      );
+
+      expect(res.status).toBe(200);
+      expect(catalogService.getAllBatches).toHaveBeenCalledWith(
+        'org-123',
+        expect.objectContaining({
+          statut: 'BLOQUE',
+          produit: 'prod-1',
+          site: 'loc-1',
+          lot: '000201',
+          gtin: '3042',
+        })
+      );
+    });
+
+    it('refuse un statut hors énumération en 400 sans atteindre le service', async () => {
+      const res = await request(app).get('/api/traceability/batches?statut=PAS_UN_STATUT');
+
+      expect(res.status).toBe(400);
+      expect(catalogService.getAllBatches).not.toHaveBeenCalled();
+    });
+  });
 });

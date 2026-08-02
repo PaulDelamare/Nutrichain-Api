@@ -32,6 +32,11 @@ export const getBatches = catchAsync(async (req: AuthenticatedRequest, res: Resp
     q,
     page = CATALOG_PAGE_DEFAULTS.page,
     limit = CATALOG_PAGE_DEFAULTS.limit,
+    statut,
+    produit,
+    site,
+    lot,
+    gtin,
   } = req.validatedCatalogQuery ?? {};
 
   if (!activeOrgId) {
@@ -45,6 +50,11 @@ export const getBatches = catchAsync(async (req: AuthenticatedRequest, res: Resp
     search: q,
     page,
     limit,
+    statut,
+    produit,
+    site,
+    lot,
+    gtin,
     revealAuthor,
   });
   sendSuccess(res, 200, 'Lots récupérés avec succès', batches);
