@@ -15,3 +15,12 @@ export const ALERT_NOT_FOUND_MSG = 'Alerte introuvable ou accès refusé.';
  * mouvements `RAPPEL` : ses lots ne se consultent pas par le même canal.
  */
 export const COLD_CHAIN_ALERT_TYPE = 'TEMP_EXCURSION';
+
+/**
+ * Types d'alerte qui matérialisent un RAPPEL produit, tels qu'écrits par `recall.service.ts` :
+ * `PRODUCT_RECALL` (déclenchement) et `RECALL_DEPTH_SATURATION` (descendance possiblement
+ * incomplète). `RAPPEL` est conservé pour d'anciennes lignes. C'est l'ensemble que la façade de
+ * lecture des rappels filtre côté base — la page ne parcourt plus toutes les alertes pour en
+ * extraire les rappels côté front.
+ */
+export const RECALL_ALERT_TYPES = ['PRODUCT_RECALL', 'RAPPEL', 'RECALL_DEPTH_SATURATION'] as const;

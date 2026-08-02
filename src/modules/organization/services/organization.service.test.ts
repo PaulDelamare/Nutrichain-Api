@@ -5,7 +5,7 @@ import { prisma } from '../../../shared/configs/prismaClient.config';
 vi.mock('../../../shared/configs/prismaClient.config', () => ({
   prisma: {
     member: { findMany: vi.fn(), count: vi.fn() },
-    alert: { findMany: vi.fn() },
+    alert: { findMany: vi.fn(), count: vi.fn() },
     audit_Log: { findMany: vi.fn() },
     qualityControl: { findMany: vi.fn() },
     batch: { findMany: vi.fn() },
@@ -97,6 +97,56 @@ describe('OrganizationService (façade de lecture pour le front)', () => {
       where: { organization_id: ORG },
       orderBy: { created_at: 'desc' },
     });
+  });
+
+  it('listRecalls : borne à la famille RAPPEL, pagine et renvoie { data, pagination }', async () => {
+    vi.mocked(prisma.alert.count).mockResolvedValue(42 as never);
+    vi.mocked(prisma.alert.findMany).mockResolvedValue([] as never);
+
+    const res = await organizationService.listRecalls(ORG, { page: 3, limit: 10 });
+
+    expect(prisma.alert.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          organization_id: ORG,
+          type: { in: ['PRODUCT_RECALL', 'RAPPEL', 'RECALL_DEPTH_SATURATION'] },
+        }),
+        orderBy: { created_at: 'desc' },
+        skip: 20,
+        take: 10,
+      })
+    );
+    expect(res.pagination).toEqual({ page: 3, limit: 10, total: 42, totalPages: 5 });
+  });
+
+  it('listRecalls : `en_cours` = ACTIVE, `cloture` = tout autre statut', async () => {
+    vi.mocked(prisma.alert.count).mockResolvedValue(0 as never);
+    vi.mocked(prisma.alert.findMany).mockResolvedValue([] as never);
+
+    await organizationService.listRecalls(ORG, { statut: 'en_cours' });
+    expect(
+      (vi.mocked(prisma.alert.findMany).mock.calls.at(-1)?.[0]?.where as { statut?: unknown }).statut
+    ).toBe('ACTIVE');
+
+    await organizationService.listRecalls(ORG, { statut: 'cloture' });
+    expect(
+      (vi.mocked(prisma.alert.findMany).mock.calls.at(-1)?.[0]?.where as { statut?: unknown }).statut
+    ).toEqual({ not: 'ACTIVE' });
+  });
+
+  it('listRecalls : recherche libre `q` sur le message (contains insensible)', async () => {
+    vi.mocked(prisma.alert.count).mockResolvedValue(0 as never);
+    vi.mocked(prisma.alert.findMany).mockResolvedValue([] as never);
+
+    await organizationService.listRecalls(ORG, { q: 'listeria' });
+
+    expect(prisma.alert.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          message: { contains: 'listeria', mode: 'insensitive' },
+        }),
+      })
+    );
   });
 
   it('listAuditLogs : cloisonné, limité, du plus récent au plus ancien', async () => {

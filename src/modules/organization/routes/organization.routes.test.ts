@@ -20,6 +20,10 @@ vi.mock('../services/organization.service', () => ({
       pagination: { page: 1, limit: 20, total: 1, totalPages: 1 },
     }),
     listAlerts: vi.fn().mockResolvedValue([]),
+    listRecalls: vi.fn().mockResolvedValue({
+      data: [{ id: 'a-1', type: 'PRODUCT_RECALL' }],
+      pagination: { page: 1, limit: 20, total: 1, totalPages: 1 },
+    }),
     listAuditLogs: vi.fn().mockResolvedValue([]),
     listQualityControls: vi.fn().mockResolvedValue([]),
     listQuarantineBatches: vi.fn().mockResolvedValue([]),
@@ -99,6 +103,43 @@ describe('Organization routes (façade de lecture front)', () => {
 
     expect(res.status).toBe(400);
     expect(organizationService.listMembers).not.toHaveBeenCalled();
+  });
+
+  it("GET /organization/recalls : 200 avec l'enveloppe paginée { data, pagination }", async () => {
+    authAs('org-1');
+
+    const res = await request(buildApp()).get('/api/organization/recalls');
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.data).toEqual([{ id: 'a-1', type: 'PRODUCT_RECALL' }]);
+    expect(res.body.data.pagination).toMatchObject({ page: 1, limit: 20, total: 1 });
+    expect(organizationService.listRecalls).toHaveBeenCalledWith(
+      'org-1',
+      expect.objectContaining({ page: 1, limit: 20 })
+    );
+  });
+
+  it('GET /organization/recalls : transmet la recherche et le statut au service', async () => {
+    authAs('org-1');
+
+    const res = await request(buildApp()).get(
+      '/api/organization/recalls?q=listeria&statut=cloture&page=2'
+    );
+
+    expect(res.status).toBe(200);
+    expect(organizationService.listRecalls).toHaveBeenCalledWith(
+      'org-1',
+      expect.objectContaining({ q: 'listeria', statut: 'cloture', page: 2 })
+    );
+  });
+
+  it('GET /organization/recalls : 400 sur un statut hors énumération, sans atteindre le service', async () => {
+    authAs('org-1');
+
+    const res = await request(buildApp()).get('/api/organization/recalls?statut=peut-etre');
+
+    expect(res.status).toBe(400);
+    expect(organizationService.listRecalls).not.toHaveBeenCalled();
   });
 
   it('GET /organization/audit-logs : le limit validé est transmis, défaut 30 sinon', async () => {

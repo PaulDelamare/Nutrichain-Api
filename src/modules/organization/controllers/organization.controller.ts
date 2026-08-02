@@ -10,6 +10,7 @@ import {
 } from '../../identity/constants/roles.constants';
 import { SHIPMENT_PAGE_DEFAULTS } from '../middlewares/shipmentQuery.schema';
 import { MEMBER_PAGE_DEFAULTS } from '../middlewares/memberQuery.schema';
+import { RECALL_PAGE_DEFAULTS } from '../middlewares/recallQuery.schema';
 
 const DEFAULT_AUDIT_LOGS_LIMIT = 30;
 
@@ -38,6 +39,25 @@ export const listAlertsController = catchAsync(async (req: AuthenticatedRequest,
   const alerts = await organizationService.listAlerts(req.activeOrgId as string);
   sendSuccess(res, 200, 'Alertes récupérées', alerts);
 });
+
+export const listRecallsController = catchAsync(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const {
+      page = RECALL_PAGE_DEFAULTS.page,
+      limit = RECALL_PAGE_DEFAULTS.limit,
+      q,
+      statut,
+    } = req.validatedRecallQuery ?? {};
+
+    const recalls = await organizationService.listRecalls(req.activeOrgId as string, {
+      page,
+      limit,
+      q,
+      statut,
+    });
+    sendSuccess(res, 200, 'Rappels récupérés', recalls);
+  }
+);
 
 export const listAuditLogsController = catchAsync(
   async (req: AuthenticatedRequest, res: Response) => {

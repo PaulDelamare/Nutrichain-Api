@@ -10,6 +10,7 @@ import {
 import { validateOrganizationQuery } from '../middlewares/validateOrganizationQuery.middleware';
 import { validateShipmentQuery } from '../middlewares/validateShipmentQuery.middleware';
 import { validateMemberQuery } from '../middlewares/validateMemberQuery.middleware';
+import { validateRecallQuery } from '../middlewares/validateRecallQuery.middleware';
 import { validateCreateEquipment } from '../middlewares/validateEquipment.middleware';
 import { validateCreateQualityControl } from '../middlewares/validateQualityControl.middleware';
 import {
@@ -23,6 +24,7 @@ import {
 } from '../controllers/equipment.controller';
 import {
   listAlertsController,
+  listRecallsController,
   listAuditLogsController,
   listCustomersController,
   listEquipmentController,
@@ -131,6 +133,31 @@ router.get(
  *         description: Aucune session
  */
 router.get('/organization/alerts', sessionAuth(READ_ROLES), listAlertsController);
+
+/**
+ * @swagger
+ * /api/organization/recalls:
+ *   get:
+ *     summary: Lister les rappels produits (alertes de la famille RAPPEL), paginés et filtrés
+ *     description: |
+ *       Façade de lecture dédiée à la page Rappels : ne renvoie que les alertes de rappel
+ *       (`PRODUCT_RECALL`, `RECALL_DEPTH_SATURATION`, `RAPPEL`), filtrables par statut
+ *       (`en_cours`/`cloture`) et par recherche libre sur le message, du plus récent au plus ancien.
+ *     tags: [Organisation]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Rappels paginés
+ *       401:
+ *         description: Aucune session
+ */
+router.get(
+  '/organization/recalls',
+  sessionAuth(READ_ROLES),
+  validateRecallQuery,
+  listRecallsController
+);
 
 /**
  * @swagger

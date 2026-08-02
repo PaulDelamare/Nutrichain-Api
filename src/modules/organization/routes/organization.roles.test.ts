@@ -22,6 +22,7 @@ const ok = (_req: express.Request, res: express.Response) => res.status(200).end
 vi.mock('../controllers/organization.controller', () => ({
   listMembersController: ok,
   listAlertsController: ok,
+  listRecallsController: ok,
   listAuditLogsController: ok,
   listCustomersController: ok,
   listEquipmentController: ok,
