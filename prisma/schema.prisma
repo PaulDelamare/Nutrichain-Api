@@ -31,6 +31,7 @@ model User {
   idempotencyKeys    IdempotencyKey[]
   platformAdmin      PlatformAdmin?
   rebuts             ScrapRecord[]
+  retraits           Withdrawal[]
   unites_logistiques Logistic_Unit[]   @relation("LogisticUnitCreatedBy")
   unites_ouvertes    Logistic_Unit[]   @relation("LogisticUnitOpenedBy")
 
@@ -147,6 +148,7 @@ model Organization {
   EPCIS_Event        EPCIS_Event[]
   IotGateway         IotGateway[]
   ScrapRecord        ScrapRecord[]
+  Withdrawal         Withdrawal[]
   Logistic_Unit      Logistic_Unit[]
 
   @@unique([slug])
@@ -362,6 +364,7 @@ model Batch {
   liaisons                Liaison_Shipment[]
   mouvements              Batch_Mouvement[]
   rebut                   ScrapRecord?
+  retraits                Withdrawal[]
   contenus_palette        Logistic_Unit_Content[]
 
   @@unique([organization_id, lot_number])
@@ -385,6 +388,46 @@ model ScrapRecord {
   created_at      DateTime     @default(now())
 
   @@index([organization_id])
+}
+
+/// Retrait d'un lot du rayon d'un magasin.
+///
+/// Distinct de `ScrapRecord` — décision métier : détruire à l'usine et retirer du rayon ne sont
+/// pas le même geste, et ne se consignent pas pareil. `ScrapRecord` porte d'ailleurs
+/// `id_lot @unique` : un seul rebut par lot, donc structurellement incapable de tracer les N
+/// magasins d'un rappel.
+///
+/// AUCUNE contrainte d'unicité ici, et c'est le point : le geste est RÉPÉTABLE. Un magasin
+/// retire 40 le soir, 10 le lendemain en vidant sa réserve. Une clé unique sur (client, lot)
+/// jetterait la seconde déclaration en silence.
+///
+/// La clé métier est (client, lot), jamais la ligne d'expédition : l'étiquette encode le produit
+/// et le lot (LGTIN), donc au scan le magasin ignore de quelle livraison vient la marchandise —
+/// elle est fongible en réserve.
+model Withdrawal {
+  id                 String       @id @default(uuid())
+  /// Dénormalisé comme sur ScrapRecord : le cloisonnement se filtre sans jointure.
+  organization_id    String
+  organization       Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  id_client          String
+  client             Customer     @relation(fields: [id_client], references: [id], onDelete: Restrict)
+  id_lot             String
+  lot                Batch        @relation(fields: [id_lot], references: [id], onDelete: Restrict)
+  quantite           Decimal
+  /// Reprise de l'unité du lot, jamais du corps de la requête : la ligne d'expédition n'en a
+  /// jamais d'autre, et l'accepter en entrée permettait de déclarer 500 g contre un plafond en kg.
+  unite              String
+  motif              String
+  /// Qui déclare, pris dans la SESSION. Un libellé libre laisserait sceller « retiré par Super U »
+  /// dans le journal WORM par n'importe qui.
+  retire_par         String
+  user               User         @relation(fields: [retire_par], references: [id])
+  /// Interlocuteur du magasin, RAPPORTÉ : il n'a pas de compte et ne signe rien.
+  constate_aupres_de String?
+  created_at         DateTime     @default(now())
+
+  @@index([organization_id])
+  @@index([id_lot, id_client])
 }
 
 model Transformation {
@@ -552,6 +595,7 @@ model Customer {
   notes             String?
   external_ref      String? // identifiant du client dans l'ERP source (clé d'idempotence d'import)
   // Désactivation douce : un client référencé par des expéditions ne peut être supprimé.
+  retraits          Withdrawal[]
   is_active         Boolean      @default(true)
   expeditions       Shipment[]
 
