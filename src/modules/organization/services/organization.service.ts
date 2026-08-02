@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '../../../shared/configs/prismaClient.config';
 import { BATCH_STATUSES } from '../../logistics/constants/logistics.constants';
 
@@ -127,25 +128,64 @@ export const organizationService = {
     });
   },
 
-  async listShipments(organizationId: string) {
-    return prisma.shipment.findMany({
-      where: { organization_id: organizationId },
-      // Projection EXPLICITE, et non l'entité entière : `delivered_by` désigne une personne, et
-      // cette liste est ouverte à tous les rôles de lecture. Le dépôt a déjà tranché ailleurs que
-      // l'identité de l'auteur d'un geste relève de `PERSONAL_DATA_ROLES` — un `findMany` sans
-      // `select` l'aurait exposée par le simple ajout d'une colonne.
-      select: {
-        id: true,
-        shipment_id: true,
-        date_envoi: true,
-        transporteur: true,
-        destination_adresse: true,
-        statut_livraison: true,
-        date_livraison: true,
-        client: { select: { nom_enseigne: true } },
-        liaisons: { select: { lot: { select: { id: true } } } },
-      },
-      orderBy: { date_envoi: 'desc' },
-    });
+  async listShipments(
+    organizationId: string,
+    options: {
+      page?: number;
+      limit?: number;
+      // Filtres de colonnes appliqués dans la requête (et non plus sur la page reçue côté front) :
+      // chacun restreint sur TOUTE l'organisation. Absents (undefined) ⇒ Prisma les ignore.
+      ref?: string;
+      client?: string;
+      statut?: string;
+      date?: string;
+    } = {}
+  ) {
+    const { page = 1, limit = 20, ref, client, statut, date } = options;
+    const skip = (page - 1) * limit;
+
+    // Filtre « un jour » : borne [jour 00:00 UTC, lendemain 00:00 UTC[. `date` est validée `YYYY-MM-DD`.
+    let dateEnvoi: { gte: Date; lt: Date } | undefined;
+    if (date) {
+      const start = new Date(`${date}T00:00:00.000Z`);
+      const end = new Date(start);
+      end.setUTCDate(end.getUTCDate() + 1);
+      dateEnvoi = { gte: start, lt: end };
+    }
+
+    const where: Prisma.ShipmentWhereInput = {
+      organization_id: organizationId,
+      shipment_id: ref ? { contains: ref, mode: 'insensitive' } : undefined,
+      id_client: client || undefined,
+      statut_livraison: statut || undefined,
+      date_envoi: dateEnvoi,
+    };
+
+    const [total, data] = await prisma.$transaction([
+      prisma.shipment.count({ where }),
+      prisma.shipment.findMany({
+        where,
+        // Projection EXPLICITE, et non l'entité entière : `delivered_by` désigne une personne, et
+        // cette liste est ouverte à tous les rôles de lecture. Le dépôt a déjà tranché ailleurs que
+        // l'identité de l'auteur d'un geste relève de `PERSONAL_DATA_ROLES` — un `findMany` sans
+        // `select` l'aurait exposée par le simple ajout d'une colonne.
+        select: {
+          id: true,
+          shipment_id: true,
+          date_envoi: true,
+          transporteur: true,
+          destination_adresse: true,
+          statut_livraison: true,
+          date_livraison: true,
+          client: { select: { nom_enseigne: true } },
+          liaisons: { select: { lot: { select: { id: true } } } },
+        },
+        orderBy: { date_envoi: 'desc' },
+        skip,
+        take: limit,
+      }),
+    ]);
+
+    return { data, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
   },
 };
