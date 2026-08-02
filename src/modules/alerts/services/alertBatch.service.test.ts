@@ -9,10 +9,14 @@ vi.mock('../../../shared/configs/prismaClient.config', () => ({
     batch_Mouvement: {
       findMany: vi.fn(),
     },
+    qualityControl: {
+      findMany: vi.fn(),
+    },
   },
 }));
 
 const findMany = vi.mocked(prisma.batch_Mouvement.findMany);
+const findVerdicts = vi.mocked(prisma.qualityControl.findMany);
 
 const ALERT_ID = 'alert-froid-1';
 const OTHER_ALERT = 'alert-froid-2';
@@ -53,16 +57,22 @@ const lift = (id: number, lotId: string) => ({
   type_action: 'LEVEE_QUARANTAINE',
   metadata: {},
 });
-const control = (id: number, lotId: string, result: 'CONFORME' | 'NON_CONFORME') => ({
-  id,
+/**
+ * Un verdict qualité. `day` porte la chronologie : c'est `date_test` qui dit si une contre-analyse
+ * dément la non-conformité, et non l'ordre d'insertion.
+ */
+const verdict = (lotId: string, resultat: 'CONFORME' | 'NON_CONFORME', day: number) => ({
+  id: `qc-${lotId}-${day}`,
   id_lot: lotId,
-  type_action: 'CONTROLE_QUALITE',
-  metadata: { resultat: result },
+  resultat,
+  id_user_labo: 'user-labo',
+  date_test: new Date(`2026-08-${String(day).padStart(2, '0')}`),
 });
 
-// 1re requête : les lots candidats. 2e : leur historique de blocage.
-const mockQueries = (candidates: unknown[], history: unknown[] = []) => {
+// 1re requête : les lots candidats. 2e : leur historique d'isolement. 3e : leurs verdicts qualité.
+const mockQueries = (candidates: unknown[], history: unknown[] = [], verdicts: unknown[] = []) => {
   findMany.mockResolvedValueOnce(candidates as never).mockResolvedValueOnce(history as never);
+  findVerdicts.mockResolvedValueOnce(verdicts as never);
 };
 
 beforeEach(() => {
@@ -145,18 +155,19 @@ describe('alertBatchService.listBatchesIsolatedByAlert', () => {
   it('EXCLUT un lot dont notre isolement a été levé et qui est bloqué pour autre chose depuis', async () => {
     mockQueries(
       [candidate('lot-a', 'LOT-A')],
-      [isolation(1, 'lot-a'), lift(2, 'lot-a'), control(3, 'lot-a', 'NON_CONFORME')]
+      [isolation(1, 'lot-a'), lift(2, 'lot-a')],
+      [verdict('lot-a', 'NON_CONFORME', 3)]
     );
 
     expect(await alertBatchService.listBatchesIsolatedByAlert(alert)).toEqual([]);
   });
 
   it('REFUSE de lever un lot déclaré non conforme APRÈS son isolement', async () => {
-    // `nextStatus` laisse un lot déjà BLOQUE inchangé quand le contrôle est non conforme — mais il
-    // ÉCRIT le mouvement. Le lot est isolé par le froid ET impropre : réparer le frigo n'y change rien.
+    // Le lot est isolé par le froid ET impropre : réparer le frigo n'y change rien.
     mockQueries(
       [candidate('lot-a', 'LOT-A')],
-      [isolation(1, 'lot-a'), control(2, 'lot-a', 'NON_CONFORME')]
+      [isolation(1, 'lot-a')],
+      [verdict('lot-a', 'NON_CONFORME', 2)]
     );
 
     const [batch] = await alertBatchService.listBatchesIsolatedByAlert(alert);
@@ -165,12 +176,30 @@ describe('alertBatchService.listBatchesIsolatedByAlert', () => {
     expect(batch!.motif_blocage).toBe('CONTROLE_NON_CONFORME');
   });
 
-  it("IGNORE une non-conformité ANTÉRIEURE à l'isolement : elle a déjà été tranchée", async () => {
-    // Le lot avait été bloqué par un contrôle, puis levé, remis en stock — et il subit l'excursion.
-    // Le condamner sur cette vieille non-conformité le bloquerait pour toujours.
+  /**
+   * Une non-conformité ANTÉRIEURE à l'isolement condamne le lot comme une autre tant qu'aucune
+   * contre-analyse ne la dément. L'écran annonçait « levable » dans ce cas, alors que la levée
+   * froid, elle, refusait : il promettait une action que l'API refuse. C'est l'écran qui mentait.
+   */
+  it("condamne sur une non-conformité non démentie, même ANTÉRIEURE à l'isolement", async () => {
     mockQueries(
       [candidate('lot-a', 'LOT-A')],
-      [control(1, 'lot-a', 'NON_CONFORME'), lift(2, 'lot-a'), isolation(3, 'lot-a')]
+      [lift(2, 'lot-a'), isolation(3, 'lot-a')],
+      [verdict('lot-a', 'NON_CONFORME', 1)]
+    );
+
+    const [batch] = await alertBatchService.listBatchesIsolatedByAlert(alert);
+
+    expect(batch!.levable).toBe(false);
+    expect(batch!.motif_blocage).toBe('CONTROLE_NON_CONFORME');
+  });
+
+  /** La contre-analyse conforme rend le lot levable — c'est ce qui débloque le lot condamné. */
+  it('une contre-analyse conforme POSTÉRIEURE rend le lot levable', async () => {
+    mockQueries(
+      [candidate('lot-a', 'LOT-A')],
+      [isolation(1, 'lot-a')],
+      [verdict('lot-a', 'NON_CONFORME', 2), verdict('lot-a', 'CONFORME', 3)]
     );
 
     const [batch] = await alertBatchService.listBatchesIsolatedByAlert(alert);
@@ -179,21 +208,24 @@ describe('alertBatchService.listBatchesIsolatedByAlert', () => {
     expect(batch!.motif_blocage).toBeNull();
   });
 
-  it('un contrôle CONFORME postérieur ne condamne pas le lot', async () => {
+  /** Un conforme ANTÉRIEUR ne dément rien : c'est la non-conformité qui a eu le dernier mot. */
+  it("un contrôle conforme ANTÉRIEUR à la non-conformité ne la dément pas", async () => {
     mockQueries(
       [candidate('lot-a', 'LOT-A')],
-      [isolation(1, 'lot-a'), control(2, 'lot-a', 'CONFORME')]
+      [isolation(1, 'lot-a')],
+      [verdict('lot-a', 'CONFORME', 1), verdict('lot-a', 'NON_CONFORME', 2)]
     );
 
     const [batch] = await alertBatchService.listBatchesIsolatedByAlert(alert);
 
-    expect(batch!.levable).toBe(true);
+    expect(batch!.levable).toBe(false);
   });
 
   it("n'attribue pas la non-conformité d'un lot à un AUTRE lot de la même alerte", async () => {
     mockQueries(
       [candidate('lot-a', 'LOT-A'), candidate('lot-b', 'LOT-B')],
-      [isolation(1, 'lot-a'), isolation(2, 'lot-b'), control(3, 'lot-b', 'NON_CONFORME')]
+      [isolation(1, 'lot-a'), isolation(2, 'lot-b')],
+      [verdict('lot-b', 'NON_CONFORME', 3)]
     );
 
     const batches = await alertBatchService.listBatchesIsolatedByAlert(alert);
@@ -212,7 +244,7 @@ describe('alertBatchService.listBatchesIsolatedByAlert', () => {
     const call = findMany.mock.calls[1]![0]!;
     expect(call.where!.id_lot).toEqual({ in: ['lot-a', 'lot-b'] });
     expect(call.where!.type_action).toEqual({
-      in: ['QUARANTAINE_FROID', 'LEVEE_QUARANTAINE', 'CONTROLE_QUALITE'],
+      in: ['QUARANTAINE_FROID', 'LEVEE_QUARANTAINE'],
     });
     // ⚠️ `id` (auto-incrément), pas `created_at` : deux mouvements d'une même transaction portent le
     // même horodatage, et l'ordre serait alors indéterminé.

@@ -83,6 +83,7 @@ vi.mock('../services/receipt.service', () => ({
 vi.mock('../../shared/services/batch.service', () => ({
   batchService: {
     liftQuarantine: vi.fn(),
+    liftQualityQuarantine: vi.fn(),
     scrapBatch: vi.fn(),
   },
 }));
@@ -307,6 +308,63 @@ describe('Logistics - Receipts Routes', () => {
 
       expect(res.status).toBe(404);
       expect(batchService.liftQuarantine).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('POST /api/logistics/batches/:id/quality-release (levée qualité)', () => {
+    const mockBatchInOrg = async () => {
+      const { prisma } = await import('../../../../shared/configs/prismaClient.config');
+      vi.mocked(prisma.batch.findFirst).mockResolvedValue({
+        id: 'batch-1',
+        organization_id: 'org_test_123',
+        statut: 'BLOQUE',
+      } as unknown as never);
+    };
+
+    it('appelle le service de levée QUALITÉ, pas celui de la levée froid', async () => {
+      await mockBatchInOrg();
+      vi.mocked(batchService.liftQualityQuarantine).mockResolvedValue({
+        id: 'batch-1',
+        statut: 'EN_ATTENTE_QC',
+      } as never);
+
+      const res = await request(app)
+        .post('/api/logistics/batches/batch-1/quality-release')
+        .send({ motif: 'Contre-analyse conforme du 02/08' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.statut).toBe('EN_ATTENTE_QC');
+      expect(batchService.liftQualityQuarantine).toHaveBeenCalledWith(
+        'batch-1',
+        'org_test_123',
+        'u-123',
+        'Contre-analyse conforme du 02/08'
+      );
+      // Les deux canaux n'exigent pas la même preuve : les confondre libérerait un lot froid.
+      expect(batchService.liftQuarantine).not.toHaveBeenCalled();
+    });
+
+    it('doit refuser (400) un motif trop court, avant d atteindre le service', async () => {
+      await mockBatchInOrg();
+
+      const res = await request(app)
+        .post('/api/logistics/batches/batch-1/quality-release')
+        .send({ motif: 'x' });
+
+      expect(res.status).toBe(400);
+      expect(batchService.liftQualityQuarantine).not.toHaveBeenCalled();
+    });
+
+    it('doit refuser (404) un lot hors de l organisation (verifyBatchAccess)', async () => {
+      const { prisma } = await import('../../../../shared/configs/prismaClient.config');
+      vi.mocked(prisma.batch.findFirst).mockResolvedValue(null);
+
+      const res = await request(app)
+        .post('/api/logistics/batches/autre-org/quality-release')
+        .send({ motif: 'Tentative cross-tenant' });
+
+      expect(res.status).toBe(404);
+      expect(batchService.liftQualityQuarantine).not.toHaveBeenCalled();
     });
   });
 

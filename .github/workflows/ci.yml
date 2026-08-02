@@ -216,6 +216,8 @@ jobs:
         run: npm run e2e:quarantine
       - name: ❄️ Levée de quarantaine froid — restauration du statut (HACCP)
         run: npm run e2e:quarantine-restore
+      - name: 🧪 Levée de quarantaine qualité — contre-analyse exigée
+        run: npm run e2e:levee-qualite
       - name: 🔴 Rappel produit — propagation à la descendance
         run: npm run e2e:recall
       # --- Chaîne du froid IoT (Postgres + Mongo + audit) ---

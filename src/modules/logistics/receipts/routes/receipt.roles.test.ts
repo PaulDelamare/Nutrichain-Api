@@ -31,6 +31,8 @@ vi.mock('../controllers/receipt.controller', () => ({
   listReceiptsController: (_req: express.Request, res: express.Response) => res.status(200).end(),
   liftBatchQuarantineController: (_req: express.Request, res: express.Response) =>
     res.status(200).end(),
+  liftQualityQuarantineController: (_req: express.Request, res: express.Response) =>
+    res.status(200).end(),
   moveBatchController: (_req: express.Request, res: express.Response) => res.status(200).end(),
   scrapBatchController: (_req: express.Request, res: express.Response) => res.status(200).end(),
   resolveBatchByLotNumberController: (_req: express.Request, res: express.Response) =>
@@ -122,6 +124,26 @@ describe('RBAC des routes logistiques (session réelle)', () => {
     it('refuse viewer', async () => {
       signedInAs('viewer');
       const res = await request(app).post('/api/logistics/batches/lot-1/release').send({});
+      expect(res.status).toBe(403);
+    });
+  });
+
+  describe('POST /logistics/batches/:id/quality-release (décision qualité)', () => {
+    it.each(['owner', 'admin', 'quality'])('autorise %s', async (role) => {
+      signedInAs(role);
+      const res = await request(app).post('/api/logistics/batches/lot-1/quality-release').send({});
+      expect(res.status).toBe(200);
+    });
+
+    it('refuse operator — celui qui produit ne lève pas sa propre non-conformité', async () => {
+      signedInAs('operator');
+      const res = await request(app).post('/api/logistics/batches/lot-1/quality-release').send({});
+      expect(res.status).toBe(403);
+    });
+
+    it('refuse viewer', async () => {
+      signedInAs('viewer');
+      const res = await request(app).post('/api/logistics/batches/lot-1/quality-release').send({});
       expect(res.status).toBe(403);
     });
   });

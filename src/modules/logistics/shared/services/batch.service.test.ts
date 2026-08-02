@@ -16,7 +16,7 @@ vi.mock('../../../../shared/configs/prismaClient.config', () => ({
     // Un lot déplacé seul quitte sa palette : le service retire son lien de contenu.
     logistic_Unit_Content: { deleteMany: vi.fn() },
     equipment: { findFirst: vi.fn() },
-    qualityControl: { findFirst: vi.fn() },
+    qualityControl: { findFirst: vi.fn(), findMany: vi.fn() },
     scrapRecord: { create: vi.fn() },
     member: { findFirst: vi.fn() },
     // Simule une transaction en passant le mock prisma au callback
@@ -38,6 +38,8 @@ describe('BatchSharedService', () => {
     // `clearAllMocks` n'efface pas les implémentations — sans ce défaut, un mock NON_CONFORME
     // fuirait d'un test à l'autre. Chaque test part donc d'un lot non condamné.
     vi.mocked(prisma.qualityControl.findFirst).mockResolvedValue(null);
+    // Aucun verdict qualité : le lot n'est retenu que par le froid.
+    vi.mocked(prisma.qualityControl.findMany).mockResolvedValue([] as never);
     // Par défaut le lot n'est sur aucune palette : le retrait de contenu ne mord sur rien.
     vi.mocked(prisma.logistic_Unit_Content.deleteMany).mockResolvedValue({ count: 0 } as never);
   });
@@ -338,16 +340,88 @@ describe('BatchSharedService', () => {
         created_by: 'operateur-2',
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any);
-      vi.mocked(prisma.qualityControl.findFirst).mockResolvedValue({
-        id: 'qc-1',
-        resultat: 'NON_CONFORME',
+      vi.mocked(prisma.qualityControl.findMany).mockResolvedValue([
+        {
+          id: 'qc-1',
+          resultat: 'NON_CONFORME',
+          id_user_labo: 'labo-1',
+          date_test: new Date('2026-08-01'),
+        },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      } as any);
+      ] as any);
 
       const action = batchService.liftQuarantine('batch-1', 'org-1', 'user-1', 'Frigo réparé');
       await expect(action).rejects.toMatchObject({ status: 409 });
       expect(prisma.batch.update).not.toHaveBeenCalled();
       expect(auditService.logAction).not.toHaveBeenCalled();
+    });
+
+    /**
+     * LA porte dérobée que la contre-analyse a ouverte : elle devient le DERNIER verdict du lot.
+     * Une garde qui lisait « le dernier contrôle est-il non conforme ? » laissait alors passer la
+     * levée FROID sur un lot condamné — avec une séparation des tâches évaluée sur le créateur du
+     * lot au lieu du signataire, et un repli `EN_STOCK` qui le rendait expédiable sans contrôle
+     * de sortie. La condamnation se lit à la non-conformité non démentie, pas au dernier verdict.
+     */
+    it('refuse (409) même quand une contre-analyse conforme est le DERNIER verdict… si elle est antérieure', async () => {
+      vi.mocked(prisma.batch.findFirst).mockResolvedValue({
+        id: 'batch-1',
+        organization_id: 'org-1',
+        statut: 'BLOQUE',
+        statut_avant_blocage: null,
+        created_by: 'operateur-2',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+      vi.mocked(prisma.qualityControl.findMany).mockResolvedValue([
+        {
+          id: 'qc-0',
+          resultat: 'CONFORME',
+          id_user_labo: 'labo-1',
+          date_test: new Date('2026-07-30'),
+        },
+        {
+          id: 'qc-1',
+          resultat: 'NON_CONFORME',
+          id_user_labo: 'labo-1',
+          date_test: new Date('2026-08-01'),
+        },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ] as any);
+
+      const action = batchService.liftQuarantine('batch-1', 'org-1', 'user-1', 'Frigo réparé');
+      await expect(action).rejects.toMatchObject({ status: 409 });
+      expect(prisma.batch.update).not.toHaveBeenCalled();
+    });
+
+    /** Une fois la non-conformité démentie, le canal froid retrouve sa liberté d'action. */
+    it('accepte la levée froid quand une contre-analyse conforme POSTÉRIEURE existe', async () => {
+      vi.mocked(prisma.batch.findFirst).mockResolvedValue({
+        id: 'batch-1',
+        organization_id: 'org-1',
+        statut: 'BLOQUE',
+        statut_avant_blocage: 'EN_ATTENTE_QC',
+        created_by: 'operateur-2',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+      vi.mocked(prisma.qualityControl.findMany).mockResolvedValue([
+        {
+          id: 'qc-1',
+          resultat: 'NON_CONFORME',
+          id_user_labo: 'labo-1',
+          date_test: new Date('2026-08-01'),
+        },
+        {
+          id: 'qc-2',
+          resultat: 'CONFORME',
+          id_user_labo: 'labo-1',
+          date_test: new Date('2026-08-02'),
+        },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ] as any);
+
+      await batchService.liftQuarantine('batch-1', 'org-1', 'user-1', 'Frigo réparé');
+
+      expect(prisma.batch.update).toHaveBeenCalled();
     });
 
     it('reste sur EN_STOCK par défaut pour un lot né bloqué (aucun statut d avant)', async () => {

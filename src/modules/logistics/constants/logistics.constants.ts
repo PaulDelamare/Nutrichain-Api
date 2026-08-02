@@ -136,6 +136,12 @@ export const MOVEMENT_TYPES = {
   SHIPMENT: 'EXPEDITION',
   COLD_QUARANTINE: 'QUARANTAINE_FROID',
   QUARANTINE_LIFTED: 'LEVEE_QUARANTAINE',
+  /**
+   * Levée d'une quarantaine QUALITÉ, distincte de la levée froid — et le type doit rester distinct.
+   * `alertBatch.service` lit `LEVEE_QUARANTAINE` pour savoir si une isolation froid a été levée :
+   * réutiliser le même type lui ferait croire qu'un frigo en panne a été traité.
+   */
+  QUALITY_QUARANTINE_LIFTED: 'LEVEE_QUARANTAINE_QUALITE',
   RECALL: 'RAPPEL',
   MOVE: 'DEPLACEMENT',
   SCRAP: 'MISE_AU_REBUT',

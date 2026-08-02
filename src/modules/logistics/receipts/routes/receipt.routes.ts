@@ -7,6 +7,7 @@ import {
   getBatchLabelController,
   listReceiptsController,
   liftBatchQuarantineController,
+  liftQualityQuarantineController,
   moveBatchController,
   scrapBatchController,
   resolveBatchByLotNumberController,
@@ -292,6 +293,71 @@ router.post(
   verifyBatchAccess,
   validateQuarantineLift,
   liftBatchQuarantineController
+);
+
+/**
+ * @swagger
+ * /api/logistics/batches/{id}/quality-release:
+ *   post:
+ *     summary: Lever la quarantaine qualité d'un lot (contre-analyse conforme)
+ *     description: |
+ *       Rend un lot `BLOQUE` par un contrôle NON CONFORME à son statut d'AVANT le blocage — et non
+ *       à `EN_STOCK` : un produit fini qui attendait son contrôle de sortie y retourne, plutôt que
+ *       de devenir expédiable sans avoir franchi la barrière HACCP.
+ *
+ *       **Une contre-analyse CONFORME postérieure au dernier verdict non conforme est requise** :
+ *       une non-conformité ne se lève pas par déclaration, mais parce qu'un second contrôle l'a
+ *       démentie. Le motif accompagne cette preuve, il ne la remplace pas.
+ *
+ *       **Séparation des tâches** : elle porte sur le signataire de la non-conformité. Si
+ *       l'organisation ne compte aucun autre décideur habilité, la levée passe et l'audit porte la
+ *       mention `AUTO_SIGNEE_AUCUN_AUTRE_DECIDEUR`.
+ *
+ *       Un lot également retenu par une excursion de température non levée est refusé : le traiter
+ *       ici le sortirait d'un frigo en panne.
+ *     tags: [Logistique]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [motif]
+ *             properties:
+ *               motif:
+ *                 type: string
+ *                 minLength: 3
+ *                 maxLength: 500
+ *                 description: Justification tracée dans l'audit WORM
+ *     responses:
+ *       200:
+ *         description: Quarantaine qualité levée, lot rendu à son statut d'avant blocage
+ *       400:
+ *         description: Motif manquant, trop court ou trop long
+ *       401:
+ *         description: Aucune session
+ *       403:
+ *         description: Rôle insuffisant, ou levée par le signataire de la non-conformité
+ *       404:
+ *         description: Lot introuvable dans l'organisation active
+ *       409:
+ *         description: Lot hors quarantaine, contre-analyse manquante, ou isolation froid en vigueur
+ */
+router.post(
+  '/logistics/batches/:id/quality-release',
+  sessionAuth(QUALITY_ROLES),
+  verifyBatchAccess,
+  validateQuarantineLift,
+  liftQualityQuarantineController
 );
 
 /**

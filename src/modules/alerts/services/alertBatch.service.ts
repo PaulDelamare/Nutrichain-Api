@@ -1,11 +1,11 @@
 import { Alert, Prisma } from '@prisma/client';
+import {
+  QualityVerdict,
+  readQualityCondemnation,
+} from '../../logistics/shared/utils/qualityCondemnation';
 import { prisma } from '../../../shared/configs/prismaClient.config';
 import { APIError } from '../../../shared/utils/errorHandler/APIError';
-import {
-  BATCH_STATUSES,
-  MOVEMENT_TYPES,
-  QUALITY_RESULTS,
-} from '../../logistics/constants/logistics.constants';
+import { BATCH_STATUSES, MOVEMENT_TYPES } from '../../logistics/constants/logistics.constants';
 import { COLD_CHAIN_ALERT_TYPE } from '../constants/alert.constants';
 
 /**
@@ -34,12 +34,11 @@ export interface AlertBatch {
   motif_blocage: 'CONTROLE_NON_CONFORME' | null;
 }
 
-/** Les mouvements qui font, ou défont, l'isolement d'un lot. Le reste ne nous apprend rien. */
-const BLOCKING_MOVEMENTS = [
-  MOVEMENT_TYPES.COLD_QUARANTINE,
-  MOVEMENT_TYPES.QUARANTINE_LIFTED,
-  MOVEMENT_TYPES.QUALITY_CONTROL,
-];
+/**
+ * Les mouvements qui font, ou défont, l'isolement FROID d'un lot. Le reste ne nous apprend rien —
+ * la condamnation qualité, elle, se lit sur les contrôles eux-mêmes et non sur leur trace.
+ */
+const BLOCKING_MOVEMENTS = [MOVEMENT_TYPES.COLD_QUARANTINE, MOVEMENT_TYPES.QUARANTINE_LIFTED];
 
 interface Movement {
   id: number;
@@ -130,6 +129,22 @@ export const alertBatchService = {
       orderBy: { id: 'asc' },
     });
 
+    // Les verdicts qualité des lots candidats, en UNE requête. L'écran doit annoncer « levable »
+    // avec la même lecture que les services de levée : la déduire des mouvements laissait un lot
+    // marqué « non levable » à jamais, même après la contre-analyse qui le libère.
+    const verdicts = await prisma.qualityControl.findMany({
+      where: { id_lot: { in: candidates.map((c) => c.id_lot) } },
+      select: { id: true, id_lot: true, resultat: true, id_user_labo: true, date_test: true },
+      orderBy: [{ date_test: 'asc' }, { id: 'asc' }],
+    });
+
+    const verdictsByBatch = new Map<string, QualityVerdict[]>();
+    for (const verdict of verdicts) {
+      const list = verdictsByBatch.get(verdict.id_lot) ?? [];
+      list.push(verdict);
+      verdictsByBatch.set(verdict.id_lot, list);
+    }
+
     const batches: AlertBatch[] = [];
 
     for (const candidate of candidates) {
@@ -149,12 +164,8 @@ export const alertBatchService = {
       );
       if (lifted) continue;
 
-      const condemned = history.some(
-        (m) =>
-          m.id > isolation.id &&
-          m.type_action === MOVEMENT_TYPES.QUALITY_CONTROL &&
-          metaString(m.metadata, 'resultat') === QUALITY_RESULTS.NON_CONFORM
-      );
+      const condemnation = readQualityCondemnation(verdictsByBatch.get(candidate.id_lot) ?? []);
+      const condemned = condemnation !== null && condemnation.counterAnalysis === null;
 
       batches.push({
         id: candidate.lot.id,
