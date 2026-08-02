@@ -39,6 +39,14 @@ jobs:
       - name: 🗄️ Generate Prisma Client
         run: npx prisma generate
 
+      # Le seuil est a MODERE, pas a BAS, et c est un arbitrage : un avis bas sur une dependance
+      # transitive d outillage bloquerait toutes les PR sans rien proteger — et un garde-fou qui
+      # bloque tout finit desactive. Les avis bas restent visibles dans le journal ci-dessous.
+      - name: 🔒 Audit des dependances
+        run: |
+          npm audit || true
+          npm audit --audit-level=moderate
+
       - name: 🧹 Run Linter (ESLint)
         run: npm run lint
 
