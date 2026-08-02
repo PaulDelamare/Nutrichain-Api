@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../../shared/configs/prismaClient.config';
 import { BATCH_STATUSES } from '../../logistics/constants/logistics.constants';
+import { RECALL_ALERT_TYPES } from '../../alerts/constants/alert.constants';
 
 /**
  * Façade de lecture pour le frontend : expose les référentiels de l'organisation
@@ -68,6 +69,44 @@ export const organizationService = {
       where: { organization_id: organizationId },
       orderBy: { created_at: 'desc' },
     });
+  },
+
+  async listRecalls(
+    organizationId: string,
+    options: {
+      page?: number;
+      limit?: number;
+      // Filtres de colonnes appliqués dans la requête. Absents (undefined) ⇒ Prisma les ignore.
+      q?: string;
+      statut?: 'en_cours' | 'cloture';
+    } = {}
+  ) {
+    const { page = 1, limit = 20, q, statut } = options;
+    const skip = (page - 1) * limit;
+
+    // `en_cours` = alerte encore ACTIVE ; `cloture` = tout autre statut (rappel résolu). La famille
+    // RAPPEL est imposée dans le `where` : cette route ne doit pas exposer les alertes froid/qualité.
+    const statutFilter =
+      statut === 'en_cours' ? 'ACTIVE' : statut === 'cloture' ? { not: 'ACTIVE' } : undefined;
+
+    const where: Prisma.AlertWhereInput = {
+      organization_id: organizationId,
+      type: { in: [...RECALL_ALERT_TYPES] },
+      statut: statutFilter,
+      message: q ? { contains: q, mode: 'insensitive' } : undefined,
+    };
+
+    const [total, data] = await prisma.$transaction([
+      prisma.alert.count({ where }),
+      prisma.alert.findMany({
+        where,
+        orderBy: { created_at: 'desc' },
+        skip,
+        take: limit,
+      }),
+    ]);
+
+    return { data, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
   },
 
   async listAuditLogs(organizationId: string, limit: number) {
