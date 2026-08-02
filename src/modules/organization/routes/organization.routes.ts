@@ -9,6 +9,7 @@ import {
 } from '../../identity/constants/roles.constants';
 import { validateOrganizationQuery } from '../middlewares/validateOrganizationQuery.middleware';
 import { validateShipmentQuery } from '../middlewares/validateShipmentQuery.middleware';
+import { validateMemberQuery } from '../middlewares/validateMemberQuery.middleware';
 import { validateCreateEquipment } from '../middlewares/validateEquipment.middleware';
 import { validateCreateQualityControl } from '../middlewares/validateQualityControl.middleware';
 import {
@@ -107,7 +108,12 @@ const READ_ROLES = ALL_ROLES;
  *       403:
  *         description: Rôle insuffisant (réservé à owner/admin)
  */
-router.get('/organization/members', sessionAuth(PERSONAL_DATA_ROLES), listMembersController);
+router.get(
+  '/organization/members',
+  sessionAuth(PERSONAL_DATA_ROLES),
+  validateMemberQuery,
+  listMembersController
+);
 
 /**
  * @swagger

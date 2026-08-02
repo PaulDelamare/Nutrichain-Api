@@ -15,7 +15,10 @@ vi.mock('../../../shared/middlewares/sessionAuth', () => ({
 
 vi.mock('../services/organization.service', () => ({
   organizationService: {
-    listMembers: vi.fn().mockResolvedValue([{ id: 'm-1', role: 'owner' }]),
+    listMembers: vi.fn().mockResolvedValue({
+      data: [{ id: 'm-1', role: 'owner' }],
+      pagination: { page: 1, limit: 20, total: 1, totalPages: 1 },
+    }),
     listAlerts: vi.fn().mockResolvedValue([]),
     listAuditLogs: vi.fn().mockResolvedValue([]),
     listQualityControls: vi.fn().mockResolvedValue([]),
@@ -52,14 +55,50 @@ describe('Organization routes (façade de lecture front)', () => {
     vi.clearAllMocks();
   });
 
-  it("GET /organization/members : 200 avec l'enveloppe { status, message, data } lue par le front", async () => {
+  it("GET /organization/members : 200 avec l'enveloppe paginée { data, pagination } lue par le front", async () => {
     authAs('org-1');
 
     const res = await request(buildApp()).get('/api/organization/members');
 
     expect(res.status).toBe(200);
-    expect(res.body.data).toEqual([{ id: 'm-1', role: 'owner' }]);
-    expect(organizationService.listMembers).toHaveBeenCalledWith('org-1');
+    expect(res.body.data.data).toEqual([{ id: 'm-1', role: 'owner' }]);
+    expect(res.body.data.pagination).toMatchObject({ page: 1, limit: 20, total: 1 });
+    expect(organizationService.listMembers).toHaveBeenCalledWith(
+      'org-1',
+      expect.objectContaining({ page: 1, limit: 20 })
+    );
+  });
+
+  it('GET /organization/members : transmet les filtres de colonnes au service', async () => {
+    authAs('org-1');
+
+    const res = await request(buildApp()).get(
+      '/api/organization/members?email=ana&role=operator&mfa=false&page=2'
+    );
+
+    expect(res.status).toBe(200);
+    expect(organizationService.listMembers).toHaveBeenCalledWith(
+      'org-1',
+      expect.objectContaining({ email: 'ana', role: 'operator', mfa: false, page: 2 })
+    );
+  });
+
+  it('GET /organization/members : 400 sur un rôle hors énumération, sans atteindre le service', async () => {
+    authAs('org-1');
+
+    const res = await request(buildApp()).get('/api/organization/members?role=superuser');
+
+    expect(res.status).toBe(400);
+    expect(organizationService.listMembers).not.toHaveBeenCalled();
+  });
+
+  it('GET /organization/members : 400 sur un mfa non booléen', async () => {
+    authAs('org-1');
+
+    const res = await request(buildApp()).get('/api/organization/members?mfa=peut-etre');
+
+    expect(res.status).toBe(400);
+    expect(organizationService.listMembers).not.toHaveBeenCalled();
   });
 
   it('GET /organization/audit-logs : le limit validé est transmis, défaut 30 sinon', async () => {

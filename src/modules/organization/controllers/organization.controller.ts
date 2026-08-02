@@ -9,12 +9,27 @@ import {
   type Role,
 } from '../../identity/constants/roles.constants';
 import { SHIPMENT_PAGE_DEFAULTS } from '../middlewares/shipmentQuery.schema';
+import { MEMBER_PAGE_DEFAULTS } from '../middlewares/memberQuery.schema';
 
 const DEFAULT_AUDIT_LOGS_LIMIT = 30;
 
 export const listMembersController = catchAsync(
   async (req: AuthenticatedRequest, res: Response) => {
-    const members = await organizationService.listMembers(req.activeOrgId as string);
+    const {
+      page = MEMBER_PAGE_DEFAULTS.page,
+      limit = MEMBER_PAGE_DEFAULTS.limit,
+      email,
+      role,
+      mfa,
+    } = req.validatedMemberQuery ?? {};
+
+    const members = await organizationService.listMembers(req.activeOrgId as string, {
+      page,
+      limit,
+      email,
+      role,
+      mfa,
+    });
     sendSuccess(res, 200, "Membres de l'organisation récupérés", members);
   }
 );

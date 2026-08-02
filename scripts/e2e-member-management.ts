@@ -49,7 +49,11 @@ async function main() {
   const adminDemo = await signIn('admin.demo@nutrichain.local'); // admin
   const operator = await signIn('operator@nutrichain.local');
 
-  const members = (await (await call(admin, '/organization/members')).json()).data as {
+  // Réponse paginée : la façade renvoie { data: Member[], pagination }. On demande une grande page
+  // pour retrouver la sémantique « tout l'annuaire » dont ce scénario a besoin (il cherche des
+  // comptes seedés par e-mail, indépendamment de leur position).
+  const members = (await (await call(admin, '/organization/members?limit=500')).json()).data
+    .data as {
     id: string;
     userId: string;
     role: string;
