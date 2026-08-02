@@ -87,30 +87,30 @@ d'orchestrateur dans lequel brancher un coffre aujourd'hui.
 Aucun chiffrement applicatif des données en base. La protection repose entièrement sur le
 chiffrement disque de la machine hôte, s'il est activé.
 
-### 🟧 Aucun scan de vulnérabilités des dépendances
+### 🟨 Dépendances surveillées ; pas de SAST ni de détection de secrets
 
-Ni analyse des dépendances, ni analyse statique de sécurité, ni détection de secrets commités dans
-l'intégration continue.
+Les dépendances sont désormais analysées à chaque intégration : `npm audit` s’exécute dans le job
+`Code Quality & Tests` et **fait échouer la PR à partir du niveau « modéré »**. Les mises à jour
+arrivent seules, chaque lundi, par `.github/dependabot.yml`, regroupées pour rester relisibles.
 
-**Conséquence** : une faille publiée sur une dépendance n'est signalée par rien. Personne ne
-l'apprend avant de la chercher.
+**État au 02/08/2026 : zéro avis.** Les treize de la première recherche sont fermés —
+`better-auth` et `swagger-jsdoc` par la PR #270, puis `sanitize-html`, `nodemailer` 8 → 9 et
+`esbuild` (par surcharge, `vite` retenant l’ancienne plage).
 
-**Ce qu'a donné la première recherche** (28/07/2026, à la main) : **13 avis, dont un critique sur la
-bibliothèque d'authentification**. C'est l'état de la branche de préproduction à la date de ce
-document.
+**Le seuil est à « modéré », pas à « bas », et c’est un arbitrage assumé** : un avis bas sur une
+dépendance transitive d’outillage bloquerait toutes les PR sans rien protéger, et un garde-fou qui
+bloque tout finit désactivé. Les avis bas restent affichés dans le journal du job.
 
-Les correctifs sans rupture sont réunis dans une PR **non encore intégrée** : une fois celle-ci
-mergée, il en restera **7**, se ramenant à deux causes. *(Tant qu'elle ne l'est pas, les 13 avis
-sont toujours là — ne pas lire les lignes qui suivent comme l'état courant.)*
+**Ce qui manque, et ce qui existe déjà.** La détection de secrets de GitHub est **active**, avec
+protection au push : un jeton reconnu est bloqué avant d’entrer dans l’historique. Mais elle ne
+couvre que les **formats connus** — l’option « motifs hors fournisseurs » est désactivée, or nos
+propres secrets (`API_KEY`, `IOT_API_KEY`) sont des chaînes aléatoires sans format identifiable.
+**Une clé NutriChain collée dans un fichier passerait donc sans un mot.**
 
-- **cinq** ne sont qu'une seule chaîne d'outillage de test (`@vitest/coverage-v8` → `test-exclude` →
-  `glob` → `minimatch` → `brace-expansion`) : une seule montée majeure les ferme tous ;
-- **un** touche la production, `nodemailer` 8 → 9. L'option incriminée (`raw`) n'est jamais utilisée
-  ici — les trois appelants ne passent que `to`, `subject` et `html` ;
-- le dernier, bas, concerne le serveur de développement d'`esbuild` et reste retenu par `vite`.
+Il n’y a par ailleurs **aucune analyse statique de sécurité du code (SAST)**.
 
-**Coût de fermeture** : très faible — un fichier de configuration. C'est le contrôle le moins cher
-de tout ce document, et le seul qui empêche la prochaine faille d'attendre qu'on la cherche.
+**Conséquence** : la classe « dépendance vulnérable » est couverte, « secret d’un fournisseur
+tiers » aussi ; « secret maison » et « défaut de code » ne le sont pas.
 
 ### 🟧 Les journaux ne sortent pas de la machine
 

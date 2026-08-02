@@ -1,0 +1,40 @@
+version: 2
+
+# Mise à jour automatique des dépendances.
+#
+# Sans elle, un avis de sécurité publié sur une dépendance reste inconnu jusqu'à ce que quelqu'un
+# pense à chercher : c'est exactement ainsi que les treize avis de l'issue #269 ont été découverts.
+#
+# Les correctifs sont REGROUPÉS par nature. Une PR par paquet noierait la revue et ferait ignorer le
+# lot entier — le bruit d'un outillage de sécurité est ce qui le fait désactiver.
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Europe/Paris
+    # `develop` est le tronc ; `main` est la production et ne reçoit que des PR de release.
+    target-branch: develop
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: 'chore(deps)'
+      prefix-development: 'chore(deps-dev)'
+    labels:
+      - securite
+    groups:
+      # Correctifs et versions mineures : sans rupture d'API, relisibles d'un coup.
+      production-mineures:
+        dependency-type: production
+        update-types:
+          - minor
+          - patch
+      outillage-mineures:
+        dependency-type: development
+        update-types:
+          - minor
+          - patch
+    # Les MAJEURES restent une PR par paquet, à dessein : ce sont des migrations à décider, pas des
+    # correctifs à empiler. `nodemailer` 8 → 9 l'a montré — il a fallu vérifier chaque appel.
+    ignore: []
