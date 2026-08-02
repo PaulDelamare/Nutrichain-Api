@@ -457,7 +457,40 @@ describe('Logistics - Receipts Routes', () => {
       const res = await request(app).get('/api/logistics/receipts');
 
       expect(res.status).toBe(200);
-      expect(receiptService.listReceipts).toHaveBeenCalledWith('org_test_123', 1, 20);
+      expect(receiptService.listReceipts).toHaveBeenCalledWith(
+        'org_test_123',
+        expect.objectContaining({ page: 1, limit: 20 })
+      );
+    });
+
+    it('transmet les filtres de colonnes au service', async () => {
+      vi.mocked(receiptService.listReceipts).mockResolvedValue({
+        data: [],
+        meta: { total: 0, page: 1, limit: 20 },
+      } as never);
+
+      const res = await request(app).get(
+        '/api/logistics/receipts?ref=BL-2026&fournisseur=four-1&statut=ALERTE&date=2026-07-31'
+      );
+
+      expect(res.status).toBe(200);
+      expect(receiptService.listReceipts).toHaveBeenCalledWith(
+        'org_test_123',
+        expect.objectContaining({
+          ref: 'BL-2026',
+          fournisseur: 'four-1',
+          statut: 'ALERTE',
+          date: '2026-07-31',
+        })
+      );
+    });
+
+    it('refuse un statut hors énumération et une date malformée en 400', async () => {
+      const bad = await request(app).get('/api/logistics/receipts?statut=PEUT_ETRE');
+      expect(bad.status).toBe(400);
+
+      const badDate = await request(app).get('/api/logistics/receipts?date=31-07-2026');
+      expect(badDate.status).toBe(400);
     });
   });
 });

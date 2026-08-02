@@ -7,10 +7,11 @@ import { APIError } from '../../../../shared/utils/errorHandler/APIError';
 
 vi.mock('../../../../shared/configs/prismaClient.config', () => ({
   prisma: {
-    $transaction: vi.fn(async (callback) => {
-      // Simulation réaliste : on passe le mock de prisma au callback
-      return callback(prisma);
-    }),
+    $transaction: vi.fn(async (arg) =>
+      // Forme tableau (lectures type listReceipts) ⇒ Promise.all ; forme callback (écritures) ⇒
+      // on passe le mock de prisma au callback.
+      Array.isArray(arg) ? Promise.all(arg) : arg(prisma)
+    ),
     $queryRaw: vi.fn().mockResolvedValue([]),
     supplier: { findFirst: vi.fn() },
     product: { findFirst: vi.fn() },
@@ -526,6 +527,61 @@ describe('ReceiptService', () => {
         status: 409,
         body: { error: [{ field: 'lot_number' }] },
       });
+    });
+  });
+
+  describe('listReceipts', () => {
+    const mockPage = (total = 0, rows: unknown[] = []) => {
+      vi.mocked(prisma.receipt.count).mockResolvedValue(total as never);
+      vi.mocked(prisma.receipt.findMany).mockResolvedValue(rows as never);
+    };
+
+    it('cloisonne par organisation et décale selon la page', async () => {
+      mockPage();
+      await receiptService.listReceipts('org-1', { page: 2, limit: 25 });
+      expect(prisma.receipt.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ organization_id: 'org-1' }),
+          skip: 25,
+          take: 25,
+        })
+      );
+    });
+
+    it('filtre par ref (shipment_id), fournisseur et statut', async () => {
+      mockPage();
+      await receiptService.listReceipts('org-1', {
+        ref: 'BL-2026',
+        fournisseur: 'four-1',
+        statut: 'ALERTE',
+      });
+      expect(prisma.receipt.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            shipment_id: { contains: 'BL-2026', mode: 'insensitive' },
+            id_fournisseur: 'four-1',
+            statut_controle: 'ALERTE',
+          }),
+        })
+      );
+    });
+
+    it('filtre « un jour » sur la borne [jour, lendemain[ en UTC', async () => {
+      mockPage();
+      await receiptService.listReceipts('org-1', { date: '2026-07-31' });
+      const where = vi.mocked(prisma.receipt.findMany).mock.calls.at(-1)?.[0]?.where as unknown as {
+        date_reception?: { gte: Date; lt: Date };
+      };
+      expect(where.date_reception?.gte.toISOString()).toBe('2026-07-31T00:00:00.000Z');
+      expect(where.date_reception?.lt.toISOString()).toBe('2026-08-01T00:00:00.000Z');
+    });
+
+    it('compte le total sur le MÊME where que la page', async () => {
+      mockPage();
+      await receiptService.listReceipts('org-1', { statut: 'OK' });
+      const countArgs = vi.mocked(prisma.receipt.count).mock.calls.at(-1)?.[0];
+      const findArgs = vi.mocked(prisma.receipt.findMany).mock.calls.at(-1)?.[0];
+      expect(countArgs?.where).toEqual(findArgs?.where);
     });
   });
 });
