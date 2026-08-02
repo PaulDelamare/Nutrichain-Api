@@ -11,6 +11,7 @@ import { validateOrganizationQuery } from '../middlewares/validateOrganizationQu
 import { validateShipmentQuery } from '../middlewares/validateShipmentQuery.middleware';
 import { validateMemberQuery } from '../middlewares/validateMemberQuery.middleware';
 import { validateRecallQuery } from '../middlewares/validateRecallQuery.middleware';
+import { validateAuditLogQuery } from '../middlewares/validateAuditLogQuery.middleware';
 import { validateCreateEquipment } from '../middlewares/validateEquipment.middleware';
 import { validateCreateQualityControl } from '../middlewares/validateQualityControl.middleware';
 import {
@@ -193,7 +194,7 @@ router.get(
 router.get(
   '/organization/audit-logs',
   sessionAuth(PERSONAL_DATA_ROLES),
-  validateOrganizationQuery,
+  validateAuditLogQuery,
   listAuditLogsController
 );
 

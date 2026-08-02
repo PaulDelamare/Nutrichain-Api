@@ -11,8 +11,7 @@ import {
 import { SHIPMENT_PAGE_DEFAULTS } from '../middlewares/shipmentQuery.schema';
 import { MEMBER_PAGE_DEFAULTS } from '../middlewares/memberQuery.schema';
 import { RECALL_PAGE_DEFAULTS } from '../middlewares/recallQuery.schema';
-
-const DEFAULT_AUDIT_LOGS_LIMIT = 30;
+import { AUDIT_LOG_PAGE_DEFAULTS } from '../middlewares/auditLogQuery.schema';
 
 export const listMembersController = catchAsync(
   async (req: AuthenticatedRequest, res: Response) => {
@@ -61,8 +60,25 @@ export const listRecallsController = catchAsync(
 
 export const listAuditLogsController = catchAsync(
   async (req: AuthenticatedRequest, res: Response) => {
-    const limit = req.validatedOrganizationQuery?.limit ?? DEFAULT_AUDIT_LOGS_LIMIT;
-    const logs = await organizationService.listAuditLogs(req.activeOrgId as string, limit);
+    const {
+      page = AUDIT_LOG_PAGE_DEFAULTS.page,
+      limit = AUDIT_LOG_PAGE_DEFAULTS.limit,
+      action,
+      entity,
+      entity_id: entityId,
+      from,
+      to,
+    } = req.validatedAuditLogQuery ?? {};
+
+    const logs = await organizationService.listAuditLogs(req.activeOrgId as string, {
+      page,
+      limit,
+      action,
+      entity,
+      entityId,
+      from,
+      to,
+    });
     sendSuccess(res, 200, "Journal d'audit récupéré", logs);
   }
 );
