@@ -1,14 +1,16 @@
 import { Router } from 'express';
 import { createTransformation } from '../controllers/transformation.controller';
-import { getBatchGenealogy, triggerRecall } from '../controllers/recall.controller';
+import { getBatchGenealogy, triggerRecall, simulateRecall } from '../controllers/recall.controller';
 import { publicScanBatch, publicScanDigitalLink } from '../controllers/publicScan.controller';
 import { validatePublicScanDigitalLink } from '../middlewares/validatePublicScanDigitalLink.middleware';
 import { validateTransformationParams } from '../middlewares/validateTransformation.middleware';
 import { validateRecall } from '../middlewares/validateRecall.middleware';
+import { validateRecallSimulation } from '../middlewares/validateRecallSimulation.middleware';
 import { requireAuth } from '../../../identity/middlewares/requireAuth.middleware';
 import { ALL_ROLES, WRITE_ROLES, QUALITY_ROLES } from '../../../identity/constants/roles.constants';
 import { requireOrgRole } from '../../../identity/middlewares/requireOrgRole.middleware';
 import rateLimit from 'express-rate-limit';
+import { AuthenticatedRequest } from '../../../identity/types/auth.types';
 
 const router = Router();
 
@@ -165,6 +167,56 @@ router.post(
   requireOrgRole(QUALITY_ROLES),
   validateRecall,
   triggerRecall
+);
+
+// Limiteur dédié, compté par UTILISATEUR : `trust proxy = false`, donc une clé par IP ferait
+// partager un seul quota à toute une entreprise derrière le même NAT — et un anonyme pourrait le
+// vider avant que l'équipe qualité n'en ait besoin. Il est monté APRÈS `requireAuth`, sans quoi la
+// session n'est pas encore résolue et la clé retomberait sur l'IP.
+const recallSimulationLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  keyGenerator: (req) => (req as AuthenticatedRequest).auth?.user?.id ?? 'session-non-resolue',
+  message: { error: 'Trop de simulations de rappel. Veuillez réessayer dans 15 minutes.' },
+});
+
+/**
+ * @swagger
+ * /api/traceability/batches/{id}/recall-simulation:
+ *   get:
+ *     summary: Chiffrer l'impact d'un rappel sans rien modifier
+ *     description: |
+ *       Même périmètre que le rappel réel — lot source, descendance, expéditions déjà parties —
+ *       calculé en lecture seule. Les coordonnées des clients ne sont pas exposées ici.
+ *     tags: [Traçabilité]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Impact simulé (lots impactés, expéditions concernées)
+ *       400:
+ *         description: Identifiant de lot hors format
+ *       401:
+ *         description: Authentification requise
+ *       403:
+ *         description: Rôle insuffisant
+ *       404:
+ *         description: Lot source introuvable dans l'organisation active
+ *       429:
+ *         description: Trop de simulations sur la fenêtre courante
+ */
+router.get(
+  '/traceability/batches/:id/recall-simulation',
+  requireAuth,
+  recallSimulationLimiter,
+  requireOrgRole(ALL_ROLES),
+  validateRecallSimulation,
+  simulateRecall
 );
 
 export default router;

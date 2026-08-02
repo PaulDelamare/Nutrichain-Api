@@ -14,3 +14,13 @@ export const recallSchema = vine.object({
 });
 
 export type RecallPayload = Infer<typeof recallSchema>;
+
+/**
+ * Simulation d'un rappel : seul le lot source est reçu, et il vient de l'URL. Aucun motif — rien
+ * n'est écrit, donc il n'y a rien à justifier.
+ */
+export const recallSimulationSchema = vine.object({
+  id: vine.string().uuid(),
+});
+
+export type RecallSimulationParams = Infer<typeof recallSimulationSchema>;

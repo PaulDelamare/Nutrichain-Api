@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { prisma } from '../../../../shared/configs/prismaClient.config';
 import { downstreamTraceCte, MAX_GENEALOGY_DEPTH } from './genealogy.service';
 import { APIError } from '../../../../shared/utils/errorHandler/APIError';
 import { logger } from '../../../../shared/utils/logger/logger';
@@ -52,6 +53,34 @@ export interface AffectedShipment {
   batchIds: string[]; // sous-ensemble des lots impactés présents dans cette expédition (dédupliqué, trié)
 }
 
+/**
+ * Expédition impactée, vue par la SIMULATION : projection réduite, sans le contact ni l'e-mail
+ * du client. Le rappel réel est réservé aux rôles qualité ; la simulation est ouverte à la
+ * lecture, et ces coordonnées relèvent de `PERSONAL_DATA_ROLES`.
+ */
+export interface SimulatedShipment {
+  shipmentId: string;
+  shipmentRef: string;
+  customerName: string;
+  dateEnvoi: Date;
+  statutLivraison: string;
+  dateLivraison: Date | null;
+  transporteur: string;
+  batchIds: string[];
+}
+
+export interface RecallSimulationResult {
+  /** Total exact, jamais tronqué — c’est le chiffre que le rappel réel bloquerait. */
+  impactedCount: number;
+  impactedBatchIds: string[];
+  impactedBatchIdsTruncated: boolean;
+  /** Total exact des expéditions concernées, même quand la liste ci-dessous est coupée. */
+  affectedShipmentsCount: number;
+  affectedShipments: SimulatedShipment[];
+  affectedShipmentsTruncated: boolean;
+  depthSaturated: boolean;
+}
+
 export interface RecallResult {
   blockedBatchesCount: number;
   impactedBatchIds: string[];
@@ -86,6 +115,21 @@ const AUDIT_SHIPMENT_REFS_CAP = 100;
  * le rend non borné → on cape ici pour éviter le bloat WORM (coût hash/recompute) sur rappel massif.
  */
 const AUDIT_IMPACTED_IDS_CAP = 100;
+
+/**
+ * Cap sur les ids rendus par la SIMULATION. Le GET est rejouable à volonté : sans borne, un lot
+ * à la descendance massive ferait transiter la liste entière à chaque appel. `impactedCount`
+ * reste exact et `impactedBatchIdsTruncated` dit que la liste est coupée — une troncature muette
+ * ferait mentir l’écran, ce que la simulation existe précisément pour éviter.
+ */
+export const SIMULATION_IDS_CAP = 1000;
+
+/**
+ * Cap sur les expéditions rendues par la simulation. Sans lui, borner les ids ne bornait que la
+ * partie légère de la réponse : chaque expédition porte ses propres lots, donc un rappel massif
+ * faisait transiter la liste entière par un autre chemin. `affectedShipmentsCount` reste exact.
+ */
+export const SIMULATION_SHIPMENTS_CAP = 200;
 
 export const recallService = {
   /**
@@ -155,7 +199,7 @@ export const recallService = {
             FROM blocked b
           )
           SELECT
-            (SELECT array_agg(id) FROM blocked) AS impacted_ids,
+            (SELECT array_agg(id ORDER BY id) FROM blocked) AS impacted_ids,
             (SELECT MAX(depth) FROM downstream_trace) AS max_depth
         `);
 
@@ -190,23 +234,7 @@ export const recallService = {
         //   future), on bloque côté Liaison.
         // Découpé par lots pour ne jamais dépasser le plafond de 65535 paramètres liés
         // de PostgreSQL sur un rappel massif (cf. LIAISON_IN_CHUNK_SIZE).
-        const liaisons: LiaisonHydrated[] = [];
-        for (let i = 0; i < allImpactedIds.length; i += LIAISON_IN_CHUNK_SIZE) {
-          const idsChunk = allImpactedIds.slice(i, i + LIAISON_IN_CHUNK_SIZE);
-          const part = await tx.liaison_Shipment.findMany({
-            where: {
-              id_lot: { in: idsChunk },
-              expedition: { organization_id: organizationId },
-              lot: { organization_id: organizationId },
-            },
-            include: {
-              expedition: { include: { client: true } },
-            },
-          });
-          liaisons.push(...part);
-        }
-
-        const affectedShipments = aggregateByShipment(liaisons);
+        const affectedShipments = await collectAffectedShipments(tx, allImpactedIds, organizationId);
 
         // 5. Alerte système (criticité maximale)
         await tx.alert.create({
@@ -272,7 +300,138 @@ export const recallService = {
 
     return result;
   },
+
+  /**
+   * Chiffre l'impact d'un rappel SANS rien écrire : mêmes lots, mêmes expéditions que
+   * `triggerRecall`, en lecture seule. Voir les magasins touchés n’exige donc plus de déclencher
+   * un rappel réel, qui est irréversible.
+   */
+  async simulateRecall(batchId: string, organizationId: string): Promise<RecallSimulationResult> {
+    return prisma.$transaction(
+      async (tx) => {
+      const sourceBatch = await tx.batch.findFirst({
+        where: { id: batchId, organization_id: organizationId },
+        select: { id: true },
+      });
+
+      // Même 404 que le rappel réel : sans lui, un lot d’une autre organisation rendrait 200 et
+      // une liste vide, soit deux réponses différentes pour le même lot selon le bouton cliqué.
+      if (!sourceBatch) {
+        throw new APIError(404, {
+          error: [{ field: 'batchId', message: 'Lot source introuvable.' }],
+        });
+      }
+
+      // Le WHERE reproduit celui de l'UPDATE de `triggerRecall`, absence de filtre de statut
+      // comprise : un lot déjà BLOQUE, ALERTE ou EPUISE est bloqué par le rappel réel, donc il
+      // compte. L’écarter ici produirait la sous-estimation que la simulation doit interdire.
+      const [impact] = await tx.$queryRaw<
+        { impacted_ids: string[] | null; max_depth: number | null }[]
+      >(Prisma.sql`
+        ${downstreamTraceCte(batchId, MAX_GENEALOGY_DEPTH)},
+        impacted AS (
+          SELECT b.id
+          FROM "Batch" b
+          WHERE b.organization_id = ${organizationId}
+            AND (b.id = ${batchId} OR b.id IN (SELECT DISTINCT id_lot_enfant FROM downstream_trace))
+        )
+        SELECT
+          (SELECT array_agg(id ORDER BY id) FROM impacted) AS impacted_ids,
+          (SELECT MAX(depth) FROM downstream_trace) AS max_depth
+      `);
+
+      // Un agrégat vide ne peut pas vouloir dire « un seul lot concerné » : le lot source vient
+      // d'être trouvé dans le même instantané. Se replier sur `[batchId]` annoncerait « 1 lot »
+      // sur le seul chiffre qui ne doit jamais mentir.
+      if (!impact?.impacted_ids) {
+        throw new APIError(404, {
+          error: [{ field: 'batchId', message: 'Lot source introuvable.' }],
+        });
+      }
+
+      const impactedIds = impact.impacted_ids;
+      const affectedShipments = await collectAffectedShipments(tx, impactedIds, organizationId);
+
+      return {
+        impactedCount: impactedIds.length,
+        impactedBatchIds: impactedIds.slice(0, SIMULATION_IDS_CAP),
+        impactedBatchIdsTruncated: impactedIds.length > SIMULATION_IDS_CAP,
+        affectedShipmentsCount: affectedShipments.length,
+        affectedShipments: affectedShipments
+          .slice(0, SIMULATION_SHIPMENTS_CAP)
+          .map(toSimulatedShipment),
+        affectedShipmentsTruncated: affectedShipments.length > SIMULATION_SHIPMENTS_CAP,
+        depthSaturated: (impact.max_depth ?? 0) >= MAX_GENEALOGY_DEPTH,
+      };
+      },
+      {
+        // Le défaut de Prisma est de 5 s, quand le rappel réel s'en accorde 30 : la simulation
+        // aurait échoué en 500 sur les descendances massives — précisément celles qu'on veut
+        // chiffrer avant de décider — pendant que le rappel, lui, aboutissait.
+        timeout: 30000,
+        // En Read Committed, chaque requête prend son propre instantané : la liste des lots et
+        // celle des expéditions pouvaient déjà ne plus décrire le même état. RepeatableRead lit
+        // tout dans le même instantané, sans le coût du Serializable — rien n'écrit ici.
+        isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+      }
+    );
+  },
 };
+
+/**
+ * Expéditions déjà parties qui contiennent au moins un des lots impactés.
+ *
+ * Partagée par le rappel réel et sa simulation : deux requêtes écrites séparément divergeraient
+ * au premier changement, et une simulation qui annonce un autre chiffre que le rappel est pire
+ * que pas de simulation. Découpée pour ne jamais dépasser le plafond de 65535 paramètres liés de
+ * PostgreSQL, et cloisonnée par les DEUX côtés de la jointure (l’expédition ET le lot).
+ */
+async function collectAffectedShipments(
+  db: Prisma.TransactionClient,
+  impactedIds: string[],
+  organizationId: string
+): Promise<AffectedShipment[]> {
+  const liaisons: LiaisonHydrated[] = [];
+
+  for (let i = 0; i < impactedIds.length; i += LIAISON_IN_CHUNK_SIZE) {
+    const idsChunk = impactedIds.slice(i, i + LIAISON_IN_CHUNK_SIZE);
+    const part = await db.liaison_Shipment.findMany({
+      where: {
+        id_lot: { in: idsChunk },
+        expedition: { organization_id: organizationId },
+        lot: { organization_id: organizationId },
+      },
+      include: {
+        expedition: { include: { client: true } },
+      },
+      // Sans tri, Postgres rend les lignes dans l'ordre physique : réécrire une expédition la
+      // déplace, et la liste des magasins touchés change d'un appel à l'autre sans qu'aucune
+      // donnée métier n'ait bougé.
+      orderBy: { id: 'asc' },
+    });
+    liaisons.push(...part);
+  }
+
+  return aggregateByShipment(liaisons);
+}
+
+/**
+ * Réduit une expédition impactée à ce que la simulation a le droit de montrer. Les champs sont
+ * recopiés un par un, et non par diffusion : un champ ajouté plus tard à `AffectedShipment`
+ * (une coordonnée client, par exemple) ne doit pas se retrouver ici sans décision explicite.
+ */
+function toSimulatedShipment(shipment: AffectedShipment): SimulatedShipment {
+  return {
+    shipmentId: shipment.shipmentId,
+    shipmentRef: shipment.shipmentRef,
+    customerName: shipment.customerName,
+    dateEnvoi: shipment.dateEnvoi,
+    statutLivraison: shipment.statutLivraison,
+    dateLivraison: shipment.dateLivraison,
+    transporteur: shipment.transporteur,
+    batchIds: shipment.batchIds,
+  };
+}
 
 /**
  * Construit l'email de rappel destiné aux admins de l'organisation.
@@ -306,14 +465,13 @@ function buildRecallEmail(batchId: string, reason: string, result: RecallResult)
  */
 function aggregateByShipment(liaisons: LiaisonHydrated[]): AffectedShipment[] {
   const accumulator = new Map<string, { shipment: AffectedShipment; batchSet: Set<string> }>();
+  const orphanShipmentIds = new Set<string>();
 
   for (const liaison of liaisons) {
     const shipment = liaison.expedition;
 
     if (!shipment.client) {
-      logger.warn(
-        `[RECALL] Shipment ${shipment.id} référence un Customer supprimé — skip de l'agrégation`
-      );
+      orphanShipmentIds.add(shipment.id);
       continue;
     }
 
@@ -343,9 +501,20 @@ function aggregateByShipment(liaisons: LiaisonHydrated[]): AffectedShipment[] {
     }
   }
 
-  // Finaliser : convertir Set → array trié (ordre stable pour tests + UI)
-  return Array.from(accumulator.values()).map(({ shipment, batchSet }) => ({
-    ...shipment,
-    batchIds: Array.from(batchSet).sort(),
-  }));
+  // Un seul avertissement par appel, et non un par liaison : ce chemin est désormais atteint par
+  // un GET rejouable, où une dérive référentielle inonderait le journal.
+  if (orphanShipmentIds.size > 0) {
+    logger.warn(
+      `[RECALL] ${orphanShipmentIds.size} expédition(s) référencent un Customer supprimé — exclues de l'agrégation : ${Array.from(orphanShipmentIds).join(', ')}`
+    );
+  }
+
+  // Ordre stable de bout en bout : les lots par id, les expéditions par référence (unique par
+  // organisation). L'ordre d'insertion d'une Map dépend de l'ordre des lignes rendues par Postgres.
+  return Array.from(accumulator.values())
+    .map(({ shipment, batchSet }) => ({
+      ...shipment,
+      batchIds: Array.from(batchSet).sort(),
+    }))
+    .sort((left, right) => left.shipmentRef.localeCompare(right.shipmentRef));
 }

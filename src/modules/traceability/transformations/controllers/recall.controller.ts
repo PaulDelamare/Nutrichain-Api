@@ -59,3 +59,25 @@ export const triggerRecall = catchAsync(async (req: AuthenticatedRequest, res: R
     result
   );
 });
+
+/**
+ * Chiffre l'impact d'un rappel sans rien écrire.
+ *
+ * `Cache-Control: no-store` : le résultat dépend de l'état mutable des lots. Un intermédiaire qui
+ * le garderait servirait un impact périmé au moment d'une décision sanitaire.
+ */
+export const simulateRecall = catchAsync(async (req: AuthenticatedRequest, res: Response) => {
+  const activeOrgId = req.activeOrgId || req.auth?.activeOrgId;
+  const { id } = req.validatedRecallSimulation!;
+
+  if (!activeOrgId) {
+    throw new APIError(401, {
+      error: [{ field: 'auth', message: 'Organisation non identifiée.' }],
+    });
+  }
+
+  const result = await recallService.simulateRecall(id, activeOrgId);
+
+  res.setHeader('Cache-Control', 'no-store');
+  return sendSuccess(res, 200, 'Simulation de rappel calculée. Aucune donnée modifiée.', result);
+});
