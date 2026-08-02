@@ -26,6 +26,13 @@ export const catalogService = {
       search?: string;
       page?: number;
       limit?: number;
+      // Filtres de colonnes appliqués dans la requête (et non plus sur la page reçue) : chacun
+      // restreint sur TOUTE l'organisation. Absents (undefined) ⇒ Prisma les ignore.
+      statut?: string;
+      produit?: string;
+      site?: string;
+      lot?: string;
+      gtin?: string;
       revealAuthor?: boolean;
     } = {}
   ) {
@@ -33,11 +40,23 @@ export const catalogService = {
       search,
       page = CATALOG_PAGE_DEFAULTS.page,
       limit = CATALOG_PAGE_DEFAULTS.limit,
+      statut,
+      produit,
+      site,
+      lot,
+      gtin,
       revealAuthor = false,
     } = options;
 
     const where: Prisma.BatchWhereInput = {
       organization_id,
+      // Filtres de colonnes (ET) : Prisma ignore les clés `undefined`, donc un filtre non fourni
+      // ne restreint rien. `site` filtre sur l'emplacement du matériel qui stocke le lot.
+      statut: statut || undefined,
+      id_produit: produit || undefined,
+      materiel: site ? { id_lieu: site } : undefined,
+      lot_number: lot ? { contains: lot, mode: 'insensitive' } : undefined,
+      produit: gtin ? { code_gtin: { contains: gtin, mode: 'insensitive' } } : undefined,
       // `lot_number` et le GTIN sont ce que l'opérateur LIT sur l'étiquette : chercher le numéro
       // affiché à l'écran précédent ne renvoyait rien tant qu'ils manquaient ici.
       OR: search
