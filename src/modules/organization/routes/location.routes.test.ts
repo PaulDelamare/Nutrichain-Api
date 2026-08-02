@@ -70,6 +70,20 @@ describe('POST /api/organization/locations — position du lieu', () => {
     );
   });
 
+  // `type` est un simple label facultatif : on peut créer un emplacement sans le renseigner.
+  it('accepte un lieu sans type', async () => {
+    const res = await request(app)
+      .post('/api/organization/locations')
+      .send({ nom: 'Zone de transit' });
+
+    expect(res.status).toBe(201);
+    expect(locationService.create).toHaveBeenCalledWith(
+      expect.not.objectContaining({ type: expect.anything() }),
+      'org-1',
+      'u-1'
+    );
+  });
+
   it('refuse une latitude seule : une demi-position ne place aucun repère', async () => {
     const res = await request(app)
       .post('/api/organization/locations')
