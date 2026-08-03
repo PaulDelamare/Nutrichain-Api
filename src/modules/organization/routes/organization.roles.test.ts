@@ -20,6 +20,7 @@ vi.mock('../../identity/auth.config', () => ({
 // Contrôleurs et validations en aval neutralisés : on isole la garde de rôle.
 const ok = (_req: express.Request, res: express.Response) => res.status(200).end();
 vi.mock('../controllers/organization.controller', () => ({
+  configCountsController: ok,
   listMembersController: ok,
   listAlertsController: ok,
   listRecallsController: ok,
