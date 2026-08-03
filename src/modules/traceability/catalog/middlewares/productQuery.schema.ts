@@ -14,14 +14,15 @@ import {
  * les sélecteurs (réception, transformation…) n'envoient rien et gardent le tableau simple. Le
  * contrôleur bascule sur la présence de `page`. `includeArchived` reste pour le chemin non paginé.
  *
- * Filtres du chemin paginé : `nom` (recherche libre) et `statut` (`actif`/`archive` → `is_active`).
- * Le filtre `archive` n'est honoré que pour l'administration (le service force les actifs seuls
- * pour un rôle en lecture).
+ * Filtres du chemin paginé : `nom` (recherche libre), `gtin` (recherche libre sur le code GS1) et
+ * `statut` (`actif`/`archive` → `is_active`). Le filtre `archive` n'est honoré que pour
+ * l'administration (le service force les actifs seuls pour un rôle en lecture).
  */
 export const productQuerySchema = vine.object({
   page: vine.number().withoutDecimals().min(1).max(MAX_PAGE_NUMBER).optional(),
   limit: vine.number().withoutDecimals().min(1).max(MAX_PAGE_SIZE).optional(),
   nom: vine.string().trim().maxLength(MAX_SEARCH_LENGTH).optional(),
+  gtin: vine.string().trim().maxLength(MAX_SEARCH_LENGTH).optional(),
   statut: vine.enum(['actif', 'archive']).optional(),
   includeArchived: vine.boolean().optional(),
 });

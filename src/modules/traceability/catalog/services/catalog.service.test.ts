@@ -82,6 +82,20 @@ describe('CatalogService', () => {
       );
     });
 
+    it('filtre gtin (contains insensible sur le code GS1)', async () => {
+      mockProductPage(0);
+
+      await catalogService.getProductsPaginated('org-1', { gtin: '3456', includeArchived: true });
+
+      expect(prisma.product.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            code_gtin: { contains: '3456', mode: 'insensitive' },
+          }),
+        })
+      );
+    });
+
     // Invariant de sécurité : un rôle en lecture reste borné aux actifs, même en forçant `statut`.
     it('sans includeArchived → actifs seuls, le filtre statut est ignoré', async () => {
       mockProductPage(0);

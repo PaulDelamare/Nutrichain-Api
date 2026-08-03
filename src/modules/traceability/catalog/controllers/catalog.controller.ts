@@ -28,6 +28,7 @@ export const getProducts = catchAsync(async (req: AuthenticatedRequest, res: Res
       page: q.page,
       limit: q.limit ?? PRODUCT_PAGE_DEFAULTS.limit,
       nom: q.nom,
+      gtin: q.gtin,
       statut: q.statut,
       includeArchived: isAdmin,
     });

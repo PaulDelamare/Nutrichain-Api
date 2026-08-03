@@ -26,16 +26,18 @@ export const catalogService = {
       page?: number;
       limit?: number;
       nom?: string;
+      gtin?: string;
       statut?: 'actif' | 'archive';
       includeArchived?: boolean;
     } = {}
   ) {
-    const { page = 1, limit = 20, nom, statut, includeArchived = false } = options;
+    const { page = 1, limit = 20, nom, gtin, statut, includeArchived = false } = options;
     const skip = (page - 1) * limit;
 
     const where: Prisma.ProductWhereInput = {
       organization_id,
       nom: nom ? { contains: nom, mode: 'insensitive' } : undefined,
+      code_gtin: gtin ? { contains: gtin, mode: 'insensitive' } : undefined,
       is_active: !includeArchived
         ? true
         : statut === 'actif'
