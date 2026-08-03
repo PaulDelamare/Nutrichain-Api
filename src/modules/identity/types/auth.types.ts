@@ -4,6 +4,7 @@ import type { TelemetryPingPayload } from '../../iot/middlewares/telemetryPing.s
 import type { TelemetryHistoryQuery } from '../../iot/middlewares/telemetryHistoryQuery.schema';
 import type { ReceiptQuery } from '../../logistics/receipts/middlewares/receiptQuery.schema';
 import type { CatalogQuery } from '../../traceability/catalog/middlewares/catalogQuery.schema';
+import type { ProductQuery } from '../../traceability/catalog/middlewares/productQuery.schema';
 import type { ShipmentQuery } from '../../organization/middlewares/shipmentQuery.schema';
 import type { MemberQuery } from '../../organization/middlewares/memberQuery.schema';
 import type { RecallQuery } from '../../organization/middlewares/recallQuery.schema';
@@ -139,6 +140,7 @@ export interface AuthenticatedRequest extends Request {
   validatedTelemetryHistoryQuery?: TelemetryHistoryQuery;
   validatedReceiptQuery?: ReceiptQuery;
   validatedCatalogQuery?: CatalogQuery;
+  validatedProductQuery?: ProductQuery;
   validatedShipmentQuery?: ShipmentQuery;
   validatedMemberQuery?: MemberQuery;
   validatedRecallQuery?: RecallQuery;

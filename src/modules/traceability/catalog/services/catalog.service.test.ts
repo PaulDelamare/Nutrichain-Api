@@ -4,7 +4,7 @@ import { prisma } from '../../../../shared/configs/prismaClient.config';
 
 vi.mock('../../../../shared/configs/prismaClient.config', () => ({
   prisma: {
-    product: { findMany: vi.fn() },
+    product: { findMany: vi.fn(), count: vi.fn() },
     batch: { findMany: vi.fn(), count: vi.fn() },
     // `$transaction` reçoit les PROMESSES déjà créées par les mocks ci-dessus : les résoudre dans
     // l'ordre reproduit le comportement de Prisma sans avoir à simuler une transaction.
@@ -38,6 +38,71 @@ describe('CatalogService', () => {
         orderBy: { nom: 'asc' },
       });
       expect(result).toBe(products);
+    });
+  });
+
+  describe('getProductsPaginated', () => {
+    /** Pose un total et une page de résultats pour le couple `count` + `findMany`. */
+    const mockProductPage = (total: number, rows: unknown[] = []) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(prisma.product.count).mockResolvedValue(total as any);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(prisma.product.findMany).mockResolvedValue(rows as any);
+    };
+
+    it('pagine (skip/take), trié par nom, renvoie { data, pagination }', async () => {
+      mockProductPage(42, [{ id: 'prod-1' }]);
+
+      const result = await catalogService.getProductsPaginated('org-1', { page: 3, limit: 10 });
+
+      expect(prisma.product.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ orderBy: { nom: 'asc' }, skip: 20, take: 10 })
+      );
+      expect(result.pagination).toEqual({ page: 3, limit: 10, total: 42, totalPages: 5 });
+      expect(result.data).toEqual([{ id: 'prod-1' }]);
+    });
+
+    it('filtre nom (contains insensible) et statut archive (administration)', async () => {
+      mockProductPage(0);
+
+      await catalogService.getProductsPaginated('org-1', {
+        nom: 'yaourt',
+        statut: 'archive',
+        includeArchived: true,
+      });
+
+      expect(prisma.product.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            organization_id: 'org-1',
+            nom: { contains: 'yaourt', mode: 'insensitive' },
+            is_active: false,
+          },
+        })
+      );
+    });
+
+    // Invariant de sécurité : un rôle en lecture reste borné aux actifs, même en forçant `statut`.
+    it('sans includeArchived → actifs seuls, le filtre statut est ignoré', async () => {
+      mockProductPage(0);
+
+      await catalogService.getProductsPaginated('org-1', { statut: 'archive' });
+
+      expect(prisma.product.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ organization_id: 'org-1', is_active: true }),
+        })
+      );
+    });
+
+    it('compte le total sur le MÊME filtre que la page', async () => {
+      mockProductPage(0);
+
+      await catalogService.getProductsPaginated('org-1', { nom: 'lait', includeArchived: true });
+
+      const countArgs = vi.mocked(prisma.product.count).mock.calls[0][0];
+      const findArgs = vi.mocked(prisma.product.findMany).mock.calls[0][0];
+      expect(countArgs?.where).toEqual(findArgs?.where);
     });
   });
 
