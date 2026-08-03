@@ -14,6 +14,7 @@ import { RECALL_PAGE_DEFAULTS } from '../middlewares/recallQuery.schema';
 import { AUDIT_LOG_PAGE_DEFAULTS } from '../middlewares/auditLogQuery.schema';
 import { SUPPLIER_PAGE_DEFAULTS } from '../middlewares/supplierQuery.schema';
 import { CUSTOMER_PAGE_DEFAULTS } from '../middlewares/customerQuery.schema';
+import { EQUIPMENT_PAGE_DEFAULTS } from '../middlewares/equipmentQuery.schema';
 
 export const listMembersController = catchAsync(
   async (req: AuthenticatedRequest, res: Response) => {
@@ -108,6 +109,21 @@ export const listQuarantineBatchesController = catchAsync(
 
 export const listEquipmentController = catchAsync(
   async (req: AuthenticatedRequest, res: Response) => {
+    const q = req.validatedEquipmentQuery ?? {};
+
+    // Chemin paginé (écran Configuration) quand `page` est présent ; sinon tableau simple pour les
+    // écrans du plan d'usine (rétrocompatible).
+    if (q.page !== undefined) {
+      const result = await organizationService.listEquipmentPaginated(req.activeOrgId as string, {
+        page: q.page,
+        limit: q.limit ?? EQUIPMENT_PAGE_DEFAULTS.limit,
+        nom: q.nom,
+        type: q.type,
+      });
+      sendSuccess(res, 200, 'Matériel récupéré', result);
+      return;
+    }
+
     const equipment = await organizationService.listEquipment(req.activeOrgId as string);
     sendSuccess(res, 200, 'Matériel récupéré', equipment);
   }

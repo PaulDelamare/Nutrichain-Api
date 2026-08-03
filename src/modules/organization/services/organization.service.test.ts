@@ -269,6 +269,40 @@ describe('OrganizationService (façade de lecture pour le front)', () => {
     expect(Array.isArray(orderBy) && orderBy.at(-1)).toEqual({ id: 'asc' });
   });
 
+  it('listEquipmentPaginated : pagine (skip/take), ordre déterministe, renvoie { data, pagination }', async () => {
+    vi.mocked(prisma.equipment.count).mockResolvedValue(42 as never);
+    vi.mocked(prisma.equipment.findMany).mockResolvedValue([] as never);
+
+    const res = await organizationService.listEquipmentPaginated(ORG, { page: 3, limit: 10 });
+
+    expect(prisma.equipment.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        include: { lieu: { select: { nom: true } } },
+        orderBy: [{ nom: 'asc' }, { id: 'asc' }],
+        skip: 20,
+        take: 10,
+      })
+    );
+    expect(res.pagination).toEqual({ page: 3, limit: 10, total: 42, totalPages: 5 });
+  });
+
+  it('listEquipmentPaginated : filtre nom (contains insensible) et type (exact)', async () => {
+    vi.mocked(prisma.equipment.count).mockResolvedValue(0 as never);
+    vi.mocked(prisma.equipment.findMany).mockResolvedValue([] as never);
+
+    await organizationService.listEquipmentPaginated(ORG, { nom: 'frigo', type: 'FRIGO' });
+
+    expect(prisma.equipment.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          organization_id: ORG,
+          nom: { contains: 'frigo', mode: 'insensitive' },
+          type: 'FRIGO',
+        },
+      })
+    );
+  });
+
   it("listMovements : cloisonné VIA le lot (Batch_Mouvement n'a pas d'organization_id direct)", async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     vi.mocked(prisma.batch_Mouvement.findMany).mockResolvedValue([] as any);

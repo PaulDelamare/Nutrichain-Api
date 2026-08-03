@@ -15,6 +15,7 @@ import { validateAuditLogQuery } from '../middlewares/validateAuditLogQuery.midd
 import { validateLocationQuery } from '../middlewares/validateLocationQuery.middleware';
 import { validateSupplierQuery } from '../middlewares/validateSupplierQuery.middleware';
 import { validateCustomerQuery } from '../middlewares/validateCustomerQuery.middleware';
+import { validateEquipmentQuery } from '../middlewares/validateEquipmentQuery.middleware';
 import { validateCreateEquipment } from '../middlewares/validateEquipment.middleware';
 import { validateCreateQualityControl } from '../middlewares/validateQualityControl.middleware';
 import {
@@ -259,7 +260,12 @@ router.get(
  *       401:
  *         description: Aucune session
  */
-router.get('/organization/equipment', sessionAuth(READ_ROLES), listEquipmentController);
+router.get(
+  '/organization/equipment',
+  sessionAuth(READ_ROLES),
+  validateEquipmentQuery,
+  listEquipmentController
+);
 
 // Métier (l'opérateur en a besoin pour l'historique d'un lot), MAIS le nom de l'auteur des
 // mouvements — seule donnée personnelle — est masqué pour les non-administrateurs, dans le service.

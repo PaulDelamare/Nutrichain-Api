@@ -198,6 +198,36 @@ export const organizationService = {
     });
   },
 
+  // Chemin paginé de l'écran Configuration (le tableau + ses filtres). `listEquipment` ci-dessus
+  // reste pour les écrans qui lisent tout le plan d'usine (chaîne du froid) sans envoyer de `page`.
+  async listEquipmentPaginated(
+    organizationId: string,
+    options: { page?: number; limit?: number; nom?: string; type?: string } = {}
+  ) {
+    const { page = 1, limit = 20, nom, type } = options;
+    const skip = (page - 1) * limit;
+
+    const where: Prisma.EquipmentWhereInput = {
+      organization_id: organizationId,
+      nom: nom ? { contains: nom, mode: 'insensitive' } : undefined,
+      type: type || undefined,
+    };
+
+    const [total, data] = await prisma.$transaction([
+      prisma.equipment.count({ where }),
+      prisma.equipment.findMany({
+        where,
+        include: { lieu: { select: { nom: true } } },
+        // Même raison que `listEquipment` : ordre déterministe, départagé par id.
+        orderBy: [{ nom: 'asc' }, { id: 'asc' }],
+        skip,
+        take: limit,
+      }),
+    ]);
+
+    return { data, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
+  },
+
   async listMovements(
     organizationId: string,
     opts: { lotId?: string; limit?: number; revealAuthor?: boolean } = {}
