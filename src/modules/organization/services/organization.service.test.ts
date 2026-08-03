@@ -410,6 +410,58 @@ describe('OrganizationService (façade de lecture pour le front)', () => {
     );
   });
 
+  it('listCustomersPaginated : pagine (skip/take), trié par enseigne, renvoie { data, pagination }', async () => {
+    vi.mocked(prisma.customer.count).mockResolvedValue(42 as never);
+    vi.mocked(prisma.customer.findMany).mockResolvedValue([] as never);
+
+    const res = await organizationService.listCustomersPaginated(ORG, {
+      page: 3,
+      limit: 10,
+      revealPersonalData: true,
+    });
+
+    expect(prisma.customer.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: { nom_enseigne: 'asc' }, skip: 20, take: 10 })
+    );
+    expect(res.pagination).toEqual({ page: 3, limit: 10, total: 42, totalPages: 5 });
+  });
+
+  it('listCustomersPaginated : filtre nom (contains insensible) et statut (admin)', async () => {
+    vi.mocked(prisma.customer.count).mockResolvedValue(0 as never);
+    vi.mocked(prisma.customer.findMany).mockResolvedValue([] as never);
+
+    await organizationService.listCustomersPaginated(ORG, {
+      nom: 'super',
+      statut: 'archive',
+      revealPersonalData: true,
+    });
+
+    expect(prisma.customer.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          organization_id: ORG,
+          nom_enseigne: { contains: 'super', mode: 'insensitive' },
+          is_active: false,
+        },
+      })
+    );
+  });
+
+  // Invariant de sécurité : un rôle terrain reste borné aux actifs et à l'identité d'exploitation.
+  it('listCustomersPaginated : sans revealPersonalData → actifs seuls + projection sans données perso', async () => {
+    vi.mocked(prisma.customer.count).mockResolvedValue(0 as never);
+    vi.mocked(prisma.customer.findMany).mockResolvedValue([] as never);
+
+    await organizationService.listCustomersPaginated(ORG, { statut: 'archive' });
+
+    expect(prisma.customer.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ organization_id: ORG, is_active: true }),
+        select: { id: true, nom_enseigne: true, adresse_livraison: true },
+      })
+    );
+  });
+
   it('listShipments : cloisonné, client et lots liés joints, plus récentes d abord', async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     vi.mocked(prisma.shipment.findMany).mockResolvedValue([] as any);

@@ -13,6 +13,7 @@ import { MEMBER_PAGE_DEFAULTS } from '../middlewares/memberQuery.schema';
 import { RECALL_PAGE_DEFAULTS } from '../middlewares/recallQuery.schema';
 import { AUDIT_LOG_PAGE_DEFAULTS } from '../middlewares/auditLogQuery.schema';
 import { SUPPLIER_PAGE_DEFAULTS } from '../middlewares/supplierQuery.schema';
+import { CUSTOMER_PAGE_DEFAULTS } from '../middlewares/customerQuery.schema';
 
 export const listMembersController = catchAsync(
   async (req: AuthenticatedRequest, res: Response) => {
@@ -162,6 +163,22 @@ export const listCustomersController = catchAsync(
     // Même règle : l'opérateur expédie et voit { id, nom, adresse_livraison } (donnée
     // d'exploitation) ; contact, e-mail et notes restent réservés à l'administration.
     const revealPersonalData = PERSONAL_DATA_ROLES.includes(req.auth?.role as Role);
+    const q = req.validatedCustomerQuery ?? {};
+
+    // Chemin paginé (écran Configuration) quand `page` est présent ; sinon tableau simple pour les
+    // sélecteurs de l'app (rétrocompatible).
+    if (q.page !== undefined) {
+      const result = await organizationService.listCustomersPaginated(req.activeOrgId as string, {
+        page: q.page,
+        limit: q.limit ?? CUSTOMER_PAGE_DEFAULTS.limit,
+        nom: q.nom,
+        statut: q.statut,
+        revealPersonalData,
+      });
+      sendSuccess(res, 200, 'Clients récupérés', result);
+      return;
+    }
+
     const customers = await organizationService.listCustomers(req.activeOrgId as string, {
       includeArchived: revealPersonalData && req.query.includeArchived === 'true',
       revealPersonalData,

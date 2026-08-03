@@ -303,6 +303,50 @@ export const organizationService = {
     });
   },
 
+  // Chemin paginé de l'écran Configuration (le tableau + ses filtres). `listCustomers` ci-dessus
+  // reste pour les sélecteurs de l'app, qui n'envoient pas de `page`. Même invariant que les
+  // fournisseurs : un rôle terrain reste borné aux actifs et à l'identité d'exploitation.
+  async listCustomersPaginated(
+    organizationId: string,
+    options: {
+      page?: number;
+      limit?: number;
+      nom?: string;
+      statut?: 'actif' | 'archive';
+      revealPersonalData?: boolean;
+    } = {}
+  ) {
+    const { page = 1, limit = 20, nom, statut, revealPersonalData = false } = options;
+    const skip = (page - 1) * limit;
+
+    const where: Prisma.CustomerWhereInput = {
+      organization_id: organizationId,
+      nom_enseigne: nom ? { contains: nom, mode: 'insensitive' } : undefined,
+      is_active: !revealPersonalData
+        ? true
+        : statut === 'actif'
+          ? true
+          : statut === 'archive'
+            ? false
+            : undefined,
+    };
+
+    const [total, data] = await prisma.$transaction([
+      prisma.customer.count({ where }),
+      prisma.customer.findMany({
+        where,
+        ...(revealPersonalData
+          ? {}
+          : { select: { id: true, nom_enseigne: true, adresse_livraison: true } }),
+        orderBy: { nom_enseigne: 'asc' },
+        skip,
+        take: limit,
+      }),
+    ]);
+
+    return { data, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
+  },
+
   async listShipments(
     organizationId: string,
     options: {

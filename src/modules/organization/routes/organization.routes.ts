@@ -14,6 +14,7 @@ import { validateRecallQuery } from '../middlewares/validateRecallQuery.middlewa
 import { validateAuditLogQuery } from '../middlewares/validateAuditLogQuery.middleware';
 import { validateLocationQuery } from '../middlewares/validateLocationQuery.middleware';
 import { validateSupplierQuery } from '../middlewares/validateSupplierQuery.middleware';
+import { validateCustomerQuery } from '../middlewares/validateCustomerQuery.middleware';
 import { validateCreateEquipment } from '../middlewares/validateEquipment.middleware';
 import { validateCreateQualityControl } from '../middlewares/validateQualityControl.middleware';
 import {
@@ -369,7 +370,12 @@ router.get(
  *       401:
  *         description: Aucune session
  */
-router.get('/organization/customers', sessionAuth(READ_ROLES), listCustomersController);
+router.get(
+  '/organization/customers',
+  sessionAuth(READ_ROLES),
+  validateCustomerQuery,
+  listCustomersController
+);
 
 /**
  * @swagger
