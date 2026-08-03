@@ -48,9 +48,9 @@ ou `git merge origin/develop`). C'est ce qui évite de merger du code périmé o
 
 ## 3. Règles de protection sur GitHub (admin)
 
-**État au 22/07/2026 : `main` et `develop` sont protégées côté API.** Ce tableau décrit la
-configuration réellement en place, vérifiable par
-`gh api repos/:owner/:repo/branches/develop/protection`.
+**État au 03/08/2026 : `main` et `develop` sont protégées côté API.** Ce tableau décrit la
+configuration réellement en place, revérifiée par
+`gh api repos/:owner/:repo/branches/develop/protection` — la sortie correspond ligne à ligne.
 
 Rappel du rôle des deux troncs : **`develop` est la préproduction et la base de TOUTES les PR** —
 c'est là qu'on travaille et qu'on merge. **`main` est la production : on n'y touche pas.** Sa
@@ -69,6 +69,10 @@ protection est là par principe, pas pour encadrer un flux de release actif.
 | **Include administrators** | ❌ désactivé | le mainteneur garde une sortie de secours en cas d'incident |
 | **Require linear history** | ❌ désactivé | la mise à jour de branche se fait par merge ; l'historique n'est pas linéaire |
 
+> ⚠️ **Le job E2E n'est pas un check requis.** Seul `Code Quality & Tests` l'est : le job
+> `E2E (PostgreSQL + MongoDB)` s'exécute sur chaque PR, mais son échec **n'empêche pas le merge**.
+> Le regarder avant de fusionner reste donc une discipline humaine, pas une barrière automatique.
+
 > ⚠️ **Un check requis se nomme d'après le `name:` AFFICHÉ du job, pas son identifiant.** Le job
 > `quality-gates` de `ci.yml` s'affiche `Code Quality & Tests` : c'est cette chaîne exacte qu'il faut
 > inscrire. Écrire `quality-gates` désigne un check qui ne remontera jamais — et **toute PR resterait
@@ -84,7 +88,16 @@ bloque l'auteur (GitHub interdit l'auto-approbation). Deux options professionnel
 
 - `.github/PULL_REQUEST_TEMPLATE.md` — gabarit de PR (pourquoi / contenu / vérifications).
 - `.github/CODEOWNERS` — relecteurs assignés automatiquement.
-- `.github/workflows/*.yml` — `ci.yml` (lint, typecheck, build, tests + couverture) et `api-ci.yml` (publication de l'image, en aval). **Aucun e2e en CI** : les scripts `e2e:*` se lancent à la main contre une base réelle.
+- `.github/workflows/*.yml` — trois workflows :
+  - `ci.yml` — deux jobs. `quality-gates` (affiché **`Code Quality & Tests`**) : audit des
+    dépendances, lint, typage, build, tests unitaires + couverture. `E2E (PostgreSQL + MongoDB)` :
+    migrations, seeds, puis **35 des 39 scénarios `e2e:*`** joués contre des bases réelles.
+  - `codeql.yml` — analyse statique de sécurité.
+  - `api-ci.yml` — publication de l'image, en aval (`workflow_run`).
+- `.github/dependabot.yml` — mises à jour de dépendances automatisées.
+
+> Les 4 scénarios `e2e:*` **absents de la CI** — `e2e:invitation`, `e2e:mobile`, `e2e:platform`,
+> `e2e:security` — se lancent à la main. Ne pas les croire couverts par le check requis.
 
 ## 5. À faire aussi côté dépôt (Settings)
 

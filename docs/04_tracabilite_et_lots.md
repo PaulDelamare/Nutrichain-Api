@@ -1,5 +1,19 @@
 # Logique Métier : Traçabilité et Gestion des Lots (Nutrichain)
 
+> 📌 **DOCUMENT DE CADRAGE — état au 03/08/2026.**
+>
+> Il énonce les principes métier au futur (« devront respecter », « sera créé ») : c'est une
+> intention de mai 2026, pas une description du code. Ce qui est **livré** : la distinction
+> Product / Batch, la traçabilité au niveau du lot, la généalogie et le rappel ciblé.
+>
+> Ce qui **ne correspond plus** : l'arborescence citée au §4 (`src/Services/barcode/`,
+> `src/Utils/barcodeGenerator/`) n'existe pas — le code est découpé par domaine métier dans
+> `src/modules/<domaine>/`, cf. `19_architecture.md` §3. Les étiquettes sont produites avec
+> `bwip-js` comme prévu, mais le porteur retenu est le **GS1 Digital Link en QR**, pas le
+> DataMatrix : les raisons de ce choix sont dans `27_GS1_EPCIS.md`.
+>
+> Référence à jour sur les identifiants et les étiquettes : `27_GS1_EPCIS.md`.
+
 Ce document régit les règles fondamentales pour l'architecture et le développement des fonctionnalités liées à la chaîne d'approvisionnement (Supply Chain) dans le projet Nutrichain.
 
 ## 1. Principes de Traçabilité (Batch Tracking)

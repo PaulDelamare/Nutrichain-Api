@@ -11,11 +11,14 @@ Au-delà de l'architecture "Clean Code", l'API respecte les piliers suivants pou
 retenue : elle n'a jamais été implémentée, `src/Docs/` n'existe pas, et un schéma de validation ne
 porte ni les codes de réponse ni les exemples.
 
-- La doc vit **à côté de la route qu'elle décrit**, dans `<module>/routes/*.routes.ts` : 20 blocs
-  `@swagger` répartis dans 11 fichiers, agrégés par glob (`shared/configs/swagger.config.ts`).
+- La doc vit **à côté de la route qu'elle décrit**, dans `<module>/routes/*.routes.ts` : 81 blocs
+  `@swagger` répartis dans 20 fichiers, agrégés par glob (`shared/configs/swagger.config.ts`),
+  pour 89 routes déclarées.
 - Elle est servie sur `/api-docs`.
 - **Limite connue** : la couverture est partielle — toutes les routes ne sont pas annotées, et rien
-  ne le vérifie automatiquement.
+  ne le vérifie automatiquement. Pire, rien ne vérifie qu'une annotation reste **vraie** : celle de
+  `PATCH /api/alerts/:id/resolve` a annoncé « seuls owner / admin » alors que la garde admettait
+  aussi `quality`. Une annotation périmée est un piège pour l'intégrateur.
 
 ## 2. L'Observabilité (Traçabilité des requêtes)
 

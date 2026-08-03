@@ -1,5 +1,11 @@
 # Session de durcissement — 27 mai 2026
 
+> 📌 **TRACE DATÉE — état au 03/08/2026.**
+>
+> Compte rendu d'une session du 27/05/2026, conservé pour l'historique des décisions. Les volumes
+> cités (24 commits, 126 tests) valent **pour ce jour-là** : la suite en compte 1 386 aujourd'hui.
+> Ne pas s'en servir comme mesure de l'état courant.
+
 Trace audit de la session de hardening menée le 2026-05-27 sur la branche `feat/traceability-transformations`. **24 commits**, **126 tests unitaires verts**, **0 bug bloquant**, premier flow E2E métier validé en live contre Postgres.
 
 Ce document remplace en partie les éléments « à faire » de `06_standards_techniques.md` et `09_SECURITY_DECISION_MATRIX.md` qui sont désormais **implémentés**.

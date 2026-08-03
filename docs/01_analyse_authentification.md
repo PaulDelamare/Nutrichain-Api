@@ -1,5 +1,12 @@
 # Analyse et Conception : Système d'Authentification NutriChain
 
+> 📌 **ANALYSE COMPARATIVE PRÉALABLE — état au 03/08/2026.**
+>
+> Elle a servi à choisir la solution d'authentification ; elle ne décrit pas le code livré.
+> Retenu et en place : **Better-Auth** (sessions, organisations, invitations, TOTP), avec un
+> **RBAC à 5 rôles**. L'ABAC envisagé ici n'a pas été implémenté.
+> Référence à jour : `19_architecture.md` §1 et `16_invitation_register_flow.md`.
+
 ## 1. Contexte et Enjeux
 
 D'après le fichier `context.md` et les objectifs SMART du projet, la sécurisation des accès est un point de friction majeur (**Objectif 3 : Sécurisation avancée des accès et de l'identité** d'ici le 01/03/2026).

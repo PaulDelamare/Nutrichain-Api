@@ -12,7 +12,7 @@ donné, aucune nouvelle alerte n'est créée. Sans endpoint de résolution, on n
 re-déclencher une détection sans purger manuellement la DB — démos répétables et tests E2E
 bloqués.
 
-Cet endpoint permet à un opérateur Qualité (rôle `owner`/`admin`) de marquer une `Alert`
+Cet endpoint permet à un opérateur Qualité (`QUALITY_ROLES` : `owner`, `admin`, `quality`) de marquer une `Alert`
 comme `RESOLVED` après traitement terrain. Le module est **générique** : il résout aussi les
 `Alert` de type `PRODUCT_RECALL` créées par le déclenchement de rappel produit (cf. §5).
 
@@ -20,7 +20,7 @@ comme `RESOLVED` après traitement terrain. Le module est **générique** : il r
 
 `PATCH /api/alerts/:id/resolve`
 
-**Auth** : session Better-Auth (cookie ou Bearer) + `requireOrgRole(['owner','admin'])`.
+**Auth** : session Better-Auth (cookie ou Bearer) + `requireOrgRole(QUALITY_ROLES)`.
 
 **Body** (optionnel) :
 ```json
@@ -57,7 +57,7 @@ nouvelle ligne `Audit_Log` n'est créée pour ce replay (cf. §4 trade-off foren
 |---|---|---|
 | 400 | `note` | `note.length > 500` |
 | 401 | `auth` | Pas de session |
-| 403 | `auth` | Rôle insuffisant (pas owner/admin) |
+| 403 | `auth` | Rôle insuffisant (ni owner, ni admin, ni quality) |
 | 404 | `alert` | Introuvable, autre org, id malformé — message générique unique |
 
 ## 3. ⚠️ Resolve Alert ≠ Close Recall
@@ -116,7 +116,7 @@ Listing paginé reporté en P3 (cf. §6).
 ```
 PATCH /api/alerts/:id/resolve
   → requireAuth (Better-Auth session)
-  → requireOrgRole(['owner','admin'])
+  → requireOrgRole(QUALITY_ROLES)  // owner, admin, quality
   → validateResolveAlert  (VineJS : note optionnel, maxLength 500)
   → verifyAlertAccess     (Prisma.alert.findFirst { id, organization_id } → 404 sinon)
   → resolveAlertController (compose message contextuel + sendSuccess 200)
@@ -141,6 +141,10 @@ IoT.
 - Exécuté **dans la même tx** que l'`updateMany` (hash chain intègre).
 
 ## 6. Limites & P3
+
+> État au 03/08/2026 : le module expose désormais **`GET /api/alerts/:id/batches`**
+> (`requireOrgRole(ALL_ROLES)` + `verifyAlertAccess`), qui liste les lots rattachés à une alerte.
+> La liste d'alertes elle-même reste absente — les deux lignes ci-dessous sont toujours exactes.
 
 | Item | Justification du report |
 |---|---|

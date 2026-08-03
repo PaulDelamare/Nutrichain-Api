@@ -56,7 +56,7 @@ Le détail (5 diagrammes) est dans [`19_architecture.md`](19_architecture.md). L
    mouvement, l'événement EPCIS et l'entrée d'audit dans **une seule transaction ACID**.
    En microservices : des sagas, pour aucun bénéfice à cette échelle (YAGNI).
 2. **Couches strictes par module** — routes → middlewares (auth, validation) → controllers →
-   services. Aucun service ne dépend d'Express : 870 tests rapides, utilitaires GS1
+   services. Aucun service ne dépend d'Express : 1 386 tests rapides, utilitaires GS1
    en fonctions pures.
 3. **PostgreSQL comme unique source de vérité** — transactions Serializable, optimistic
    locking (`Batch.version`), migrations Prisma versionnées.
@@ -187,14 +187,16 @@ Documenter honnêtement ce qui n'est **pas** fait vaut mieux que de le laisser d
 
 ## 8. Qualité logicielle (comment c'est construit)
 
-- **TDD à trois niveaux** : 870 tests unitaires/intégration (Vitest + Supertest,
-  116 fichiers, 88,86 % de couverture de lignes) + suites e2e contre PostgreSQL réel + benchmark de généalogie.
+- **TDD à trois niveaux** : 1 386 tests unitaires/intégration (Vitest + Supertest,
+  156 fichiers, 90,58 % de couverture de lignes) + 35 suites e2e jouées en CI contre PostgreSQL et
+  MongoDB réels + benchmark de généalogie.
 - **TypeScript strict, zéro `any` en production** ; validation typée aux frontières
   (`Infer<typeof schema>`).
 - **Migrations versionnées** (`prisma/migrations/`), commits conventionnels, hooks
   husky/lint-staged, revues de code multi-angles avant merge, CI GitHub Actions.
-- **Documentation vivante** : 28 documents dans `docs/` (architecture, sécurité,
-  PCA/PRA, modules), Readme opérationnel, collection Bruno.
+- **Documentation vivante** : 35 documents dans `docs/` (architecture, sécurité,
+  PCA/PRA, modules), indexés par statut dans `docs/README.md` — à jour, plan, ou historique à ne
+  pas appliquer. Readme opérationnel, collection Bruno.
 
 ## 9. Chiffres clés à retenir
 
@@ -202,8 +204,8 @@ Documenter honnêtement ce qui n'est **pas** fait vaut mieux que de le laisser d
 |---|---|
 | Rappel produit (généalogie + blocage) | **~21 ms** pour 4 645 lots (budget : 15 min) |
 | Alerte chaîne du froid | **p95 = 12 ms** (budget : 30 s), sur 30 excursions réelles (`bench:cold-chain`) |
-| Tests automatisés | **1 264** verts (91,18 % de couverture de lignes, 92,55 % de branches) + suites e2e |
-| Modules métier | 10 (+ noyau partagé `core`), 31 modèles de données |
+| Tests automatisés | **1 386** verts (90,58 % de couverture de lignes, 91,88 % de branches) + 35 suites e2e en CI |
+| Modules métier | 11 (+ noyau partagé `core`), 34 modèles de données, 89 routes déclarées |
 | Standards | GS1 : GTIN, AI(10), SSCC, URN LGTIN/SSCC, Digital Link · EPCIS : Object/Transformation/AggregationEvent |
 | Conformité visée | HACCP, ISO 22000, RPO 15 min / RTO 60-120 min (PCA/PRA, cf. `18_PCA_PRA.md`) |
 
@@ -218,7 +220,7 @@ Sélection des 7 KPI les plus représentatifs parmi les ~25 suivis (liste compl�
 | Temps p95 ingest → alerte (chaîne du froid) | **12 ms** en local (`bench:cold-chain`, 30 excursions) | < 20 s, mesuré en conditions réelles | < 15 s, mesuré en conditions réelles |
 | Temps médian rappel produit (généalogie + blocage) | ~21 ms pour 4 645 lots (`bench:genealogy`) | < 5 min en prod | < 15 min en prod (seuil contractuel) |
 | Taux d'évènements EPCIS conformes GS1 | 100 % (`e2e:epcis`, 24/24) | > 99 % en prod | > 99,5 % en prod |
-| Couverture de tests (lignes) | 91,18 % (1 264 tests) | 92 % | 94 % |
+| Couverture de tests (lignes) | 90,58 % (1 386 tests) | 92 % | 94 % |
 | Comptes sensibles avec MFA actif | 0 % (fonctionnalité livrée, adoption non mesurée) | 50 % | 100 % |
 | Disponibilité du service | non mesurée (pas d'environnement déployé) | 99 % | 99,9 % (NFR) |
 | Taux de perte de messages IoT | non mesuré (pas de flux réel en continu) | < 0,5 % | < 0,1 % |
