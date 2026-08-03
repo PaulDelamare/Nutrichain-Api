@@ -1,7 +1,7 @@
 # 19 — Architecture de NutriChain API
 
 > Document de référence sur l'architecture. Tous les schémas reflètent le code réel
-> (`src/app.ts`, `src/modules/`, `src/shared/`, `prisma/schema.prisma`), revérifiés le 22/07/2026.
+> (`src/app.ts`, `src/modules/`, `src/shared/`, `prisma/schema.prisma`), revérifiés le 03/08/2026.
 
 ## 1. Vue de contexte — qui parle à l'API ?
 
@@ -73,6 +73,7 @@ flowchart TB
         AUDIT["auditIntegrity<br/>vérification de la chaîne<br/>d'audit, checkpoints, job planifié"]
         ORG["organization<br/>membres, matériel, lieux,<br/>restitutions transverses au front"]
         PLAT["platform<br/>administration de plateforme"]
+        OBS["observability<br/>métriques et santé<br/>réservées à l'administration"]
         CORE["core<br/>health, hello"]
     end
 
@@ -83,7 +84,7 @@ flowchart TB
     end
 
     PRISMA["Prisma Client"]
-    DB[("PostgreSQL<br/>30 modèles")]
+    DB[("PostgreSQL<br/>34 modèles")]
 
     HTTP --> Modules
     Modules --> Shared
@@ -144,7 +145,9 @@ flowchart LR
 Conséquences concrètes :
 
 - **Testabilité** : les services se testent avec un Prisma mocké, les utilitaires GS1
-  sont des fonctions pures testées sans aucun mock (724 tests, 104 fichiers).
+  sont des fonctions pures testées sans aucun mock (1 386 tests, 156 fichiers). Les tests
+  d'intégration (`*.integration.test.ts`, 9 fichiers) sont **exclus de `npm test`** : ils exigent
+  une base réelle et ne tournent que dans le job E2E de la CI.
 - **Validation aux frontières** : VineJS (messages français centralisés) valide toute
   entrée *avant* le contrôleur ; le cœur métier reçoit des données déjà typées
   (`Infer<typeof schema>`, zéro `any`).
@@ -245,7 +248,7 @@ par schéma** (une base, filtrage par organisation) :
 | Décision | Motivation |
 |---|---|
 | Monolithe modulaire, pas de microservices | Transactions ACID sur les flux critiques ; équipe réduite (un seul déployable à opérer) ; frontières extractibles plus tard |
-| Découpage en couches par module (pas d'hexagonal) | Cœur métier testable sans HTTP ; 724 tests rapides, 86 % de couverture de lignes |
+| Découpage en couches par module (pas d'hexagonal) | Cœur métier testable sans HTTP ; 1 386 tests rapides, 90,58 % de couverture de lignes |
 | Prisma + migrations versionnées | Schéma tracé en Git, reproductible (fini `db push`) |
 | Sessions Better-Auth pour les humains, `machineAuth` pour les capteurs | Chaque voie porte sa propre identité et son organisation ; la clé API n'autorise rien à elle seule |
 | VineJS aux frontières, messages FR | Erreurs exploitables par le front, cœur métier typé strict (zéro `any`) |

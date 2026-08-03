@@ -1,5 +1,14 @@
 # Routes API — Logistics (Receipts & Batches)
 
+> 📌 **EXEMPLES ANTÉRIEURS AU DURCISSEMENT DE LA CLÉ API — état au 03/08/2026.**
+>
+> Les `curl` ci-dessous n'envoient que `x-api-key` : **tels quels, ils échouent en 401.** La clé
+> API n'autorise rien et ne porte aucune organisation ; les routes de `logistics` exigent une
+> **session** (`sessionAuth`), et le tenant vient de cette session. Ajoutez le cookie de session
+> ou l'en-tête `Authorization: Bearer <token>` pour les rejouer.
+>
+> Référence à jour, toujours générée depuis les routes : `/api-docs`.
+
 Copie/colle les exemples curl/JSON directement pour tester.
 Remplace `<YOUR_API_KEY>` et `<BEARER_TOKEN>` le cas échéant.
 

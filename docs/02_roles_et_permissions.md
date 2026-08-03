@@ -1,5 +1,19 @@
 # NutriChain - Matrice des Rôles et Permissions (RBAC/ABAC)
 
+> 📌 **DOCUMENT DE CONCEPTION — NON IMPLÉMENTÉ (note du 03/08/2026).**
+>
+> L'**ABAC** décrit ici — permissions atomiques (`LOT_TRANSFORM`…), profils métier, affectation
+> par lieu — **n'existe pas dans le code** : `git grep requirePermission -- src` ne renvoie rien.
+> Ce qui est livré est un **RBAC à 5 rôles**, un seul rôle par membre :
+> `owner`, `admin`, `quality`, `operator`, `viewer`.
+>
+> Source unique et faisant foi : `src/modules/identity/constants/roles.constants.ts`, appliquée
+> par `sessionAuth(ROLES)` / `requireOrgRole(ROLES)`. Les tests `*.roles.test.ts` prouvent que
+> chaque garde est bien branchée sur sa route.
+>
+> Ce document reste la cible de conception si l'ABAC est repris un jour. **Ne pas l'appliquer tel
+> quel.**
+
 Comme convenu, pour éviter l'effondrement du système (l'explosion des rôles), nous divisons la sécurité en **Permissions** (des actions pures) et en **Profils Métiers** (des groupes de permissions). Ces profils seront ensuite assignés à un utilisateur **pour un lieu donné**.
 
 ## 1. Les Permissions Atomiques (Les "Actions")

@@ -1,6 +1,7 @@
 # Limites connues et dette assumée
 
-**Vérifié dans le code le 28/07/2026.** Ce document recense ce que le projet **n'a pas**.
+**Vérifié dans le code le 28/07/2026 ; volumétries remesurées le 03/08/2026.** Ce document recense
+ce que le projet **n'a pas**.
 
 Une dette connue, écrite et chiffrée n'est pas une faute — une dette ignorée en est une. L'objectif
 ici est qu'aucune limite de cette API ne soit découverte par quelqu'un d'autre avant de l'être par
@@ -10,9 +11,11 @@ coûterait sa fermeture.
 ## Comment ce document a été établi
 
 Par lecture du code, pas par relecture des documents : requête dans les migrations, inventaire des
-~74 endpoints applicatifs, recherche dans les sources. *(77 déclarations `router.<verbe>`, dont
-trois sont des middlewares de validation greffés sur des chemins Better-Auth, plus quatre
-`router.all('/auth/*')` qui sont des couches de middleware et non des endpoints.)*
+endpoints applicatifs, recherche dans les sources. *(Au 03/08/2026 : **89 déclarations
+`router.<verbe>`**, contre 77 lors du relevé initial — dont trois sont des middlewares de validation
+greffés sur des chemins Better-Auth, plus quatre `router.all('/auth/*')` qui sont des couches de
+middleware et non des endpoints. L'écart vient surtout des filtres et de la pagination ajoutés
+depuis sur les restitutions.)*
 
 **Cette méthode a produit trois affirmations fausses**, corrigées depuis et signalées comme telles
 dans le corps du document. Les trois venaient de la même faute : une recherche textuelle qui ne

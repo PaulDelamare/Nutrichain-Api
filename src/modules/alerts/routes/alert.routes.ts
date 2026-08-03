@@ -116,7 +116,7 @@ router.get(
  *       401:
  *         description: Non authentifié
  *       403:
- *         description: Rôle insuffisant (seuls owner / admin)
+ *         description: Rôle insuffisant (QUALITY_ROLES — owner, admin ou quality)
  *       404:
  *         description: Alerte introuvable dans l'organisation active (anti-enumeration)
  */

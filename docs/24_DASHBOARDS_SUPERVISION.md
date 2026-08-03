@@ -4,8 +4,20 @@ Le front a son dashboard **métier** (lots suivis, alertes, rappels en cours —
 utilisateur opérationnel). Ce document couvre un besoin différent : la supervision
 **technique** de l'API elle-même, destinée à qui exploite le service, pas à qui l'utilise.
 
-**Aucun de ces tableaux de bord n'est déployé.** Ce qui suit décrit les sources de données déjà
-présentes dans le code et directement exploitables, pas un outil livré.
+**Mise à jour du 03/08/2026 — un tableau de bord existe désormais dans l'API.** Le module
+`observability` expose deux routes, toutes deux réservées à `ADMIN_ROLES` (`owner`, `admin`) :
+
+| Route | Ce qu'elle rend |
+|---|---|
+| `GET /api/observability/metrics` | JSON : latence par route (p50/p95/p99, tampon circulaire en mémoire **depuis le dernier redémarrage**), entrées d'audit et alertes des dernières 24 h |
+| `GET /api/observability/dashboard` | Les mêmes données rendues en **page HTML**, consultable directement |
+
+Deux limites à garder en tête : les latences vivent **en mémoire** et repartent de zéro à chaque
+redémarrage — ce n'est pas un historique ; et le format n'est pas du Prometheus/OpenMetrics, donc
+aucun collecteur ne s'y branche tel quel.
+
+Le reste de ce document décrit les autres sources de données déjà présentes dans le code, et les
+panneaux qu'elles permettraient de construire — cela, **aucun outil externe ne le fait aujourd'hui**.
 
 ## Ce qui existe déjà comme source
 
@@ -34,9 +46,13 @@ présentes dans le code et directement exploitables, pas un outil livré.
 
 ## Ce qu'il manque pour que ça devienne un vrai tableau de bord
 
-- Aucun outil de visualisation n'est branché (pas de Grafana/Metabase connecté).
-- Aucune de ces sources n'est exposée en Prometheus/OpenMetrics ; il faudrait soit un exporteur,
-  soit une route d'agrégation dédiée (`GET /api/admin/metrics`, gardée par rôle `owner`).
+- Aucun outil de visualisation externe n'est branché (pas de Grafana/Metabase connecté) : la page
+  `/api/observability/dashboard` est rendue par l'API elle-même.
+- Aucune de ces sources n'est exposée en **Prometheus/OpenMetrics** — la route d'agrégation
+  existe (`GET /api/observability/metrics`, gardée par `ADMIN_ROLES`) mais elle rend du JSON maison ;
+  brancher un collecteur demanderait un exporteur au format attendu.
+- **Pas d'historique** : les latences sont conservées en mémoire et disparaissent au redémarrage.
+  Aucune série temporelle n'est persistée.
 - Le point 1 dépend directement de la correction de #158.
 
 Ce document liste la matière réellement disponible ; construire l'outil au-dessus est un travail

@@ -7,7 +7,11 @@ Pour éviter le problème de performance "N+1" lors de la recherche des ancêtre
 
 - **Fichier :** `src/modules/traceability/transformations/services/genealogy.service.ts`
 - **Avantage :** Une seule requête en base de données permet de parcourir toute l'arborescence, peu importe la profondeur (ex: blé -> farine -> pain -> sandwich).
-- **Limitation :** La profondeur est bridée à 100 niveaux par sécurité.
+- **Limitation :** la profondeur est bridée à **50** niveaux (`MAX_GENEALOGY_DEPTH`) — une chaîne
+  agroalimentaire réelle en compte bien moins ; la borne protège d'une boucle sur données
+  corrompues. La **lecture** est en outre plafonnée à 1 000 lignes (`READ_GENEALOGY_LIMIT`) : le
+  chiffre de performance souvent cité (~21 ms) porte sur cette lecture plafonnée, pas sur le
+  chemin de blocage d'un rappel, qui n'est pas plafonné.
 
 ## 2. Intégrité et Concurrence
 Le module gère des flux de production où plusieurs utilisateurs peuvent consommer le même lot simultanément.
@@ -19,9 +23,10 @@ Le module gère des flux de production où plusieurs utilisateurs peuvent consom
 Conformément aux normes HACCP et Objectif 7 du projet, les actions critiques sont enregistrées de manière immuable.
 
 - **Chaînage par Hash :** Chaque nouveau log d'audit contient un `signature_hash` calculé à partir de ses propres données ET du hash du log précédent de l'organisation. 
-- **Entités Auditées :**
-  - Création de Transformation.
-  - Déclenchement d'un Rappel (Recall).
+- **Entités Auditées :** la liste initiale (transformation, rappel) a été largement étendue —
+  **39 actions distinctes** au 03/08/2026, dont réceptions, expéditions, palettes, contrôles
+  qualité, levées de quarantaine, retraits magasin, membres et référentiels. La liste faisant foi
+  se lit dans le code : `git grep -ho "action: '[A-Z_]*'" -- src` .
 
 ## 4. Accès Public B2C (Scan Lot)
 Une route publique a été ouverte pour permettre la transparence totale envers le consommateur final.

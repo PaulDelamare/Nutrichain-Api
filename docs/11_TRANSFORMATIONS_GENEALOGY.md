@@ -1,5 +1,10 @@
 # Module Traçabilité : Transformations et Généalogie
 
+> 📌 **NOTE DE CONCEPTION ANTÉRIEURE — état au 03/08/2026.**
+>
+> Même sujet que `11_TECH_TRANSFORMATIONS_GENEALOGY.md`, qui **fait foi** pour l'implémentation
+> (généalogie par CTE récursive, idempotence, verrous). Conservée pour la trace de la conception.
+
 ## 🧬 Concept
 Le module `Transformations` gère le cycle de vie de la transformation industrielle au sein de Nutrichain. Il permet de lier des lots d'entrée (ingrédients/matières premières) à un lot de sortie (produit fini ou semi-fini).
 

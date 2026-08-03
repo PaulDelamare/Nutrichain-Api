@@ -1,5 +1,12 @@
 # Module Logistics : Réception & Étiquetage GS1 (Refonte 2026)
 
+> 📌 **NOTE DE CONCEPTION — état au 03/08/2026.**
+>
+> Le module a été livré et a beaucoup grossi depuis : réceptions, expéditions, unités logistiques
+> (palettes SSCC) et retraits magasin, chacun dans son sous-domaine
+> (`src/modules/logistics/<sous-domaine>/`). Pour le comportement réel des routes et des gardes,
+> se référer au code et à `/api-docs` plutôt qu'à ce document.
+
 ## 1. Vue d'ensemble
 Le module `logistics` gère l'entrée des marchandises et la création de l'identité numérique des lots. Il est conçu pour assurer une traçabilité totale dès le point d'entrée, conformément aux standards GS1.
 

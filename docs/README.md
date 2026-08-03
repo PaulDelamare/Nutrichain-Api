@@ -8,9 +8,12 @@ Cet index tranche. Trois statuts, un seul sens de lecture.
 
 | Statut | Ce que ça veut dire |
 |---|---|
-| ✅ **À jour** | Décrit le code tel qu'il est. Vérifié le 22/07/2026. |
+| ✅ **À jour** | Décrit le code tel qu'il est. Vérifié le 03/08/2026. |
 | 📌 **Plan / passation** | Une intention à une date donnée. Ce qui est livré est indiqué en tête du document. |
 | 🛑 **Historique** | Décrit un état **révolu**. À ne pas appliquer : conservé pour la traçabilité des décisions. |
+
+**Chaque document porte désormais son statut en tête**, pas seulement dans cet index : on ne peut
+plus tomber sur un fichier périmé en y arrivant par une recherche ou un lien direct.
 
 ---
 
@@ -27,7 +30,7 @@ Cet index tranche. Trois statuts, un seul sens de lecture.
 
 | Doc | Statut | Contenu |
 |---|:--:|---|
-| [`04_tracabilite_et_lots.md`](04_tracabilite_et_lots.md) | ✅ | Règles de traçabilité, cycle de vie d'un lot. |
+| [`04_tracabilite_et_lots.md`](04_tracabilite_et_lots.md) | 📌 | Principes de traçabilité énoncés au futur (mai 2026). Le §4 cite une arborescence (`src/Services/`) qui n'existe pas. Sur les identifiants et étiquettes, `27_GS1_EPCIS.md` fait foi. |
 | [`27_GS1_EPCIS.md`](27_GS1_EPCIS.md) | ✅ | **Les standards, expliqués** : ce que sont GTIN/SSCC/AI/EPCIS, pourquoi ces choix (LGTIN et non SGTIN, Digital Link et non DataMatrix), où ça vit dans le code, identifiants réels commentés, et l'inventaire des écarts de conformité assumés. |
 | [`11_TECH_TRANSFORMATIONS_GENEALOGY.md`](11_TECH_TRANSFORMATIONS_GENEALOGY.md) | ✅ | Transformations et généalogie, côté technique. |
 | [`11_TRANSFORMATIONS_GENEALOGY.md`](11_TRANSFORMATIONS_GENEALOGY.md) | 📌 | Note de conception antérieure, même sujet. Le fichier `11_TECH_*` fait foi. |
@@ -70,8 +73,8 @@ Cet index tranche. Trois statuts, un seul sens de lecture.
 |---|:--:|---|
 | [`14_sync_mobile_offline.md`](14_sync_mobile_offline.md) | ✅ | Synchronisation mobile hors-ligne, idempotence. |
 | [`16_invitation_register_flow.md`](16_invitation_register_flow.md) | ✅ | Invitation et inscription. |
-| [`frontend_integration.md`](frontend_integration.md) | 📌 | Guide d'intégration front. Antérieur au durcissement de la clé API. |
-| [`logistics-api-endpoints.md`](logistics-api-endpoints.md) | 📌 | Exemples curl du module logistique. |
+| [`frontend_integration.md`](frontend_integration.md) | 📌 | Guide d'intégration front. **Son §1 est faux** : `x-api-key` n'est pas exigé sur les routes métier et n'autorise rien. |
+| [`logistics-api-endpoints.md`](logistics-api-endpoints.md) | 📌 | Exemples curl du module logistique. **Tels quels ils rendent 401** : ils n'envoient pas de session. |
 | [`HANDOVER_SESSION_TRACEABILITY.md`](HANDOVER_SESSION_TRACEABILITY.md) | 📌 | Passation du module traçabilité. |
 
 ---

@@ -14,12 +14,14 @@ Ce module implémente la capacité critique de NutriChain à identifier et bloqu
 
 ### 1. Consulter la Généalogie
 `GET /api/traceability/batches/:id/genealogy`
-- **Rôles** : Owner, Admin, Member.
+- **Rôles** : `ALL_ROLES` — tous les rôles, y compris `viewer`. *(Le rôle « Member » n'existe plus :
+  le vocabulaire canonique est `owner`, `admin`, `quality`, `operator`, `viewer`.)*
 - **Retour** : Arbre complet des ancêtres et descendants.
 
 ### 2. Déclencher un Rappel
 `POST /api/traceability/batches/:id/recall`
-- **Rôles** : Owner, Admin.
+- **Rôles** : `QUALITY_ROLES` — `owner`, `admin`, `quality`. L'`operator` en est **exclu** :
+  déclencher un rappel est une décision qualité, pas un geste terrain.
 - **Body** : `{ "reason": "Détection Listeria" }`
 - **Action** :
   1. Bloque le lot source + toute sa descendance (statut `ALERTE`, version incrémentée).
@@ -64,4 +66,13 @@ Ce module implémente la capacité critique de NutriChain à identifier et bloqu
 
 ## 🔍 Algorithme
 
-L'algorithme utilise une recherche en largeur (BFS) avec un set de détection de cycles pour naviguer dans les relations `TransformationComposition` ↔ `Transformation`.
+La descendance est calculée par **CTE récursive SQL** (`downstreamTraceCte`, partagée avec
+`genealogy.service.ts`), bornée à `MAX_GENEALOGY_DEPTH` = 50 niveaux — et non plus par un parcours
+en largeur applicatif. Une seule requête descend tout l'arbre, quelle que soit sa profondeur ; la
+borne protège d'une boucle sur données corrompues.
+
+## 🧪 Simuler avant de déclencher
+
+`GET /api/traceability/batches/:id/recall-simulation` chiffre l'impact **sans rien écrire** : mêmes
+lots et mêmes expéditions que le rappel réel, en lecture seule. Voir les magasins touchés n'oblige
+donc plus à déclencher un rappel — lequel est irréversible.

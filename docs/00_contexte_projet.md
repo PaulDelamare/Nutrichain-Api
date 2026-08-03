@@ -1,5 +1,12 @@
 # MASTER CAHIER DES CHARGES : NUTRICHAIN REFONTE INDUSTRIELLE 2026
-> **Statut** : Document de référence absolu
+
+> 📌 **CADRAGE INITIAL — état au 03/08/2026.**
+>
+> Il fixe le besoin métier, les objectifs et les KPI attendus : c'est la référence pour **ce qu'on
+> cherche à faire**, pas pour ce qui est construit. Sur l'implémentation, le code et `/api-docs`
+> priment. Écarts assumés et fonctionnalités manquantes : `26_LIMITES_CONNUES.md`.
+
+> **Statut** : Document de référence du besoin
 > **Confidentialité** : Interne (Équipe Projet : Paul, Hugo, Yoann, IT, Direction)
 
 ---

@@ -1,5 +1,20 @@
 # NutriChain API - Frontend Integration Guide (2026)
 
+> 📌 **GUIDE ANTÉRIEUR AU DURCISSEMENT DE LA CLÉ API — à lire avec la correction ci-dessous
+> (note du 03/08/2026).**
+>
+> Le §1 affirme que *toute* route métier protégée exige l'en-tête `x-api-key`. **C'est faux
+> aujourd'hui.** `checkApiKey()` n'est appliqué qu'à quatre endroits : `/api/auth/*`, les
+> invitations, la suppression de compte et la télémétrie IoT. Les routes métier (lots, réceptions,
+> expéditions, alertes…) n'en demandent pas.
+>
+> Surtout : **la clé API n'autorise rien**. Elle identifie une application appelante ; elle ne
+> remplace jamais une session et ne porte aucune organisation. Toute écriture ou lecture métier
+> exige une session Better-Auth, et le tenant vient de cette session.
+>
+> Le reste du guide (flux d'inscription sur invitation, sessions, en-têtes de session) demeure
+> globalement valable. Référence à jour : `19_architecture.md` §1 et `16_invitation_register_flow.md`.
+
 Welcome to the NutriChain API. This documentation will help integrators connect their React/Vue/Angular frontend applications to the backend Modulith.
 
 ## 1. Authentication & Security
