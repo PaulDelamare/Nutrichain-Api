@@ -18,13 +18,17 @@ dupliquer — un burndown recopié ici se périmerait à la prochaine PR, ce lie
    ne travaillent jamais la même chose en parallèle sur les trois dépôts partagés.
 4. **Une PR ne s'ouvre que prête à merger** — pas de branche qui traîne à moitié faite.
 
-## Le volume, vérifié au moment de l'écriture de ce document
+## Le volume, recompté le 03/08/2026
 
 | Dépôt | Issues fermées | PR mergées |
 |---|--:|--:|
-| API (`nutrichain-api`) | 64 | 133 |
-| Front (`Nutrichain-Front`) | 6 | 26 |
-| Mobile (`Nutrichain-Mobile`) | 36 | 61 |
+| API (`nutrichain-api`) | 114 | 215 |
+| Front (`Nutrichain-Front`) | 45 | 82 |
+| Mobile (`Nutrichain-Mobile`) | 40 | 70 |
+| **Total** | **199** | **367** |
+
+Compté par `gh issue list --state closed` et `gh pr list --state merged` sur chaque dépôt. Ces
+chiffres se périment à chaque merge : les commandes font foi, pas ce tableau.
 
 ## Repères par thème (échantillon, pas l'inventaire complet)
 

@@ -60,7 +60,9 @@ s'il a un contenu. `core`, minuscule, reste volontairement à plat. Le transvers
   l'opération sur conflit d'écriture. Sans lui, deux écritures concurrentes se soldent par un 500 :
   un conflit de sérialisation levé par une requête brute remonte en `P2010` porteur du SQLSTATE
   `40001`, et non en `P2034`. Ne jamais y enfermer d'effet de bord non transactionnel (envoi de mail)
-  : le retry le rejouerait. Les seuls `$transaction` bruts restants sont des lectures de pagination.
+  : le retry le rejouerait. Les seuls `$transaction` bruts restants sont des **lectures** : comptage + page dans le même
+  instantané, simulation de rappel (`simulateRecall`, qui n'écrit rien) et job de vérification de
+  chaîne. Aucune écriture n'en utilise.
 - **Optimisation des Requêtes (N+1)** : Utilisation réfléchie des clauses `include` et `select` dans Prisma pour récupérer les relations en une seule passe, au lieu de boucler pour refaire des requêtes.
 
 ## 5. Tests et Qualité
