@@ -12,6 +12,10 @@ import { validateShipmentQuery } from '../middlewares/validateShipmentQuery.midd
 import { validateMemberQuery } from '../middlewares/validateMemberQuery.middleware';
 import { validateRecallQuery } from '../middlewares/validateRecallQuery.middleware';
 import { validateAuditLogQuery } from '../middlewares/validateAuditLogQuery.middleware';
+import { validateLocationQuery } from '../middlewares/validateLocationQuery.middleware';
+import { validateSupplierQuery } from '../middlewares/validateSupplierQuery.middleware';
+import { validateCustomerQuery } from '../middlewares/validateCustomerQuery.middleware';
+import { validateEquipmentQuery } from '../middlewares/validateEquipmentQuery.middleware';
 import { validateCreateEquipment } from '../middlewares/validateEquipment.middleware';
 import { validateCreateQualityControl } from '../middlewares/validateQualityControl.middleware';
 import {
@@ -24,6 +28,7 @@ import {
   listLocationsController,
 } from '../controllers/equipment.controller';
 import {
+  configCountsController,
   listAlertsController,
   listRecallsController,
   listAuditLogsController,
@@ -255,7 +260,12 @@ router.get(
  *       401:
  *         description: Aucune session
  */
-router.get('/organization/equipment', sessionAuth(READ_ROLES), listEquipmentController);
+router.get(
+  '/organization/equipment',
+  sessionAuth(READ_ROLES),
+  validateEquipmentQuery,
+  listEquipmentController
+);
 
 // Métier (l'opérateur en a besoin pour l'historique d'un lot), MAIS le nom de l'auteur des
 // mouvements — seule donnée personnelle — est masqué pour les non-administrateurs, dans le service.
@@ -333,7 +343,12 @@ router.get(
  *       401:
  *         description: Aucune session
  */
-router.get('/organization/suppliers', sessionAuth(READ_ROLES), listSuppliersController);
+router.get(
+  '/organization/suppliers',
+  sessionAuth(READ_ROLES),
+  validateSupplierQuery,
+  listSuppliersController
+);
 
 /**
  * @swagger
@@ -361,7 +376,12 @@ router.get('/organization/suppliers', sessionAuth(READ_ROLES), listSuppliersCont
  *       401:
  *         description: Aucune session
  */
-router.get('/organization/customers', sessionAuth(READ_ROLES), listCustomersController);
+router.get(
+  '/organization/customers',
+  sessionAuth(READ_ROLES),
+  validateCustomerQuery,
+  listCustomersController
+);
 
 /**
  * @swagger
@@ -411,7 +431,26 @@ router.get(
  *       401:
  *         description: Aucune session
  */
-router.get('/organization/locations', sessionAuth(READ_ROLES), listLocationsController);
+router.get(
+  '/organization/locations',
+  sessionAuth(READ_ROLES),
+  validateLocationQuery,
+  listLocationsController
+);
+
+/**
+ * @swagger
+ * /api/organization/config-counts:
+ *   get:
+ *     summary: Compteurs des référentiels (badges d'onglets de la page Configuration)
+ *     tags: [Organisation]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Compteurs par référentiel
+ */
+router.get('/organization/config-counts', sessionAuth(ADMIN_ROLES), configCountsController);
 
 /**
  * Écriture : le plan d'usine (où sont les frigos, les cuves) est une donnée de configuration.

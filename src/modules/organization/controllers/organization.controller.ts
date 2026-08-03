@@ -12,6 +12,9 @@ import { SHIPMENT_PAGE_DEFAULTS } from '../middlewares/shipmentQuery.schema';
 import { MEMBER_PAGE_DEFAULTS } from '../middlewares/memberQuery.schema';
 import { RECALL_PAGE_DEFAULTS } from '../middlewares/recallQuery.schema';
 import { AUDIT_LOG_PAGE_DEFAULTS } from '../middlewares/auditLogQuery.schema';
+import { SUPPLIER_PAGE_DEFAULTS } from '../middlewares/supplierQuery.schema';
+import { CUSTOMER_PAGE_DEFAULTS } from '../middlewares/customerQuery.schema';
+import { EQUIPMENT_PAGE_DEFAULTS } from '../middlewares/equipmentQuery.schema';
 
 export const listMembersController = catchAsync(
   async (req: AuthenticatedRequest, res: Response) => {
@@ -31,6 +34,13 @@ export const listMembersController = catchAsync(
       mfa,
     });
     sendSuccess(res, 200, "Membres de l'organisation récupérés", members);
+  }
+);
+
+export const configCountsController = catchAsync(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const counts = await organizationService.configReferentialCounts(req.activeOrgId as string);
+    sendSuccess(res, 200, 'Compteurs de configuration récupérés', counts);
   }
 );
 
@@ -99,6 +109,21 @@ export const listQuarantineBatchesController = catchAsync(
 
 export const listEquipmentController = catchAsync(
   async (req: AuthenticatedRequest, res: Response) => {
+    const q = req.validatedEquipmentQuery ?? {};
+
+    // Chemin paginé (écran Configuration) quand `page` est présent ; sinon tableau simple pour les
+    // écrans du plan d'usine (rétrocompatible).
+    if (q.page !== undefined) {
+      const result = await organizationService.listEquipmentPaginated(req.activeOrgId as string, {
+        page: q.page,
+        limit: q.limit ?? EQUIPMENT_PAGE_DEFAULTS.limit,
+        nom: q.nom,
+        type: q.type,
+      });
+      sendSuccess(res, 200, 'Matériel récupéré', result);
+      return;
+    }
+
     const equipment = await organizationService.listEquipment(req.activeOrgId as string);
     sendSuccess(res, 200, 'Matériel récupéré', equipment);
   }
@@ -125,6 +150,22 @@ export const listSuppliersController = catchAsync(
     // Le contact et l'adresse (données personnelles) sont réservés à l'administration, qui
     // seule peut aussi demander les archivés (écran de configuration).
     const revealPersonalData = PERSONAL_DATA_ROLES.includes(req.auth?.role as Role);
+    const q = req.validatedSupplierQuery ?? {};
+
+    // Chemin paginé (écran Configuration) quand `page` est présent ; sinon tableau simple pour les
+    // sélecteurs de l'app (rétrocompatible).
+    if (q.page !== undefined) {
+      const result = await organizationService.listSuppliersPaginated(req.activeOrgId as string, {
+        page: q.page,
+        limit: q.limit ?? SUPPLIER_PAGE_DEFAULTS.limit,
+        nom: q.nom,
+        statut: q.statut,
+        revealPersonalData,
+      });
+      sendSuccess(res, 200, 'Fournisseurs récupérés', result);
+      return;
+    }
+
     const suppliers = await organizationService.listSuppliers(req.activeOrgId as string, {
       includeArchived: revealPersonalData && req.query.includeArchived === 'true',
       revealPersonalData,
@@ -138,6 +179,22 @@ export const listCustomersController = catchAsync(
     // Même règle : l'opérateur expédie et voit { id, nom, adresse_livraison } (donnée
     // d'exploitation) ; contact, e-mail et notes restent réservés à l'administration.
     const revealPersonalData = PERSONAL_DATA_ROLES.includes(req.auth?.role as Role);
+    const q = req.validatedCustomerQuery ?? {};
+
+    // Chemin paginé (écran Configuration) quand `page` est présent ; sinon tableau simple pour les
+    // sélecteurs de l'app (rétrocompatible).
+    if (q.page !== undefined) {
+      const result = await organizationService.listCustomersPaginated(req.activeOrgId as string, {
+        page: q.page,
+        limit: q.limit ?? CUSTOMER_PAGE_DEFAULTS.limit,
+        nom: q.nom,
+        statut: q.statut,
+        revealPersonalData,
+      });
+      sendSuccess(res, 200, 'Clients récupérés', result);
+      return;
+    }
+
     const customers = await organizationService.listCustomers(req.activeOrgId as string, {
       includeArchived: revealPersonalData && req.query.includeArchived === 'true',
       revealPersonalData,

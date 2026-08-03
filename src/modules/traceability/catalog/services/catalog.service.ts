@@ -14,6 +14,45 @@ export const catalogService = {
     });
   },
 
+  // Chemin paginé de l'écran Configuration (le tableau + ses filtres). `getAllProducts` ci-dessus
+  // reste pour les sélecteurs de l'app, qui n'envoient pas de `page`.
+  //
+  // `includeArchived` traduit le droit (administration) de voir les produits retirés : sans lui, le
+  // filtre `statut` est ignoré et la liste reste bornée aux actifs — un rôle en lecture ne peut pas
+  // énumérer ce qui a été archivé, même en forçant `?page=1&statut=archive`.
+  async getProductsPaginated(
+    organization_id: string,
+    options: {
+      page?: number;
+      limit?: number;
+      nom?: string;
+      statut?: 'actif' | 'archive';
+      includeArchived?: boolean;
+    } = {}
+  ) {
+    const { page = 1, limit = 20, nom, statut, includeArchived = false } = options;
+    const skip = (page - 1) * limit;
+
+    const where: Prisma.ProductWhereInput = {
+      organization_id,
+      nom: nom ? { contains: nom, mode: 'insensitive' } : undefined,
+      is_active: !includeArchived
+        ? true
+        : statut === 'actif'
+          ? true
+          : statut === 'archive'
+            ? false
+            : undefined,
+    };
+
+    const [total, data] = await prisma.$transaction([
+      prisma.product.count({ where }),
+      prisma.product.findMany({ where, orderBy: { nom: 'asc' }, skip, take: limit }),
+    ]);
+
+    return { data, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
+  },
+
   /**
    * Récupère la page demandée des lots (batches) en cours de suivi.
    *

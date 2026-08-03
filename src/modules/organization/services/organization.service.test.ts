@@ -9,10 +9,12 @@ vi.mock('../../../shared/configs/prismaClient.config', () => ({
     audit_Log: { findMany: vi.fn(), count: vi.fn() },
     qualityControl: { findMany: vi.fn() },
     batch: { findMany: vi.fn() },
-    equipment: { findMany: vi.fn() },
+    equipment: { findMany: vi.fn(), count: vi.fn() },
     batch_Mouvement: { findMany: vi.fn() },
-    supplier: { findMany: vi.fn() },
-    customer: { findMany: vi.fn() },
+    supplier: { findMany: vi.fn(), count: vi.fn() },
+    customer: { findMany: vi.fn(), count: vi.fn() },
+    product: { count: vi.fn() },
+    location: { count: vi.fn() },
     shipment: { findMany: vi.fn(), count: vi.fn() },
     // Forme tableau (lectures paginées comme listShipments) ⇒ Promise.all.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -97,6 +99,19 @@ describe('OrganizationService (façade de lecture pour le front)', () => {
       where: { organization_id: ORG },
       orderBy: { created_at: 'desc' },
     });
+  });
+
+  it('configReferentialCounts : compte les 5 référentiels de l organisation en un appel', async () => {
+    vi.mocked(prisma.location.count).mockResolvedValue(3 as never);
+    vi.mocked(prisma.supplier.count).mockResolvedValue(5 as never);
+    vi.mocked(prisma.customer.count).mockResolvedValue(7 as never);
+    vi.mocked(prisma.product.count).mockResolvedValue(11 as never);
+    vi.mocked(prisma.equipment.count).mockResolvedValue(2 as never);
+
+    const res = await organizationService.configReferentialCounts(ORG);
+
+    expect(res).toEqual({ locations: 3, suppliers: 5, customers: 7, products: 11, equipment: 2 });
+    expect(prisma.supplier.count).toHaveBeenCalledWith({ where: { organization_id: ORG } });
   });
 
   it('listRecalls : borne à la famille RAPPEL, pagine et renvoie { data, pagination }', async () => {
@@ -254,6 +269,40 @@ describe('OrganizationService (façade de lecture pour le front)', () => {
     expect(Array.isArray(orderBy) && orderBy.at(-1)).toEqual({ id: 'asc' });
   });
 
+  it('listEquipmentPaginated : pagine (skip/take), ordre déterministe, renvoie { data, pagination }', async () => {
+    vi.mocked(prisma.equipment.count).mockResolvedValue(42 as never);
+    vi.mocked(prisma.equipment.findMany).mockResolvedValue([] as never);
+
+    const res = await organizationService.listEquipmentPaginated(ORG, { page: 3, limit: 10 });
+
+    expect(prisma.equipment.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        include: { lieu: { select: { nom: true } } },
+        orderBy: [{ nom: 'asc' }, { id: 'asc' }],
+        skip: 20,
+        take: 10,
+      })
+    );
+    expect(res.pagination).toEqual({ page: 3, limit: 10, total: 42, totalPages: 5 });
+  });
+
+  it('listEquipmentPaginated : filtre nom (contains insensible) et type (exact)', async () => {
+    vi.mocked(prisma.equipment.count).mockResolvedValue(0 as never);
+    vi.mocked(prisma.equipment.findMany).mockResolvedValue([] as never);
+
+    await organizationService.listEquipmentPaginated(ORG, { nom: 'frigo', type: 'FRIGO' });
+
+    expect(prisma.equipment.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          organization_id: ORG,
+          nom: { contains: 'frigo', mode: 'insensitive' },
+          type: 'FRIGO',
+        },
+      })
+    );
+  });
+
   it("listMovements : cloisonné VIA le lot (Batch_Mouvement n'a pas d'organization_id direct)", async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     vi.mocked(prisma.batch_Mouvement.findMany).mockResolvedValue([] as any);
@@ -340,6 +389,111 @@ describe('OrganizationService (façade de lecture pour le front)', () => {
       where: { organization_id: ORG },
       orderBy: { nom_enseigne: 'asc' },
     });
+  });
+
+  it('listSuppliersPaginated : pagine (skip/take), trié par nom, renvoie { data, pagination }', async () => {
+    vi.mocked(prisma.supplier.count).mockResolvedValue(42 as never);
+    vi.mocked(prisma.supplier.findMany).mockResolvedValue([] as never);
+
+    const res = await organizationService.listSuppliersPaginated(ORG, {
+      page: 3,
+      limit: 10,
+      revealPersonalData: true,
+    });
+
+    expect(prisma.supplier.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: { nom_ferme: 'asc' }, skip: 20, take: 10 })
+    );
+    expect(res.pagination).toEqual({ page: 3, limit: 10, total: 42, totalPages: 5 });
+  });
+
+  it('listSuppliersPaginated : filtre nom (contains insensible) et statut (admin)', async () => {
+    vi.mocked(prisma.supplier.count).mockResolvedValue(0 as never);
+    vi.mocked(prisma.supplier.findMany).mockResolvedValue([] as never);
+
+    await organizationService.listSuppliersPaginated(ORG, {
+      nom: 'aube',
+      statut: 'archive',
+      revealPersonalData: true,
+    });
+
+    expect(prisma.supplier.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          organization_id: ORG,
+          nom_ferme: { contains: 'aube', mode: 'insensitive' },
+          is_active: false,
+        },
+      })
+    );
+  });
+
+  // Invariant de sécurité : un rôle terrain reste borné aux actifs et à l'identité métier, même
+  // s'il tente `?page=1&statut=archive` sur la route partagée.
+  it('listSuppliersPaginated : sans revealPersonalData → actifs seuls + projection { id, nom_ferme }', async () => {
+    vi.mocked(prisma.supplier.count).mockResolvedValue(0 as never);
+    vi.mocked(prisma.supplier.findMany).mockResolvedValue([] as never);
+
+    await organizationService.listSuppliersPaginated(ORG, { statut: 'archive' });
+
+    expect(prisma.supplier.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ organization_id: ORG, is_active: true }),
+        select: { id: true, nom_ferme: true },
+      })
+    );
+  });
+
+  it('listCustomersPaginated : pagine (skip/take), trié par enseigne, renvoie { data, pagination }', async () => {
+    vi.mocked(prisma.customer.count).mockResolvedValue(42 as never);
+    vi.mocked(prisma.customer.findMany).mockResolvedValue([] as never);
+
+    const res = await organizationService.listCustomersPaginated(ORG, {
+      page: 3,
+      limit: 10,
+      revealPersonalData: true,
+    });
+
+    expect(prisma.customer.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: { nom_enseigne: 'asc' }, skip: 20, take: 10 })
+    );
+    expect(res.pagination).toEqual({ page: 3, limit: 10, total: 42, totalPages: 5 });
+  });
+
+  it('listCustomersPaginated : filtre nom (contains insensible) et statut (admin)', async () => {
+    vi.mocked(prisma.customer.count).mockResolvedValue(0 as never);
+    vi.mocked(prisma.customer.findMany).mockResolvedValue([] as never);
+
+    await organizationService.listCustomersPaginated(ORG, {
+      nom: 'super',
+      statut: 'archive',
+      revealPersonalData: true,
+    });
+
+    expect(prisma.customer.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          organization_id: ORG,
+          nom_enseigne: { contains: 'super', mode: 'insensitive' },
+          is_active: false,
+        },
+      })
+    );
+  });
+
+  // Invariant de sécurité : un rôle terrain reste borné aux actifs et à l'identité d'exploitation.
+  it('listCustomersPaginated : sans revealPersonalData → actifs seuls + projection sans données perso', async () => {
+    vi.mocked(prisma.customer.count).mockResolvedValue(0 as never);
+    vi.mocked(prisma.customer.findMany).mockResolvedValue([] as never);
+
+    await organizationService.listCustomersPaginated(ORG, { statut: 'archive' });
+
+    expect(prisma.customer.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ organization_id: ORG, is_active: true }),
+        select: { id: true, nom_enseigne: true, adresse_livraison: true },
+      })
+    );
   });
 
   it('listShipments : cloisonné, client et lots liés joints, plus récentes d abord', async () => {

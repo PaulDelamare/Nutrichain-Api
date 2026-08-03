@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { getProducts, getBatches } from '../controllers/catalog.controller';
 import { validateCatalogQuery } from '../middlewares/validateCatalogQuery.middleware';
+import { validateProductQuery } from '../middlewares/validateProductQuery.middleware';
 import { requireAuth } from '../../../identity/middlewares/requireAuth.middleware';
 import { requireOrgRole } from '../../../identity/middlewares/requireOrgRole.middleware';
 import { CATALOG_READ_ROLES } from '../constants/catalog.constants';
@@ -62,7 +63,12 @@ router.use('/traceability/batches', requireAuth);
  *       403:
  *         description: Accès refusé (rôle insuffisant ou organisation non sélectionnée)
  */
-router.get('/traceability/products', requireOrgRole(CATALOG_READ_ROLES), getProducts);
+router.get(
+  '/traceability/products',
+  requireOrgRole(CATALOG_READ_ROLES),
+  validateProductQuery,
+  getProducts
+);
 
 /**
  * @swagger

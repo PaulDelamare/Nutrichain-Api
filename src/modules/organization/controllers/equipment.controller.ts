@@ -5,6 +5,7 @@ import { AuthenticatedRequest } from '../../identity/types/auth.types';
 import { labelService } from '../../logistics/shared/services/label.service';
 import { equipmentService } from '../services/equipment.service';
 import { ADMIN_ROLES } from '../../identity/constants/roles.constants';
+import { LOCATION_PAGE_DEFAULTS } from '../middlewares/locationQuery.schema';
 
 /**
  * Voir les archivés est un usage d'ADMINISTRATION (pour réactiver). Un rôle en lecture ne doit pas
@@ -18,6 +19,22 @@ function wantsArchived(req: AuthenticatedRequest): boolean {
 
 export const listLocationsController = catchAsync(
   async (req: AuthenticatedRequest, res: Response) => {
+    const q = req.validatedLocationQuery ?? {};
+
+    // Chemin paginé (écran Configuration) quand `page` est présent ; sinon tableau simple pour les
+    // sélecteurs de l'app (rétrocompatible).
+    if (q.page !== undefined) {
+      const result = await equipmentService.listLocationsPaginated(req.activeOrgId as string, {
+        page: q.page,
+        limit: q.limit ?? LOCATION_PAGE_DEFAULTS.limit,
+        nom: q.nom,
+        type: q.type,
+        statut: q.statut,
+      });
+      sendSuccess(res, 200, 'Lieux récupérés', result);
+      return;
+    }
+
     const locations = await equipmentService.listLocations(
       req.activeOrgId as string,
       wantsArchived(req)
