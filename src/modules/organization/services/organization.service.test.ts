@@ -357,6 +357,59 @@ describe('OrganizationService (façade de lecture pour le front)', () => {
     });
   });
 
+  it('listSuppliersPaginated : pagine (skip/take), trié par nom, renvoie { data, pagination }', async () => {
+    vi.mocked(prisma.supplier.count).mockResolvedValue(42 as never);
+    vi.mocked(prisma.supplier.findMany).mockResolvedValue([] as never);
+
+    const res = await organizationService.listSuppliersPaginated(ORG, {
+      page: 3,
+      limit: 10,
+      revealPersonalData: true,
+    });
+
+    expect(prisma.supplier.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: { nom_ferme: 'asc' }, skip: 20, take: 10 })
+    );
+    expect(res.pagination).toEqual({ page: 3, limit: 10, total: 42, totalPages: 5 });
+  });
+
+  it('listSuppliersPaginated : filtre nom (contains insensible) et statut (admin)', async () => {
+    vi.mocked(prisma.supplier.count).mockResolvedValue(0 as never);
+    vi.mocked(prisma.supplier.findMany).mockResolvedValue([] as never);
+
+    await organizationService.listSuppliersPaginated(ORG, {
+      nom: 'aube',
+      statut: 'archive',
+      revealPersonalData: true,
+    });
+
+    expect(prisma.supplier.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          organization_id: ORG,
+          nom_ferme: { contains: 'aube', mode: 'insensitive' },
+          is_active: false,
+        },
+      })
+    );
+  });
+
+  // Invariant de sécurité : un rôle terrain reste borné aux actifs et à l'identité métier, même
+  // s'il tente `?page=1&statut=archive` sur la route partagée.
+  it('listSuppliersPaginated : sans revealPersonalData → actifs seuls + projection { id, nom_ferme }', async () => {
+    vi.mocked(prisma.supplier.count).mockResolvedValue(0 as never);
+    vi.mocked(prisma.supplier.findMany).mockResolvedValue([] as never);
+
+    await organizationService.listSuppliersPaginated(ORG, { statut: 'archive' });
+
+    expect(prisma.supplier.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ organization_id: ORG, is_active: true }),
+        select: { id: true, nom_ferme: true },
+      })
+    );
+  });
+
   it('listShipments : cloisonné, client et lots liés joints, plus récentes d abord', async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     vi.mocked(prisma.shipment.findMany).mockResolvedValue([] as any);

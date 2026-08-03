@@ -238,6 +238,50 @@ export const organizationService = {
     });
   },
 
+  // Chemin paginé de l'écran Configuration (le tableau + ses filtres). `listSuppliers` ci-dessus
+  // reste pour les sélecteurs de l'app, qui n'envoient pas de `page`.
+  //
+  // Sécurité : un rôle terrain (`revealPersonalData` faux) reste borné aux actifs et à l'identité
+  // métier — le filtre `statut` est ignoré pour lui, comme le chemin non paginé masque les archivés.
+  async listSuppliersPaginated(
+    organizationId: string,
+    options: {
+      page?: number;
+      limit?: number;
+      nom?: string;
+      statut?: 'actif' | 'archive';
+      revealPersonalData?: boolean;
+    } = {}
+  ) {
+    const { page = 1, limit = 20, nom, statut, revealPersonalData = false } = options;
+    const skip = (page - 1) * limit;
+
+    const where: Prisma.SupplierWhereInput = {
+      organization_id: organizationId,
+      nom_ferme: nom ? { contains: nom, mode: 'insensitive' } : undefined,
+      is_active: !revealPersonalData
+        ? true
+        : statut === 'actif'
+          ? true
+          : statut === 'archive'
+            ? false
+            : undefined,
+    };
+
+    const [total, data] = await prisma.$transaction([
+      prisma.supplier.count({ where }),
+      prisma.supplier.findMany({
+        where,
+        ...(revealPersonalData ? {} : { select: { id: true, nom_ferme: true } }),
+        orderBy: { nom_ferme: 'asc' },
+        skip,
+        take: limit,
+      }),
+    ]);
+
+    return { data, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
+  },
+
   // Actifs seulement par défaut : un client archivé ne doit plus être proposé (expédition).
   //
   // `revealPersonalData` : sans lui (opérateur terrain), on renvoie { id, nom, adresse_livraison }.

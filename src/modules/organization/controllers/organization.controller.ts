@@ -12,6 +12,7 @@ import { SHIPMENT_PAGE_DEFAULTS } from '../middlewares/shipmentQuery.schema';
 import { MEMBER_PAGE_DEFAULTS } from '../middlewares/memberQuery.schema';
 import { RECALL_PAGE_DEFAULTS } from '../middlewares/recallQuery.schema';
 import { AUDIT_LOG_PAGE_DEFAULTS } from '../middlewares/auditLogQuery.schema';
+import { SUPPLIER_PAGE_DEFAULTS } from '../middlewares/supplierQuery.schema';
 
 export const listMembersController = catchAsync(
   async (req: AuthenticatedRequest, res: Response) => {
@@ -132,6 +133,22 @@ export const listSuppliersController = catchAsync(
     // Le contact et l'adresse (données personnelles) sont réservés à l'administration, qui
     // seule peut aussi demander les archivés (écran de configuration).
     const revealPersonalData = PERSONAL_DATA_ROLES.includes(req.auth?.role as Role);
+    const q = req.validatedSupplierQuery ?? {};
+
+    // Chemin paginé (écran Configuration) quand `page` est présent ; sinon tableau simple pour les
+    // sélecteurs de l'app (rétrocompatible).
+    if (q.page !== undefined) {
+      const result = await organizationService.listSuppliersPaginated(req.activeOrgId as string, {
+        page: q.page,
+        limit: q.limit ?? SUPPLIER_PAGE_DEFAULTS.limit,
+        nom: q.nom,
+        statut: q.statut,
+        revealPersonalData,
+      });
+      sendSuccess(res, 200, 'Fournisseurs récupérés', result);
+      return;
+    }
+
     const suppliers = await organizationService.listSuppliers(req.activeOrgId as string, {
       includeArchived: revealPersonalData && req.query.includeArchived === 'true',
       revealPersonalData,
