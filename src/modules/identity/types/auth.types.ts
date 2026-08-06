@@ -2,6 +2,7 @@ import { Request } from 'express';
 import { Alert, Batch, Receipt } from '@prisma/client';
 import type { TelemetryPingPayload } from '../../iot/middlewares/telemetryPing.schema';
 import type { TelemetryHistoryQuery } from '../../iot/middlewares/telemetryHistoryQuery.schema';
+import type { SimulateIncidentPayload } from '../../iot/middlewares/simulateIncident.schema';
 import type { ReceiptQuery } from '../../logistics/receipts/middlewares/receiptQuery.schema';
 import type { CatalogQuery } from '../../traceability/catalog/middlewares/catalogQuery.schema';
 import type { ProductQuery } from '../../traceability/catalog/middlewares/productQuery.schema';
@@ -137,6 +138,7 @@ export interface AuthenticatedRequest extends Request {
   validatedSyncScans?: SyncScansPayload;
   // Trame de télémétrie IoT (POST /telemetry/ping)
   validatedTelemetryPing?: TelemetryPingPayload;
+  validatedSimulateIncident?: SimulateIncidentPayload;
   // Query params bornés des lectures paginées
   validatedTelemetryHistoryQuery?: TelemetryHistoryQuery;
   validatedReceiptQuery?: ReceiptQuery;
