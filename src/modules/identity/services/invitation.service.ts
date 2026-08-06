@@ -11,7 +11,8 @@ export interface CreateInvitationParams {
   /** Organisation cible — EXPLICITE : ne dépend pas d'une organisation active en session. */
   organizationId: string;
   inviterId: string;
-  inviterEmail: string;
+  /** Nom de l'invitant, affiché dans l'e-mail. Jamais l'email (fuite d'adresse à un invité externe). */
+  inviterName?: string | null;
   email: string;
   role: string;
 }
@@ -31,7 +32,7 @@ export async function createAndSendInvitation(params: CreateInvitationParams): P
   invitationId: string;
   expiresAt: Date;
 }> {
-  const { organizationId, inviterId, inviterEmail, email, role } = params;
+  const { organizationId, inviterId, inviterName, email, role } = params;
 
   const targetOrg = await bdd.organization.findUnique({ where: { id: organizationId } });
   if (!targetOrg) {
@@ -72,7 +73,7 @@ export async function createAndSendInvitation(params: CreateInvitationParams): P
       email: invitation.email,
       role: invitation.role,
       invitationLink,
-      inviterName: inviterEmail,
+      inviterName,
     })
   );
 

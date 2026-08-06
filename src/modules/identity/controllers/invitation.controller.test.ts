@@ -27,10 +27,11 @@ vi.mock('../../../shared/utils/mailer/templates/InvitationEmail', () => ({
 
 import { generateInvitation } from './invitation.controller';
 import { bdd } from '../../../shared/configs/prismaClient.config';
+import { render } from '@react-email/render';
 
 describe('generateInvitation controller', () => {
   const activeOrgId = 'org_test_123';
-  const inviterUser = { id: 'user_inviter', email: 'admin@test.local' };
+  const inviterUser = { id: 'user_inviter', email: 'admin@test.local', name: 'Alice Admin' };
 
   const buildReq = (
     body: Record<string, unknown> = { email: 'newbie@test.local', role: 'operator' }
@@ -97,5 +98,17 @@ describe('generateInvitation controller', () => {
         organizationId: activeOrgId,
       },
     });
+  });
+
+  it("transmet le NOM de session au template, jamais l'e-mail de l'invitant (anti-fuite)", async () => {
+    const req = buildReq();
+    const res = buildRes();
+    await generateInvitation(req, res, vi.fn() as unknown as NextFunction);
+
+    // Prop reellement passee a React.createElement(InvitationEmail, { ... }).
+    const element = vi.mocked(render).mock.calls[0][0] as { props: { inviterName?: unknown } };
+    expect(element.props.inviterName).toBe(inviterUser.name);
+    // Mutation : si le controller repassait auth.user.email, cette ligne rougit.
+    expect(String(element.props.inviterName ?? '')).not.toContain('@');
   });
 });

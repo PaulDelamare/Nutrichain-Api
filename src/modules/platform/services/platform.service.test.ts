@@ -101,13 +101,16 @@ describe('platformService.inviteOwner', () => {
 
     const res = await platformService.inviteOwner('org-1', 'chef@ferme.fr', {
       id: 'admin',
-      email: 'admin@nutrichain.local',
+      name: 'Admin Plateforme',
     });
 
     expect(res.invitationId).toBe('inv-1');
     const [params] = createAndSendInvitation.mock.calls[0];
     expect(params.organizationId).toBe('org-1');
     expect(params.role).toBe('owner');
+    // Anti-fuite : on transmet le NOM de l'admin plateforme au template, jamais son email.
+    expect(params.inviterName).toBe('Admin Plateforme');
+    expect(String(params.inviterName ?? '')).not.toContain('@');
   });
 
   it('refuse d’inviter un owner sur une organisation qui en a déjà un membre', async () => {
@@ -115,7 +118,7 @@ describe('platformService.inviteOwner', () => {
     memberCount.mockResolvedValue(1);
 
     await expect(
-      platformService.inviteOwner('org-1', 'chef@ferme.fr', { id: 'a', email: 'a@b.c' })
+      platformService.inviteOwner('org-1', 'chef@ferme.fr', { id: 'a', name: 'Admin' })
     ).rejects.toMatchObject({ status: 409 });
 
     expect(createAndSendInvitation).not.toHaveBeenCalled();
@@ -127,7 +130,7 @@ describe('platformService.inviteOwner', () => {
     invitationCount.mockResolvedValue(1); // un owner déjà invité, pas encore accepté
 
     await expect(
-      platformService.inviteOwner('org-1', 'autre@ferme.fr', { id: 'a', email: 'a@b.c' })
+      platformService.inviteOwner('org-1', 'autre@ferme.fr', { id: 'a', name: 'Admin' })
     ).rejects.toMatchObject({ status: 409 });
 
     expect(createAndSendInvitation).not.toHaveBeenCalled();
@@ -137,7 +140,7 @@ describe('platformService.inviteOwner', () => {
     orgFindUnique.mockResolvedValue(null);
 
     await expect(
-      platformService.inviteOwner('inconnue', 'x@y.z', { id: 'a', email: 'a@b.c' })
+      platformService.inviteOwner('inconnue', 'x@y.z', { id: 'a', name: 'Admin' })
     ).rejects.toMatchObject({ status: 404 });
   });
 });

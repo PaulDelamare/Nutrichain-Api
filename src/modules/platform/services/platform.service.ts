@@ -15,7 +15,7 @@ interface CreateOrganizationInput {
 
 interface PlatformActor {
   id: string;
-  email: string;
+  name: string;
 }
 
 const slugAlreadyTaken = () =>
@@ -126,7 +126,7 @@ export const platformService = {
     return createAndSendInvitation({
       organizationId,
       inviterId: actor.id,
-      inviterEmail: actor.email,
+      inviterName: actor.name,
       email,
       role: ROLES.OWNER,
     });

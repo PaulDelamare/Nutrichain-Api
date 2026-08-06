@@ -16,7 +16,7 @@ export const generateInvitation = catchAsync(async (req: AuthenticatedRequest, r
   const { invitationId, expiresAt } = await createAndSendInvitation({
     organizationId: activeOrgId,
     inviterId: auth.user.id,
-    inviterEmail: auth.user.email,
+    inviterName: auth.user.name,
     email,
     role,
   });
