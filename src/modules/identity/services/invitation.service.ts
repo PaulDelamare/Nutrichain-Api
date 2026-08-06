@@ -31,7 +31,8 @@ export async function createAndSendInvitation(params: CreateInvitationParams): P
   invitationId: string;
   expiresAt: Date;
 }> {
-  const { organizationId, inviterId, inviterEmail, email, role } = params;
+  // `inviterEmail` reste dans les params (callers) mais n'est plus injecté dans le mail.
+  const { organizationId, inviterId, email, role } = params;
 
   const targetOrg = await bdd.organization.findUnique({ where: { id: organizationId } });
   if (!targetOrg) {
@@ -66,13 +67,23 @@ export async function createAndSendInvitation(params: CreateInvitationParams): P
     },
   });
 
+  // Nom affiché seulement — jamais l'email de l'invitant (évite de le diffuser aux destinataires).
+  const inviter = await bdd.user.findUnique({
+    where: { id: inviterId },
+    select: { name: true, email: true },
+  });
+  const inviterDisplayName =
+    inviter?.name?.trim() && inviter.name.trim() !== inviter.email
+      ? inviter.name.trim()
+      : null;
+
   const invitationLink = `${process.env.FRONTEND_URL}/inscription?token=${invitation.id}`;
   const htmlBody = await render(
     React.createElement(InvitationEmail, {
       email: invitation.email,
       role: invitation.role,
       invitationLink,
-      inviterName: inviterEmail,
+      inviterName: inviterDisplayName,
     })
   );
 

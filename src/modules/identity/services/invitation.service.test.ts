@@ -23,6 +23,8 @@ vi.mock('../../../shared/utils/mailer/templates/InvitationEmail', () => ({
   InvitationEmail: () => null,
 }));
 
+import { render } from '@react-email/render';
+import type { ReactElement } from 'react';
 import { createAndSendInvitation } from './invitation.service';
 import { bdd } from '../../../shared/configs/prismaClient.config';
 import { sendEmail } from '../../../shared/utils/mailer/mailer';
@@ -45,7 +47,16 @@ describe('createAndSendInvitation', () => {
       id: params.organizationId,
       name: 'Ferme du Test',
     } as never);
-    vi.mocked(bdd.user.findUnique).mockResolvedValue(null);
+    // 1) invitee par email → null (pas de compte) ; 2) inviter par id → nom affiché.
+    vi.mocked(bdd.user.findUnique).mockImplementation((async (args: {
+      where: { email?: string; id?: string };
+    }) => {
+      if (args.where.email) return null;
+      if (args.where.id === params.inviterId) {
+        return { name: 'Alice Admin', email: params.inviterEmail };
+      }
+      return null;
+    }) as never);
     vi.mocked(bdd.invitation.deleteMany).mockResolvedValue({ count: 0 } as never);
     vi.mocked(bdd.invitation.create).mockImplementation((async ({
       data,
@@ -133,6 +144,35 @@ describe('createAndSendInvitation', () => {
         html: '<html>invitation</html>',
       })
     );
+  });
+
+  it("n'injecte jamais l'email de l'invitant dans le template — uniquement son nom", async () => {
+    await createAndSendInvitation(params);
+
+    const element = vi.mocked(render).mock.calls[0][0] as ReactElement<{
+      inviterName?: string | null;
+    }>;
+    expect(element.props.inviterName).toBe('Alice Admin');
+    expect(element.props.inviterName).not.toBe(params.inviterEmail);
+  });
+
+  it("omet le nom d'invitant si Better-Auth n'a stocké que l'email comme name", async () => {
+    vi.mocked(bdd.user.findUnique).mockImplementation((async (args: {
+      where: { email?: string; id?: string };
+    }) => {
+      if (args.where.email) return null;
+      if (args.where.id === params.inviterId) {
+        return { name: params.inviterEmail, email: params.inviterEmail };
+      }
+      return null;
+    }) as never);
+
+    await createAndSendInvitation(params);
+
+    const element = vi.mocked(render).mock.calls[0][0] as ReactElement<{
+      inviterName?: string | null;
+    }>;
+    expect(element.props.inviterName).toBeNull();
   });
 
   it("renvoie l'identifiant de l'invitation creee", async () => {
