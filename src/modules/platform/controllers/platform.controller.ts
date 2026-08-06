@@ -25,7 +25,7 @@ export const inviteOwnerController = catchAsync(
   async (req: AuthenticatedRequest, res: Response) => {
     const result = await platformService.inviteOwner(req.params.id, req.validatedInviteOwner!.email, {
       id: req.auth!.user.id,
-      email: req.auth!.user.email,
+      name: req.auth!.user.name,
     });
     sendSuccess(res, 201, "Invitation envoyée au premier pilote de l'organisation.", result);
   }

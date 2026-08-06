@@ -26,6 +26,7 @@ vi.mock('../../../shared/utils/mailer/templates/InvitationEmail', () => ({
 import { createAndSendInvitation } from './invitation.service';
 import { bdd } from '../../../shared/configs/prismaClient.config';
 import { sendEmail } from '../../../shared/utils/mailer/mailer';
+import { render } from '@react-email/render';
 import { APIError } from '../../../shared/utils/errorHandler/APIError';
 import { INVITATION_EXPIRATION_DAYS } from '../constants/roles.constants';
 
@@ -33,7 +34,7 @@ describe('createAndSendInvitation', () => {
   const params = {
     organizationId: 'org_cible_123',
     inviterId: 'user_inviter',
-    inviterEmail: 'admin@test.local',
+    inviterName: 'Alice Admin',
     email: 'newbie@test.local',
     role: 'operator',
   };
@@ -133,6 +134,17 @@ describe('createAndSendInvitation', () => {
         html: '<html>invitation</html>',
       })
     );
+  });
+
+  it("passe le NOM de l'invitant au template, jamais son adresse e-mail (anti-fuite)", async () => {
+    await createAndSendInvitation(params);
+
+    // La prop reellement rendue vient de React.createElement(InvitationEmail, { ... }) :
+    // on verifie l'objet passe a `render`, pas un etat fabrique.
+    const element = vi.mocked(render).mock.calls[0][0] as { props: { inviterName?: unknown } };
+    expect(element.props.inviterName).toBe(params.inviterName);
+    // Mutation : une regression qui repasserait l'email de l'invitant ferait rougir cette ligne.
+    expect(String(element.props.inviterName ?? '')).not.toContain('@');
   });
 
   it("renvoie l'identifiant de l'invitation creee", async () => {
