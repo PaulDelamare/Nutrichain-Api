@@ -4,9 +4,11 @@ import { checkApiKey } from '../../../shared/utils/checkApiKey/checkApiKey';
 import { machineAuth } from '../../../shared/middlewares/machineAuth';
 import { requireAuth } from '../../identity/middlewares/requireAuth.middleware';
 import { requireOrgRole } from '../../identity/middlewares/requireOrgRole.middleware';
-import { ALL_ROLES } from '../../identity/constants/roles.constants';
+import { ALL_ROLES, QUALITY_ROLES } from '../../identity/constants/roles.constants';
 import { validateTelemetryPing } from '../middlewares/validateTelemetryPing.middleware';
 import { validateTelemetryHistoryQuery } from '../middlewares/validateTelemetryHistoryQuery.middleware';
+import { validateSimulateIncident } from '../middlewares/validateSimulateIncident.middleware';
+import { simulateColdChainIncident } from '../controllers/coldChainSimulation.controller';
 
 const router = Router();
 
@@ -158,6 +160,56 @@ router.get(
   requireOrgRole(ALL_ROLES),
   validateTelemetryHistoryQuery,
   getSensorHistory
+);
+
+/**
+ * @swagger
+ * /api/telemetry/simulate-incident:
+ *   post:
+ *     summary: "[Demo] Simuler un incident chaine du froid"
+ *     description: |
+ *       Declenche une VRAIE detection d'excursion (alerte PANIC + mise en quarantaine des lots du
+ *       frigo), en injectant une fenetre de mesures au-dessus du seuil puis en rejouant le pipeline
+ *       reel `iotAlertService.checkAndAlert`. Pour la demonstration : le meme effet qu'un incident
+ *       capteur, declenche par un humain authentifie plutot que par la passerelle IoT.
+ *
+ *       Reserve aux roles qualite (owner/admin/quality) : l'action met des lots en quarantaine.
+ *     tags: [IoT]
+ *     security:
+ *       - apiKeyAuth: []
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               equipmentId:
+ *                 type: string
+ *                 format: uuid
+ *                 description: Materiel a cibler. Absent, un frigo apte est choisi automatiquement.
+ *     responses:
+ *       200:
+ *         description: Incident simule (alerte + quarantaine reelles).
+ *       400:
+ *         description: equipmentId malforme
+ *       401:
+ *         description: Non authentifie
+ *       403:
+ *         description: Role insuffisant (reserve aux roles qualite)
+ *       409:
+ *         description: Aucun materiel avec capteur et seuil, ou materiel cible inapte
+ */
+// Bouton de demonstration : cree un vrai incident. Garde QUALITE (met des lots en quarantaine),
+// et l'organisation vient de la session — jamais du corps.
+router.post(
+  '/telemetry/simulate-incident',
+  checkApiKey(),
+  requireAuth,
+  requireOrgRole(QUALITY_ROLES),
+  validateSimulateIncident,
+  simulateColdChainIncident
 );
 
 export default router;
